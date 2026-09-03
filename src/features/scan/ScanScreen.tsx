@@ -1,21 +1,176 @@
+import { useCallback, useEffect, useRef, useState } from "react";
+import { getSettings } from "../../lib/storage/settings";
+import type { ExtractResult } from "../../lib/vin/types";
+import { Banner } from "../../ui/Banner";
+import { Button } from "../../ui/Button";
+import { CameraView } from "./CameraView";
 import { ManualEntry } from "./ManualEntry";
+import { scanFeedback } from "./feedback";
+import type { ScanSighting } from "./scanMachine";
+import { useScanner } from "./useScanner";
+import { useVinCommit } from "./useVinCommit";
+
+type Mode = "camera" | "manual";
 
 /**
- * S0 ships this screen in manual-entry mode only: no video element and no camera
- * permission request until the S1 scanner lands. Typing runs the same §4.2 → §4.3 → §5.3
- * path the scanner will, so nothing downstream changes when the camera arrives.
+ * The default screen (§6.2): the camera, with the keyboard one tap away. The two modes are
+ * exclusive — typing turns the scanner off, which releases the camera and its battery
+ * draw while the on-screen keyboard covers the preview anyway.
  */
 export function ScanScreen() {
+  const [mode, setMode] = useState<Mode>("camera");
+  const [savedOffline, setSavedOffline] = useState(false);
+  const { state, videoRef, torch, retry, rescan, accept } = useScanner({
+    enabled: mode === "camera",
+  });
+  // `useAsIs` is renamed on the way out: it is a plain method, and the hooks lint reads any
+  // `use…()` call inside a callback as a misplaced hook.
+  const { pending, saving, error, request, useAsIs: saveAsIs, dismiss } = useVinCommit();
+  // One sighting, one write. React 19 StrictMode double-invokes this effect in development,
+  // and a second pass would log one read as two scans (§5.3).
+  const acted = useRef<ScanSighting | null>(null);
+
+  useEffect(() => {
+    if (state.kind !== "confirmed") return;
+    const sighting = state.sighting;
+    if (acted.current === sighting) return;
+    acted.current = sighting;
+
+    async function commit(read: ScanSighting) {
+      const settings = await getSettings();
+      const candidate: ExtractResult = {
+        vin: read.vin,
+        raw: read.raw,
+        checkDigitValid: read.checkDigitValid,
+      };
+      const saved = await request(candidate, { origin: "scan", symbology: read.symbology });
+      // §6.3: success feedback never fires on a mismatch — and a read the user has not
+      // resolved yet is not a scan, so nothing else fires either.
+      if (!saved) return;
+      scanFeedback(settings);
+      accept(read.vin);
+      if (!navigator.onLine) setSavedOffline(true);
+    }
+
+    void commit(sighting);
+  }, [state, request, accept]);
+
+  const handleUseAsIs = useCallback(async () => {
+    if (pending === null) return;
+    const settings = await getSettings();
+    // §6.3 order for this branch: once Use as-is is chosen, feedback, then the upsert.
+    // `accept` also lifts the machine out of `confirmed`, so a failed write leaves the
+    // screen recoverable rather than frozen on the read.
+    scanFeedback(settings);
+    accept(pending.vin);
+    await saveAsIs();
+    if (!navigator.onLine) setSavedOffline(true);
+  }, [pending, accept, saveAsIs]);
+
+  const handleRescan = useCallback(() => {
+    // §6.3: the read was never persisted, so no cooldown is recorded and the same label
+    // reads again straight away.
+    dismiss();
+    rescan();
+  }, [dismiss, rescan]);
+
+  const handleScanAgain = useCallback(() => {
+    dismiss();
+    retry();
+  }, [dismiss, retry]);
+
+  const showManual = useCallback(() => {
+    dismiss();
+    setSavedOffline(false);
+    setMode("manual");
+  }, [dismiss]);
+
+  const showCamera = useCallback(() => {
+    setMode("camera");
+  }, []);
+
   return (
-    <section className="mx-auto flex w-full max-w-md flex-col gap-6 p-4 pb-10">
-      <header className="flex flex-col gap-2">
-        <h1 className="text-2xl leading-tight font-bold text-fg">Add a VIN</h1>
-        <p className="text-base leading-snug text-fg-muted">
-          Camera scanning isn&rsquo;t in this build yet. Type or paste the VIN from the door jamb
-          label — spaces and a leading I are fine.
-        </p>
-      </header>
-      <ManualEntry />
+    <section className="mx-auto flex w-full max-w-md flex-col gap-4 p-4 pb-8">
+      <h1 className="text-2xl leading-tight font-bold text-fg">
+        {mode === "camera" ? "Scan a VIN" : "Type a VIN"}
+      </h1>
+
+      {mode === "camera" ? (
+        <>
+          <CameraView
+            state={state}
+            videoRef={videoRef}
+            torch={torch}
+            onRetry={retry}
+            onTypeInstead={showManual}
+          />
+
+          {pending !== null ? (
+            <Banner
+              tone="warn"
+              title="Check digit doesn't match"
+              actions={
+                <>
+                  {/* h-14 pins the §6.1 56 px target: the Banner action row sets its children
+                      to a 48 px minimum, which would otherwise win over the Button's own. */}
+                  <Button
+                    variant="primary"
+                    className="h-14"
+                    onClick={handleRescan}
+                    disabled={saving}
+                  >
+                    Rescan
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    className="h-14"
+                    onClick={() => void handleUseAsIs()}
+                    disabled={saving}
+                  >
+                    Use as-is
+                  </Button>
+                </>
+              }
+            >
+              Usually a misread — try again.
+            </Banner>
+          ) : null}
+
+          {error !== null ? (
+            <Banner
+              tone="danger"
+              title="Couldn't save this VIN"
+              actions={
+                <Button variant="primary" className="h-14" onClick={handleScanAgain}>
+                  Scan again
+                </Button>
+              }
+            >
+              <p>Nothing was written. Read the label again, or type it.</p>
+              <p className="mt-2 font-vin text-sm break-words text-fg-muted">{error}</p>
+            </Banner>
+          ) : null}
+
+          {/* §6.4. Suppressed while a write error stands, so the line never claims a save
+              that did not happen (N1). */}
+          {savedOffline && error === null ? (
+            <Banner
+              tone="info"
+              title="Offline — VIN saved. Details will fill in when you're back on signal."
+            />
+          ) : null}
+        </>
+      ) : (
+        <>
+          <p className="text-base leading-snug text-fg-muted">
+            Type or paste the VIN from the door jamb label — spaces and a leading I are fine.
+          </p>
+          <ManualEntry />
+          <Button variant="secondary" full onClick={showCamera}>
+            Scan with the camera
+          </Button>
+        </>
+      )}
     </section>
   );
 }

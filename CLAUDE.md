@@ -38,6 +38,8 @@ Runtimes: Bun 1.3.11 · Node 22.22.2 (executes vitest, tsc and eslint under `bun
 | Package | Version | Slice |
 |---|---|---|
 | `@eslint/js` | 10.0.1 | S0 |
+| `@zxing/browser` | 0.2.1 | S1 |
+| `@zxing/library` | 0.23.0 | S1 |
 | `@playwright/test` | 1.62.1 | S0 |
 | `@tailwindcss/vite` | 4.3.3 | S0 |
 | `@types/react` | 19.2.18 | S0 |

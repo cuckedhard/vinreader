@@ -1,15 +1,13 @@
 import { useId, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
-import { useNavigate } from "react-router";
 import { checkDigitApplies, isCheckDigitValid } from "../../lib/vin/checkDigit";
 import { extractVin } from "../../lib/vin/extractVin";
 import { isAllowedVinChar, VIN_LENGTH } from "../../lib/vin/grammar";
-import type { ExtractResult } from "../../lib/vin/types";
-import { upsertVehicle } from "../../lib/storage/upsert";
 import { Banner } from "../../ui/Banner";
 import { Button } from "../../ui/Button";
 import { Chip } from "../../ui/Chip";
 import { VinDisplay } from "../../ui/VinDisplay";
+import { useVinCommit } from "./useVinCommit";
 
 /**
  * D15: the field has no `maxlength`, so the value may be the 18-character `I`-prefixed
@@ -26,17 +24,16 @@ function vinCharCount(value: string): number {
 }
 
 /**
- * The manual path into the app. It runs the same §4.2 extraction, §4.3 check-digit rules
- * and §5.3 upsert the S1 scanner will use, so the two paths cannot drift.
+ * The manual path into the app. The write itself belongs to `useVinCommit`, which the
+ * scanner shares, so the typed and scanned paths run the same §4.3 gate and §5.3 upsert.
  */
 export function ManualEntry() {
-  const navigate = useNavigate();
   const inputId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
   const [value, setValue] = useState("");
-  const [confirming, setConfirming] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
+  // `useAsIs` is renamed on the way out: it is a plain method, and the hooks lint reads any
+  // `use…()` call inside a callback as a misplaced hook.
+  const { pending, saving, error, request, useAsIs: saveAsIs, dismiss } = useVinCommit();
 
   const candidate = useMemo(() => extractVin(value), [value]);
   // N1: everything the user is shown comes from the extracted candidate, never the raw text.
@@ -47,45 +44,21 @@ export function ManualEntry() {
   function handleChange(next: string) {
     // Uppercase at the source, so the stored `raw` is what the user was shown (§5.2).
     setValue(next.toUpperCase());
-    setConfirming(false);
-    setSaveError(null);
-  }
-
-  async function save(accepted: ExtractResult) {
-    setSaving(true);
-    setSaveError(null);
-    try {
-      await upsertVehicle({
-        vin: accepted.vin,
-        origin: "manual",
-        symbology: "manual",
-        raw: accepted.raw,
-        checkDigitValid: accepted.checkDigitValid,
-      });
-    } catch (error) {
-      // P7: the write is the one thing here that can fail, and it never fails quietly.
-      setSaveError(error instanceof Error ? error.message : String(error));
-      setSaving(false);
-      setConfirming(false);
-      return;
-    }
-    navigate(`/v/${accepted.vin}`);
+    // Editing withdraws both the held read and any failed write: neither describes the
+    // text now in the field.
+    dismiss();
   }
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (candidate === null || saving) return;
-    // D03: a mismatch that means something holds the write behind an explicit choice —
-    // no vehicle row and no scan event exist until the user picks Use as-is.
-    if (!checkValid && checkApplies) {
-      setConfirming(true);
-      return;
-    }
-    void save(candidate);
+    // D03 lives in the hook: a mismatch that means something lands in `pending` and the
+    // banner below gates the write.
+    void request(candidate, { origin: "manual", symbology: "manual" });
   }
 
   function handleEdit() {
-    setConfirming(false);
+    dismiss();
     inputRef.current?.focus();
   }
 
@@ -149,14 +122,14 @@ export function ManualEntry() {
         ) : null}
       </div>
 
-      {saveError !== null ? (
+      {error !== null ? (
         <Banner tone="danger" title="Couldn't save this VIN">
           <p>Nothing was written. Your entry is still here — try again.</p>
-          <p className="mt-2 font-vin text-sm break-words text-fg-muted">{saveError}</p>
+          <p className="mt-2 font-vin text-sm break-words text-fg-muted">{error}</p>
         </Banner>
       ) : null}
 
-      {confirming && candidate !== null ? (
+      {pending !== null ? (
         <Banner
           tone="warn"
           title="Check digit doesn't match"
@@ -170,7 +143,7 @@ export function ManualEntry() {
               <Button
                 variant="secondary"
                 className="h-14"
-                onClick={() => void save(candidate)}
+                onClick={() => void saveAsIs()}
                 disabled={saving}
               >
                 Use as-is

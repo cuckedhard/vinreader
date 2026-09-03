@@ -12,7 +12,9 @@ export default defineConfig({
     launchOptions: process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {},
   },
   webServer: {
-    command: "npx vite preview --port 4173 --strictPort",
+    // Build first: `vite preview` serves dist/, so without this the suite silently
+    // tests whatever was built last.
+    command: "bun run build && npx vite preview --port 4173 --strictPort",
     url: "https://localhost:4173",
     ignoreHTTPSErrors: true,
     reuseExistingServer: false,

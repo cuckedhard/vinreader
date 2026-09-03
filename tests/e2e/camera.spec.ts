@@ -22,7 +22,16 @@ test.use({
 
 test("reads a door-label barcode and saves the VIN", async ({ page }) => {
   const errors: string[] = [];
-  page.on("pageerror", (e) => !String(e).includes("SSL certificate") && errors.push(String(e)));
+  // Two console errors here are browser policy, not app faults, and both are
+  // states §6.1 already says the app must never depend on: the self-signed dev
+  // certificate blocks service-worker registration, and vibrate is refused until
+  // the frame has seen a tap (this run navigates straight to /#/scan).
+  const environmental = (t: string) =>
+    t.includes("SSL certificate") || t.includes("navigator.vibrate");
+  page.on("console", (m) => {
+    if (m.type() === "error" && !environmental(m.text())) errors.push(m.text());
+  });
+  page.on("pageerror", (e) => !environmental(String(e)) && errors.push(String(e)));
 
   await page.goto("/#/scan");
   expect(await page.evaluate(() => window.isSecureContext)).toBe(true);
