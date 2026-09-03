@@ -46,7 +46,7 @@ No substitutions without an explicit decision from Zach.
 
 | Concern | Choice | Notes |
 |---|---|---|
-| Runtime / package manager | **Bun** | `bun install`, `bun run`, `bun test` via Vitest |
+| Runtime / package manager | **Bun** | `bun install`, `bun run`; tests run as `bun run test` (a package script → Vitest). `bun test` is Bun's own runner and must not be used as the gate. |
 | Build | **Vite** | `vite-plugin-pwa` for manifest + service worker (Workbox) |
 | UI | **React + TypeScript (strict)** | Function components + hooks only. No state library. |
 | Routing | **react-router, `HashRouter`** | Hash routes keep the app static-host-trivial and keep handoff payloads (§4.9) out of server logs |
@@ -141,9 +141,10 @@ Y 2000/2030  1 2001/2031  2 2002/2032  3 2003/2033  4 2004/2034
 ```
 Not valid in position 10: `I O Q U Z 0`.
 
-Disambiguation (structural stage only; vPIC `ModelYear` overrides when present):
-1. If **position 7 is a letter** → the 2010–2039 candidate. Certain.
-2. If position 7 is a digit → for light-duty vehicles this indicates 1980–2009, but the rule is **not reliable for heavy trucks and equipment**, which are exactly this app's fleet. So: `modelYear = { candidates: [early, late], resolved: null }` and the UI shows **"1996 or 2026"** until vPIC resolves it (N2). Drop a candidate only if it is greater than the current year + 1.
+Disambiguation (structural stage only; vPIC `ModelYear` overrides when present). The current year is an explicit input to this function, never read from the clock inside it. Compute both candidates, then apply in order:
+0. **Cap — applies to both branches below.** Drop any candidate greater than the current year + 1. `candidates` lists the survivors only. The early candidate is never dropped (2009 is its maximum), so at least one always survives.
+1. If **position 7 is a letter** → the 2010–2039 candidate, *provided it survived the cap*. Certain. If the cap dropped it, the 1980–2009 candidate is the only survivor and is `resolved`. Pre-2010 heavy trucks routinely carry a letter in position 7, so this is a common case in this app's fleet, not an edge case: `1FUJGLDR49SAV1234` → 2009, never 2039.
+2. If position 7 is a digit → for light-duty vehicles this indicates 1980–2009, but the rule is **not reliable for heavy trucks and equipment**, which are exactly this app's fleet. So while both candidates survive the cap the year stays ambiguous: `modelYear = { candidates: [early, late], resolved: null }` and the UI shows **"1996 or 2026"** until vPIC resolves it (N2). When the cap leaves one survivor, it is `resolved`.
 
 ### 4.5 WMI region (coarse — vPIC `Manufacturer` / `PlantCountry` are authoritative)
 Position 1 → region: `A–H` Africa · `J–R` Asia · `S–Z` Europe · `1–5` North America · `6–7` Oceania · `8–9` South America.
@@ -227,7 +228,9 @@ type OutboxKind  = "scan_event" | "vehicle_meta" | "vehicle_delete";
 |---|---|
 | `1HGCM82633A004352` | Grammar ok; **check digit valid** (weighted sum 311, 311 mod 11 = 3). Year code `3`, pos 7 = `2` (digit) → candidates 2003/2033 → 2033 > current+1 → resolved 2003. WMI `1HG`, United States. vPIC expected: `Make` HONDA, `Model` Accord, `ModelYear` 2003 — verify live in S2. |
 | `11111111111111111` | Check digit valid (sum 89, 89 mod 11 = 1). Structural-only fixture. |
-| `1HGCM82633A004353` | Grammar ok; **check digit invalid** (expected 3, got … sum 313 mod 11 = 5). |
+| `1HGCM82633A004353` | Grammar ok; **check digit invalid**: sum 313, 313 mod 11 = 5, so the expected check char is **5** and position 9 holds **3**. |
+| `1HGCM826X3A004350` | Check digit **X** (sum 307, 307 mod 11 = 10). The only fixture exercising the `X` branch. |
+| `1FUJGLDR49SAV1234` · `1HTMMAAL67H412345` · `4V4NC9TJ98N412345` · `1FUJA6CK14LM12345` | Heavy trucks; all check-digit valid (sums 378, 358, 361, 265 → 4, 6, 9, 1). Position 7 is a letter and the late candidate fails the §4.4 cap, so they resolve to **2009, 2007, 2008, 2004** — not 2039/2037/2038/2034. |
 | `I1HGCM82633A004352` | Normalizes to `1HGCM82633A004352` via §4.2. |
 | `1HGCM82633A00435` (16) / `1HGCM82633A0043521` (18, no I) | `NO_VIN` / extracts the valid 17-window. |
 | `1HGCM8263IA004352` | Contains `I` → `NO_VIN` (window breaks on I). |
@@ -472,7 +475,7 @@ History becomes a table (VIN · Year · Make · Model · Unit · Last scanned ·
 ---
 
 ## 7. Definition of done (every slice)
-1. `bun run typecheck`, `bun run lint`, `bun test` all pass; zero console errors in a clean run.
+1. `bun run typecheck`, `bun run lint`, `bun run test` all pass; zero console errors in a clean run.
 2. Works **offline** for everything the slice claims (test by toggling airplane mode after the app is installed).
 3. No regression in prior slices (re-run their manual checklists).
 4. **Manual device matrix** executed and recorded in the session report: iPhone Safari (browser tab **and** installed to home screen), Android Chrome, desktop Chrome. Camera slices use **real door-jamb labels**, not screen images, including one worn or glared label.
@@ -553,7 +556,7 @@ History becomes a table (VIN · Year · Make · Model · Unit · Last scanned ·
 ## 10. Routing table (bounded context per session)
 | Slice | Read from this doc | Also read |
 |---|---|---|
-| S0 | §0–§8, §9/S0, §4.1–§4.5, §4.10–§4.11, §5, §6.1–§6.2, Appendix A | `CLAUDE.md` |
+| S0 | §0–§8, §9/S0, §4.1–§4.5, §4.10–§4.11, §5, §6.1–§6.2, Appendix A | `CLAUDE.md`, `S0_DECISIONS.md` |
 | S1 | §0–§8, §9/S1, §4.2, §4.6, §6.1, §6.3, §6.4 | `CLAUDE.md`, S0 session report |
 | S2 | §0–§8, §9/S2, §4.7, §4.8, §5.4–§5.5 | `CLAUDE.md`, S1 session report |
 | S3 | §0–§8, §9/S3, §4.9, §5.3, §6.2 (Import), §6.4 | `CLAUDE.md`, S2 session report |
@@ -634,7 +637,7 @@ Severity: **S1** blocker (data loss, wrong VIN accepted, crash, N-rule violation
 - Synthetic is not real. The bench tunes hints, ROI cropping and confirmation logic; it does not close §7 item 4.
 
 ### 13.5 The gate (every round, and every fixer commit)
-`bun run typecheck` · `bun run lint` · `bun test` (unit + property) · `bun run test:e2e` (Playwright, Chromium; includes offline via `context.setOffline(true)`, the fake-camera scan flow, import, and share fallbacks) · `bun run bench` (S1+) · coverage **≥ 95%** lines and branches on `src/lib/*`, **100%** on `checkDigit.ts`, `modelYear.ts`, `extractVin.ts`, `codec.ts` · mutation score **≥ 80%** on `src/lib/*` via StrykerJS (`bun run mutate`; optional in S0/S1, required from S2). A suite that kills mutants is the only proof the tests are real. From S4: RLS tests run against a local Supabase (`supabase start`) with two test users; the gate fails if any cross-user read or write succeeds.
+`bun run typecheck` · `bun run lint` · `bun run test` (unit + property) · `bun run test:e2e` (Playwright, Chromium; includes offline via `context.setOffline(true)`, the fake-camera scan flow, import, and share fallbacks) · `bun run bench` (S1+) · coverage **≥ 95%** lines and branches on `src/lib/*`, **100%** on `checkDigit.ts`, `modelYear.ts`, `extractVin.ts`, `codec.ts` · mutation score **≥ 80%** on `src/lib/*` via StrykerJS (`bun run mutate`; optional in S0/S1, required from S2). A suite that kills mutants is the only proof the tests are real. From S4: RLS tests run against a local Supabase (`supabase start`) with two test users; the gate fails if any cross-user read or write succeeds.
 
 ### 13.6 Exit criteria ("perfect", defined) and budget
 Converged when **all** hold:
@@ -690,9 +693,16 @@ vin-relay/
 export const FIX = {
   VALID:        "1HGCM82633A004352",   // check digit 3 (sum 311)
   VALID_ONES:   "11111111111111111",   // check digit 1 (sum 89)
-  BAD_CHECK:    "1HGCM82633A004353",
+  BAD_CHECK:    "1HGCM82633A004353",   // pos 9 is 3, expected 5 (sum 313)
+  CHECK_IS_X:   "1HGCM826X3A004350",   // check digit X (sum 307)
   I_PREFIXED:   "I1HGCM82633A004352",
   TOO_SHORT:    "1HGCM82633A00435",
+  TRAILING:     "1HGCM82633A0043521", // 18 chars, no I — window 1 wins on the check digit
   HAS_I:        "1HGCM8263IA004352",
+  // §4.4 cap: position 7 is a letter but the late candidate is impossible
+  TRUCK_2009:   "1FUJGLDR49SAV1234",
+  TRUCK_2007:   "1HTMMAAL67H412345",
+  TRUCK_2008:   "4V4NC9TJ98N412345",
+  TRUCK_2004:   "1FUJA6CK14LM12345",
 };
 ```

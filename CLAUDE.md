@@ -1,6 +1,6 @@
 # CLAUDE.md — VIN Relay
 
-Read this, then `VIN_RELAY_BOOTSTRAP.md` §0–§8 and the routing row (§10) for the slice you were told to start. Nothing else.
+Read this, then `VIN_RELAY_BOOTSTRAP.md` §0–§8 and the routing row (§10) for the slice you were told to start, plus any decisions addendum that row names (`S0_DECISIONS.md` for S0). Nothing else.
 
 ## Rules that never bend
 1. **Build nothing until Zach says `start S<n>`.** Plan and ask freely; write no code before that.
@@ -23,7 +23,7 @@ Bun · Vite · React + TypeScript strict · react-router `HashRouter` · Tailwin
 See Appendix A of the bootstrap. Pure logic in `src/lib/*`, screens in `src/features/*`, primitives in `src/ui/`, agents in `.claude/agents/`, ledgers and reports in `hardening/`, scan corpus and bench in `bench/`, auth and sync in `src/lib/auth/` and `src/lib/sync/`, backend in `supabase/`.
 
 ## Commands
-`bun install` · `bun run dev` (HTTPS, `--host`) · `bun run typecheck` · `bun run lint` · `bun test` · `bun run test:e2e` · `bun run bench` · `bun run mutate` · `bun run build` · `bun run seed:wmi` · S4: `supabase start` · `supabase db push` · `supabase functions deploy delete-account`
+`bun install` · `bun run dev` (HTTPS, `--host`) · `bun run typecheck` · `bun run lint` · `bun run test` · `bun run test:e2e` · `bun run bench` · `bun run mutate` · `bun run build` · `bun run seed:wmi` · S4: `supabase start` · `supabase db push` · `supabase functions deploy delete-account`
 
 ## Triggers (from Zach, verbatim)
 `start S<n>` — build slice n · `harden spec` — audit the bootstrap, propose diffs, apply only approved ones · `harden S<n>` — run the §13 loop on slice n until §13.6 or budget
