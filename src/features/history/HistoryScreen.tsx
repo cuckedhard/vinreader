@@ -16,15 +16,20 @@ const DAY = 24 * HOUR;
 const PANEL = "rounded-[var(--radius)] border border-border bg-bg-elev";
 
 /**
- * N6: every label says what is actually known. `pending` is the only status S0 writes,
- * and it means "not fetched yet", not "failed".
+ * N6: every label says what is actually known, and only when it tells the user
+ * something. `ok` gets no chip — the row already shows the year, make and model
+ * that were fetched, so a badge on every healthy row is noise that buries the
+ * three statuses worth reading. §4.10 fixes the members; none may be added.
  */
-const DECODE_CHIP: Record<DecodeStatus, { tone: ChipTone; label: string }> = {
+const DECODE_CHIP: Record<DecodeStatus, { tone: ChipTone; label: string } | null> = {
   pending: { tone: "neutral", label: "Details pending" },
-  ok: { tone: "ok", label: "Details saved" },
+  ok: null,
   partial: { tone: "warn", label: "Some details" },
+  // §4.7: an off-highway PIN vPIC cannot decode is a legitimate machine, not a
+  // failure, so this stays neutral and never reads as an error.
   unsupported: { tone: "neutral", label: "No details published" },
-  failed: { tone: "warn", label: "Details not fetched" },
+  // The row is a link to the sheet, which is where Refresh details lives (§4.7).
+  failed: { tone: "warn", label: "Details failed — tap to retry" },
 };
 
 /** Case-insensitive, space-insensitive, so a VIN pasted in §4.1 display groups still matches. */
@@ -32,13 +37,38 @@ function normalize(value: string): string {
   return value.toUpperCase().replace(/\s+/g, "");
 }
 
+/** A vPIC field that is actually populated. Empty strings mean "unknown" (§4.7). */
+function field(fields: Record<string, string>, key: string): string | null {
+  const value = fields[key];
+  if (value === undefined) return null;
+  const trimmed = value.trim();
+  return trimmed === "" ? null : trimmed;
+}
+
 /**
- * VIN and unit only. Make and model are vPIC fields that no S0 record carries, so
- * searching them would silently match nothing (N1).
+ * What someone standing at the truck reads first: the decoded year, make and model.
+ * The structural year carries the line until vPIC answers, and when neither exists
+ * the line is dropped rather than filled with a placeholder (N2).
  */
+function headline(record: VehicleRecord): string | null {
+  const { fields } = record.decode;
+  const resolved = record.structural.modelYear.resolved;
+  const year = field(fields, "ModelYear") ?? (resolved === null ? null : String(resolved));
+  const parts = [year, field(fields, "Make"), field(fields, "Model")].filter(
+    (part): part is string => part !== null,
+  );
+  return parts.length === 0 ? null : parts.join(" ");
+}
+
+/** VIN, unit, and — now that S2 fetches them — the vPIC make and model. */
 function matchesQuery(record: VehicleRecord, query: string): boolean {
   if (normalize(record.vin).includes(query)) return true;
-  return record.unit !== null && normalize(record.unit).includes(query);
+  if (record.unit !== null && normalize(record.unit).includes(query)) return true;
+  const { fields } = record.decode;
+  return ["Make", "Model"].some((key) => {
+    const value = field(fields, key);
+    return value !== null && normalize(value).includes(query);
+  });
 }
 
 function formatScannedAt(iso: string, nowMs: number): string {
@@ -58,7 +88,7 @@ function formatScannedAt(iso: string, nowMs: number): string {
 }
 
 function HistoryRow({ record, nowMs }: { record: VehicleRecord; nowMs: number }) {
-  const year = record.structural.modelYear.resolved;
+  const title = headline(record);
   const decode = DECODE_CHIP[record.decode.status];
   return (
     <li>
@@ -66,15 +96,15 @@ function HistoryRow({ record, nowMs }: { record: VehicleRecord; nowMs: number })
         to={`/v/${record.vin}`}
         className={`flex min-h-[var(--tap)] flex-col gap-2 px-4 py-3 active:opacity-80 ${PANEL}`}
       >
+        {/* N2: an ambiguous year leaves this line to the make and model, or drops it. */}
+        {title !== null ? <p className="text-lg leading-tight font-bold text-fg">{title}</p> : null}
         <VinDisplay vin={record.vin} size="md" className="block break-words" />
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-base text-fg-muted">
           {record.unit ? <span className="font-bold text-fg">{record.unit}</span> : null}
-          {/* N2: only a single surviving candidate is a fact; an ambiguous year shows on the sheet. */}
-          {year !== null ? <span>{year}</span> : null}
           <time dateTime={record.lastScannedAt}>
             {formatScannedAt(record.lastScannedAt, nowMs)}
           </time>
-          <Chip tone={decode.tone}>{decode.label}</Chip>
+          {decode !== null ? <Chip tone={decode.tone}>{decode.label}</Chip> : null}
         </div>
       </Link>
     </li>
@@ -101,7 +131,7 @@ function NoMatches({ onClear }: { onClear: () => void }) {
     <div className={`flex flex-col gap-4 p-5 ${PANEL}`}>
       <p className="text-lg leading-tight font-bold text-fg">No records match that search</p>
       <p className="text-base leading-snug text-fg-muted">
-        Search looks at the VIN and the unit. Make and model arrive with vehicle details later.
+        Search looks at the VIN, the unit, and the make and model from the vehicle details.
       </p>
       <Button variant="primary" full onClick={onClear}>
         Clear search
@@ -190,7 +220,7 @@ export default function HistoryScreen() {
             autoComplete="off"
             spellCheck={false}
             enterKeyHint="search"
-            placeholder="Search VIN or unit"
+            placeholder="Search VIN, unit, make or model"
             aria-label="Search saved vehicles"
             className={
               "min-h-[var(--tap)] min-w-0 flex-1 px-4 py-3 font-vin text-base text-fg " +

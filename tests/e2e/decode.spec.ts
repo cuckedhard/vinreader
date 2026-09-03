@@ -69,14 +69,17 @@ test("fills the sheet from a successful decode", async ({ page }) => {
   await page.goto("/#/scan");
   await saveVin(page);
 
-  await expect(page.getByText("HONDA")).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByText("Accord")).toBeVisible();
-  await expect(page.getByText("Sedan/Saloon")).toBeVisible();
+  const identity = page.getByLabel("Identity");
+  await expect(identity.getByText("HONDA", { exact: true })).toBeVisible({ timeout: 15_000 });
+  await expect(identity.getByText("Accord", { exact: true })).toBeVisible();
+  await expect(identity.getByText("Sedan/Saloon")).toBeVisible();
   // §4.8 joins the plant parts with ", ".
-  await expect(page.getByText("MARYSVILLE, OHIO, UNITED STATES (USA)")).toBeVisible();
-  // N2: Trim and Series came back empty and must not be rendered at all.
-  await expect(page.getByText("Trim", { exact: true })).toHaveCount(0);
-  await expect(page.getByText("Series", { exact: true })).toHaveCount(0);
+  await expect(
+    page.getByLabel("Manufacturing").getByText("MARYSVILLE, OHIO, UNITED STATES (USA)"),
+  ).toBeVisible();
+  // N2: Trim and Series came back empty and must not be rendered as rows at all.
+  await expect(identity.getByText("Trim", { exact: true })).toHaveCount(0);
+  await expect(identity.getByText("Series", { exact: true })).toHaveCount(0);
 });
 
 /** §9-S2 acceptance: airplane-mode scan, then back online, filling with no user action. */
@@ -87,12 +90,13 @@ test("a VIN saved offline fills itself once the signal returns", async ({ page, 
   await context.setOffline(true);
   await saveVin(page);
   await expect(page.getByText(/offline — vin saved/i)).toBeVisible();
-  await expect(page.getByText("HONDA")).toHaveCount(0);
+  await expect(page.getByLabel("Identity")).toHaveCount(0);
 
   // No reload, no tap: the queue wakes on the `online` event (§5.4).
   await context.setOffline(false);
-  await expect(page.getByText("HONDA")).toBeVisible({ timeout: 20_000 });
-  await expect(page.getByText("Accord")).toBeVisible();
+  const filled = page.getByLabel("Identity");
+  await expect(filled.getByText("HONDA", { exact: true })).toBeVisible({ timeout: 20_000 });
+  await expect(filled.getByText("Accord", { exact: true })).toBeVisible();
 });
 
 test("shows the off-highway notice when NHTSA cannot decode the PIN", async ({ page }) => {
@@ -111,19 +115,23 @@ test("surfaces partial data with the reason NHTSA gave", async ({ page }) => {
   await page.goto("/#/scan");
   await saveVin(page);
 
-  await expect(page.getByText(/NHTSA returned partial data/i)).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByText(/No detailed data available/i)).toBeVisible();
-  await expect(page.getByText("HONDA")).toBeVisible();
+  // §6.4 interpolates NHTSA's own ErrorText into the notice.
+  await expect(
+    page.getByText("NHTSA returned partial data: No detailed data available"),
+  ).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByLabel("Identity").getByText("HONDA", { exact: true })).toBeVisible();
 });
 
 test("history shows the decoded vehicle and searches by make", async ({ page }) => {
   await stub(page, OK);
   await page.goto("/#/scan");
   await saveVin(page);
-  await expect(page.getByText("HONDA")).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByLabel("Identity").getByText("HONDA", { exact: true })).toBeVisible({
+    timeout: 15_000,
+  });
 
   await page.getByRole("link", { name: "History" }).click();
-  await expect(page.getByText(/HONDA/)).toBeVisible();
+  await expect(page.getByText(/HONDA/).first()).toBeVisible();
 
   const search = page.locator("input").first();
   await search.fill("honda");

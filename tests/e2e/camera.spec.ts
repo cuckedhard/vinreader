@@ -20,6 +20,26 @@ test.use({
   },
 });
 
+/**
+ * Saving kicks the §5.4 decode queue, and vPIC is unreachable from CI. Stub it so
+ * these tests exercise scanning against a defined response instead of depending on
+ * how a blocked request happens to fail.
+ */
+test.beforeEach(async ({ page }) => {
+  await page.route("**/api/vehicles/DecodeVinValues/**", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        Count: 1,
+        Message: "synthetic",
+        SearchCriteria: null,
+        Results: [{ ErrorCode: "0", Make: "HONDA", Model: "Accord", ModelYear: "2003" }],
+      }),
+    }),
+  );
+});
+
 test("reads a door-label barcode and saves the VIN", async ({ page }) => {
   const errors: string[] = [];
   // Two console errors here are browser policy, not app faults, and both are
@@ -39,7 +59,7 @@ test("reads a door-label barcode and saves the VIN", async ({ page }) => {
   // §6.3: two identical reads within 1.5s confirm, then the record is written.
   await expect(page).toHaveURL(/#\/v\/1HGCM82633A004352/, { timeout: 20_000 });
   await expect(page.getByText("1HG CM826 3 3 A 004352")).toBeVisible();
-  await expect(page.getByText("2003")).toBeVisible();
+  await expect(page.getByLabel("Identity").getByText("2003", { exact: true })).toBeVisible();
 
   await page.getByRole("link", { name: "History" }).click();
   await expect(page.getByText("1HG CM826 3 3 A 004352")).toBeVisible();

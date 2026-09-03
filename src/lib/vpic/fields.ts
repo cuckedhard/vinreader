@@ -183,7 +183,8 @@ export function noticeLines(fields: Fields): string[] {
  * Sorted by code point rather than locale so the order is the same on every device.
  */
 export function allFieldRows(fields: Fields): FieldRow[] {
-  return Object.keys(fields)
-    .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
-    .map((key) => ({ label: key, value: fields[key] ?? "" }));
+  // `Object.entries` never repeats a key, so the comparator needs no equal case.
+  return Object.entries(fields)
+    .map(([key, value]) => ({ label: key, value }))
+    .sort((a, b) => (a.label < b.label ? -1 : 1));
 }

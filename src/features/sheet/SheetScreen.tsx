@@ -1,13 +1,15 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useNavigate, useParams } from "react-router";
 import { db } from "../../lib/storage/db";
+import { refreshDecode } from "../../lib/storage/decodeQueue";
 import { setVehicleMeta } from "../../lib/storage/upsert";
-import type { VehicleRecord } from "../../lib/vin/types";
+import type { ModelYear, VehicleRecord } from "../../lib/vin/types";
 import { Banner } from "../../ui/Banner";
 import { Button } from "../../ui/Button";
 import { Chip } from "../../ui/Chip";
 import { VinDisplay } from "../../ui/VinDisplay";
+import { DecodeGroups } from "./DecodeGroups";
 import { StructuralBlock } from "./StructuralBlock";
 
 const LABEL = "text-sm font-bold tracking-wide text-fg-muted uppercase";
@@ -15,7 +17,98 @@ const FIELD =
   "w-full rounded-[var(--radius)] border border-border bg-bg-elev px-4 py-3 " +
   "text-base text-fg placeholder:text-fg-muted";
 
+/** §6.4 microcopy, verbatim. */
+const DECODE_PENDING = "Fetching details from NHTSA…";
+const DECODE_OFFLINE = "Offline — VIN saved. Details will fill in when you're back on signal.";
+const DECODE_PARTIAL = "NHTSA returned partial data";
+const DECODE_UNSUPPORTED =
+  "This looks like an off-highway machine PIN. NHTSA can't decode it — showing what the number itself tells us.";
+const DECODE_FAILED = "Couldn't reach NHTSA after several tries. Tap Refresh details to retry.";
+
+/** §4.4: with a vPIC `ModelYear` on screen, the structural year row is dropped, not rewritten. */
+const NO_STRUCTURAL_YEAR: ModelYear = { candidates: [], resolved: null };
+
 type SaveStatus = "idle" | "saving" | "saved" | "error";
+
+/** Reactive `navigator.onLine`: offline is the honest reason a pending decode is idle. */
+function useOnline(): boolean {
+  const [online, setOnline] = useState(() => navigator.onLine);
+  useEffect(() => {
+    const update = () => setOnline(navigator.onLine);
+    window.addEventListener("online", update);
+    window.addEventListener("offline", update);
+    return () => {
+      window.removeEventListener("online", update);
+      window.removeEventListener("offline", update);
+    };
+  }, []);
+  return online;
+}
+
+/**
+ * §5.4 / §6.4. Everything here sits below the structural block and none of it gates that
+ * block: the sheet is complete without a network and fills in place when vPIC answers (N1).
+ */
+function DecodeSection({ record }: { record: VehicleRecord }) {
+  const online = useOnline();
+  const [refreshing, setRefreshing] = useState(false);
+  const { decode } = record;
+  const errorText = (decode.fields.ErrorText ?? "").trim();
+  const partialTitle = errorText === "" ? DECODE_PARTIAL : `${DECODE_PARTIAL}: ${errorText}`;
+
+  async function refresh() {
+    if (refreshing) return;
+    setRefreshing(true);
+    try {
+      // §4.7: the cache is permanent, so this button is the only way to ask vPIC twice.
+      await refreshDecode(record.vin);
+    } catch {
+      // The record itself carries the outcome (§5.1 `lastError`) and the live query
+      // re-renders on its own; the only job left here is to free the button again.
+    } finally {
+      setRefreshing(false);
+    }
+  }
+
+  return (
+    <section className="flex flex-col gap-4" aria-labelledby="details-heading">
+      <h2 id="details-heading" className={LABEL}>
+        Vehicle details
+      </h2>
+
+      {decode.status === "pending" ? (
+        <p role="status" className="text-base leading-snug text-fg-muted">
+          {online ? DECODE_PENDING : DECODE_OFFLINE}
+        </p>
+      ) : null}
+
+      {decode.status === "partial" ? <Banner tone="warn" title={partialTitle} /> : null}
+
+      {/* Unsupported is information, not a failure: the structural block above is the answer. */}
+      {decode.status === "unsupported" ? (
+        <p className="rounded-[var(--radius)] border border-border bg-bg-elev p-4 text-base leading-snug text-fg">
+          {DECODE_UNSUPPORTED}
+        </p>
+      ) : null}
+
+      {decode.status === "failed" ? <Banner tone="warn" title={DECODE_FAILED} /> : null}
+
+      {/* The banner above already carries `ErrorText`; the notice area must not repeat it. */}
+      <DecodeGroups
+        fields={decode.fields}
+        skipNotices={decode.status === "partial" && errorText !== "" ? [errorText] : []}
+      />
+
+      <div className="flex flex-wrap items-center gap-3">
+        <Button variant="secondary" onClick={() => void refresh()} disabled={refreshing}>
+          {refreshing ? "Refreshing" : "Refresh details"}
+        </Button>
+        {/* A pending decode already says it is offline; every other status does not. */}
+        {!online && decode.status !== "pending" ? <Chip tone="neutral">Offline</Chip> : null}
+      </div>
+    </section>
+  );
+}
 
 function MetaEditor({ record }: { record: VehicleRecord }) {
   const [unit, setUnit] = useState(record.unit ?? "");
@@ -125,24 +218,27 @@ export default function SheetScreen() {
   // §4.12: a tombstoned record is gone as far as the user is concerned.
   if (record === null || record.deletedAt !== null) return <NoRecord vin={vin} />;
 
+  /**
+   * §4.4 / §9-S2. vPIC's `ModelYear` overrides the structural candidates when present, and
+   * the ambiguous year has to resolve in place. The stored `structural` is deterministic per
+   * VIN and first-non-empty-wins under §4.12 sync, so it is never rewritten: the year is
+   * dropped from the copy handed to `StructuralBlock` (`candidates: []` with `resolved: null`
+   * makes its `YearRow` render nothing), which leaves the Identity group's Year — the same
+   * `ModelYear` string, via the §4.8 map — as the only year on screen.
+   */
+  const vpicYear = (record.decode.fields.ModelYear ?? "").trim();
+  const structural =
+    vpicYear === "" ? record.structural : { ...record.structural, modelYear: NO_STRUCTURAL_YEAR };
+
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-8 p-4 pb-10">
       <h1>
         <VinDisplay vin={record.vin} size="lg" />
       </h1>
 
-      <StructuralBlock vin={record.vin} structural={record.structural} />
+      <StructuralBlock vin={record.vin} structural={structural} />
 
-      {/* N1: no vPIC field is invented here, and nothing above waited on one. */}
-      <section aria-labelledby="details-heading">
-        <h2 id="details-heading" className={LABEL}>
-          Vehicle details
-        </h2>
-        <p className="mt-2 text-base leading-snug text-fg-muted">
-          Make, model and the rest arrive in a later step. Everything above is read from the VIN
-          itself and needs no signal.
-        </p>
-      </section>
+      <DecodeSection key={record.vin} record={record} />
 
       <MetaEditor key={record.vin} record={record} />
     </div>
