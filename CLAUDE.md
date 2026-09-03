@@ -32,6 +32,34 @@ See Appendix A of the bootstrap. Pure logic in `src/lib/*`, screens in `src/feat
 Typecheck + lint + tests green · works offline · no regressions · manual device matrix (iPhone Safari tab **and** installed, Android Chrome, desktop Chrome; real door-jamb labels for camera slices) · session report delivered · version record below updated. **Built ≠ hardened ≠ done** (§13.7): hardening is automated, the device matrix is human.
 
 ## Version record (fill after each install)
+
+Runtimes: Bun 1.3.11 · Node 22.22.2 (executes vitest, tsc and eslint under `bun run`).
+
 | Package | Version | Slice |
 |---|---|---|
-| | | |
+| `@eslint/js` | 10.0.1 | S0 |
+| `@playwright/test` | 1.62.1 | S0 |
+| `@tailwindcss/vite` | 4.3.3 | S0 |
+| `@types/react` | 19.2.18 | S0 |
+| `@types/react-dom` | 19.2.7 | S0 |
+| `@vitejs/plugin-basic-ssl` | 2.3.0 | S0 |
+| `@vitejs/plugin-react` | 6.1.1 | S0 |
+| `@vitest/coverage-v8` | 4.1.11 | S0 |
+| `dexie` | 4.4.5 | S0 |
+| `dexie-react-hooks` | 4.4.0 | S0 |
+| `eslint` | 10.9.1 | S0 |
+| `eslint-plugin-react-hooks` | 7.1.1 | S0 |
+| `fake-indexeddb` | 6.2.5 | S0 |
+| `fast-check` | 4.9.0 | S0 |
+| `globals` | 16.5.0 | S0 |
+| `prettier` | 3.9.6 | S0 |
+| `react` | 19.2.8 | S0 |
+| `react-dom` | 19.2.8 | S0 |
+| `react-router` | 8.3.1 | S0 |
+| `tailwindcss` | 4.3.3 | S0 |
+| `typescript` | 6.0.3 | S0 |
+| `typescript-eslint` | 8.69.0 | S0 |
+| `vite` | 8.2.2 | S0 |
+| `vite-plugin-pwa` | 1.3.0 | S0 |
+| `vitest` | 4.1.11 | S0 |
+| `zod` | 4.5.4 | S0 |
