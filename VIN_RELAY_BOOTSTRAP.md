@@ -100,7 +100,11 @@ Display grouping (always, monospace): `WMI VDS C Y P SERIAL` → e.g. `1HG CM826
 1. Uppercase. Strip whitespace and `*` (Code 39 start/stop, if a decoder ever passes them through).
 2. Split the string into **runs** of allowed characters (`[A-HJ-NPR-Z0-9]+`). Any other character is a separator.
 3. Over every run of length ≥ 17, slide a 17-char window. Collect windows that match the grammar.
-4. Choose, in order: (a) the first window whose check digit is valid; (b) if none, and exactly one grammar-valid window exists, that window with `checkDigitValid = false`; (c) otherwise → `NO_VIN`.
+4. Choose, in order: (a) a window whose check digit is valid — when several do, prefer one that spans an entire run, then one aligned to a run's start, then one aligned to a run's end, then the first; (b) if none is valid, and exactly one grammar-valid window exists, that window with `checkDigitValid = false`; (c) otherwise → `NO_VIN`.
+
+The precedence in (a) matters because roughly one window in eleven passes the check digit by chance: in a run longer than 17 a window straddling two concatenated identifiers can pass before the real VIN is reached. `1HGCM82633A0043531HGCM82633A004352` returns `M82633A0043531HGC` under plain first-match and the correct `1HGCM82633A004352` under the precedence above.
+
+**Known limit.** An identifier that carries no check digit (below) can only be located when it is a run of its own — the normal case, since door-jamb barcodes hold the VIN alone and the ANSI `I` data identifier splits off. Embedded in a longer undelimited run it yields `NO_VIN`, because nothing distinguishes it from its neighbours. Delimited payloads (JSON, separated text) split into runs and are unaffected.
 5. Return `{ vin, raw, checkDigitValid }`.
 
 Covered cases (these are tests):
@@ -126,7 +130,15 @@ Weights by position 1–17:
 
 `sum = Σ value(pos) × weight(pos)`; `remainder = sum mod 11`; expected check char = remainder, or `X` if remainder is 10. Valid iff position 9 equals the expected char.
 
-Policy: the check digit is mandatory for North-American-market vehicles (pos 1 in `1–5`). A failure is almost always a **misread**, so the scanner prompts a rescan (§6.3). The user may accept anyway ("Use as-is"); the record then carries `checkDigitValid: false` and shows a warning badge. Never hard-block.
+**When the check digit is meaningful.** A check digit can only be `0`–`9` or `X`. If position 9 holds any other letter the identifier carries no ISO 3779 check digit at all, and a mismatch says nothing about the read. This is common on vehicles never sold in North America (European filler characters) and on off-highway machine PINs, which are in scope (§4.7). Define the pure predicate:
+
+```
+checkDigitApplies(vin) = position 9 is a digit or "X"
+```
+
+`checkDigitValid` is computed and stored exactly as above for every VIN — §5.1, §5.2 and the §4.12 column are unchanged — and `checkDigitApplies` is derived on demand, never stored. Two thirds of identifiers that carry no check digit are caught by this test; without it, 97% of them fail §4.3 and every such vehicle is told on every scan that the read is probably wrong.
+
+Policy: the check digit is mandatory for North-American-market vehicles (pos 1 in `1–5`). Where it applies, a failure is almost always a **misread**, so the scanner prompts a rescan (§6.3). The user may accept anyway ("Use as-is"); the record then carries `checkDigitValid: false` and shows a warning badge. Where it does not apply there is no misread signal and no banner — the sheet shows the neutral note in §6.4 instead. Never hard-block, in either case.
 
 ### 4.4 Model year (position 10)
 Allowed codes and the two candidate years (30-year cycle):
@@ -151,7 +163,12 @@ Position 1 → region: `A–H` Africa · `J–R` Asia · `S–Z` Europe · `1–
 
 Specific countries shown when the first character is: `1`,`4`,`5` United States · `2` Canada · `3` Mexico · `J` Japan · `L` China · `W` Germany. Otherwise show the region only.
 
-**WMI → manufacturer seed.** Do **not** hand-type a manufacturer table. `scripts/build-wmi-seed.ts` takes a candidate list of WMIs, calls vPIC `DecodeWMI/{wmi}` for each, and writes `src/lib/vin/wmi-seed.json` (`{ wmi: { manufacturer, make? } }`). Unresolved candidates are dropped. The committed JSON is the artifact. Starting candidate list (verify, drop any that fail): `1FT 1FD 1FM 1FV 1FU 1GC 1GB 1GT 1GK 3GC 1C6 1C4 3C6 1XK 1XP 1M1 1HT 4V4 1N6 5TF JTE 1J4 WDB`. At runtime, every successful vPIC decode also upserts its WMI into a local `wmi` cache table (§5), so the seed grows with use.
+**WMI → manufacturer seed.** Do **not** hand-type a manufacturer table. `scripts/build-wmi-seed.ts` takes a candidate list of WMIs, calls vPIC `DecodeWMI/{wmi}` for each, and writes `src/lib/vin/wmi-seed.json` (`{ wmi: { manufacturer, make? } }`). Unresolved candidates are dropped. The committed JSON is the artifact. Starting candidate list (verify, drop any that fail). Unresolved candidates cost nothing but one API call each, so the list spans every class the app may meet, not only heavy trucks:
+- Heavy truck and chassis: `1FU 1FV 1XK 1XP 1M1 1HT 4V4 1NK 2NK 3AK 5KJ`
+- Pickup and van: `1FT 1FD 1FM 1GC 1GB 1GT 1GK 3GC 1C6 1C4 3C6 1N6 5TF 1GD 3GT 5FN`
+- Passenger car: `1HG 2HG JHM 1G1 1G6 3G1 1FA 3FA 2T1 4T1 5TD JTD 1N4 3N1 JN1 JN8 1J4 2C3 1C3 1LN 1ME`
+- Import and European: `WDB WDD WDC 4JG WVW 3VW 1VW WV1 WBA WBS 5UX WAU TRU WP0 YV1 YV4 JTE JF1 JF2 4S3 4S4 KMH KM8 KNA KND 5YJ`
+- Motorcycle and trailer: `1HD JH2 JYA JKA 1UY 5PV` At runtime, every successful vPIC decode also upserts its WMI into a local `wmi` cache table (§5), so the seed grows with use.
 
 ### 4.6 Barcode symbologies
 Enabled in ZXing hints (`POSSIBLE_FORMATS`), in priority order: **CODE_39, CODE_128, DATA_MATRIX, QR_CODE**. `TRY_HARDER = true`. Nothing else in v1.
@@ -230,6 +247,8 @@ type OutboxKind  = "scan_event" | "vehicle_meta" | "vehicle_delete";
 | `11111111111111111` | Check digit valid (sum 89, 89 mod 11 = 1). Structural-only fixture. |
 | `1HGCM82633A004353` | Grammar ok; **check digit invalid**: sum 313, 313 mod 11 = 5, so the expected check char is **5** and position 9 holds **3**. |
 | `1HGCM826X3A004350` | Check digit **X** (sum 307, 307 mod 11 = 10). The only fixture exercising the `X` branch. |
+| `WVWZZZ1JZ1W123456` | Grammar ok. Position 9 is `Z`, so `checkDigitApplies` is false and `checkDigitValid` is false: neutral note, never the misread banner. A vehicle that carries no check digit still reads. |
+| `1HGCM82633A0043531HGCM82633A004352` | Two identifiers run together. §4.2 4(a) precedence returns `1HGCM82633A004352`, not the straddling window `M82633A0043531HGC`. |
 | `1FUJGLDR49SAV1234` · `1HTMMAAL67H412345` · `4V4NC9TJ98N412345` · `1FUJA6CK14LM12345` | Heavy trucks; all check-digit valid (sums 378, 358, 361, 265 → 4, 6, 9, 1). Position 7 is a letter and the late candidate fails the §4.4 cap, so they resolve to **2009, 2007, 2008, 2004** — not 2039/2037/2038/2034. |
 | `I1HGCM82633A004352` | Normalizes to `1HGCM82633A004352` via §4.2. |
 | `1HGCM82633A00435` (16) / `1HGCM82633A0043521` (18, no I) | `NO_VIN` / extracts the valid 17-window. |
@@ -436,7 +455,7 @@ Bottom nav: Scan · History · Settings. Sheet and Import are pushed screens.
 - `streaming`: ZXing continuous decode. Each result runs `extractVin` (§4.2). `NO_VIN` → stay.
 - `streaming → candidate`: first VIN seen; store it with a timestamp.
 - `candidate → confirmed`: a **second identical** normalized VIN within **1.5 s**. A different VIN replaces the candidate. (Two-read agreement kills most misreads on curved, scuffed labels.)
-- `confirmed`: stop the stream, feedback (§6.1), upsert (§5.3), kick decode if online and `autoDecode`, navigate to Sheet. If `checkDigitValid` is false: show the mismatch banner with **Rescan** (primary) and **Use as-is** (secondary) before navigating.
+- `confirmed`: stop the stream. If `checkDigitValid` is false **and** `checkDigitApplies(vin)` (§4.3), show the mismatch banner with **Rescan** (primary) and **Use as-is** (secondary) and write nothing yet: Rescan discards the candidate and returns to `streaming`, Use as-is proceeds. Otherwise, or once Use as-is is chosen: feedback (§6.1), upsert (§5.3), kick decode if online and `autoDecode`, navigate to Sheet. Success feedback never fires on a mismatch.
 - Cooldown: the same VIN confirmed again within **10 s** is ignored (prevents double-logging on return to Scan).
 - `stream_lost` (track ended, tab hidden > 30 s): return to `idle` and re-request on next visibility.
 - Manual entry: 17-char input, uppercase forced, live grammar + check-digit validation, same downstream path with `symbology = "manual"`.
@@ -446,6 +465,7 @@ Bottom nav: Scan · History · Settings. Sheet and Import are pushed screens.
 - Candidate: *"Reading… hold steady."*
 - Confirmed: *"Got it ✓"*
 - Check digit: *"Check digit doesn't match. Usually a misread — try again."* Buttons: **Rescan** / **Use as-is**
+- Check digit not applicable: *"This number doesn't use a check digit."* Neutral note on the sheet, never a banner.
 - Permission denied: *"Camera is blocked. Allow camera for this site in your browser settings, or type the VIN."*
 - Insecure context: *"Camera needs a secure (https) connection."*
 - Offline at scan: *"Offline — VIN saved. Details will fill in when you're back on signal."*
