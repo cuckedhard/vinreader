@@ -9,6 +9,7 @@ import { Banner } from "../../ui/Banner";
 import { Button } from "../../ui/Button";
 import { Chip } from "../../ui/Chip";
 import { VinDisplay } from "../../ui/VinDisplay";
+import { Actions } from "./Actions";
 import { DecodeGroups } from "./DecodeGroups";
 import { StructuralBlock } from "./StructuralBlock";
 
@@ -241,6 +242,9 @@ export default function SheetScreen() {
       <DecodeSection key={record.vin} record={record} />
 
       <MetaEditor key={record.vin} record={record} />
+
+      {/* §9-S3: the handoff actions sit below the record they act on. */}
+      <Actions key={record.vin} record={record} />
     </div>
   );
 }

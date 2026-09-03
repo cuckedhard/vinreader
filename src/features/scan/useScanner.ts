@@ -115,8 +115,20 @@ function isPageHidden(): boolean {
   return document.visibilityState === "hidden";
 }
 
-export function useScanner(options: { enabled: boolean }): ScannerApi {
+export function useScanner(options: {
+  enabled: boolean;
+  /** §9-S3: a scanned §4.9 carrier is handed over rather than dropped. */
+  onCarrier?: (raw: string) => void;
+}): ScannerApi {
   const { enabled } = options;
+  // handleResult is a stable useCallback and a dependency of the getUserMedia effect,
+  // so taking the callback directly would restart the camera on every render. The ref is
+  // updated in an effect rather than during render, which React's purity rule forbids.
+  const onCarrierRef = useRef(options.onCarrier);
+  const { onCarrier } = options;
+  useEffect(() => {
+    onCarrierRef.current = onCarrier;
+  }, [onCarrier]);
   const [machine, dispatch] = useReducer(scanReducer, initialScanMachine);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const controlsRef = useRef<IScannerControls | null>(null);
@@ -152,8 +164,11 @@ export function useScanner(options: { enabled: boolean }): ScannerApi {
     const text = result.getText();
     // D14: a §4.9 carrier is one of the app's own handoff payloads, not a VIN, and it decodes
     // identically every frame — so a VIN fabricated out of one would sail through the two-read
-    // rule. S1 drops it; S3 routes it to the Import screen instead.
-    if (isPayloadCarrier(text)) return;
+    // rule. The carrier test stays ahead of extractVin; S3 routes the hit to Import.
+    if (isPayloadCarrier(text)) {
+      onCarrierRef.current?.(text);
+      return;
+    }
     const symbology = toSymbology(result.getBarcodeFormat());
     if (symbology === null) return;
     const extraction = extractVin(text);

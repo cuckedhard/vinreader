@@ -4,6 +4,7 @@ import ScanScreen from "../features/scan/ScanScreen";
 import SheetScreen from "../features/sheet/SheetScreen";
 import HistoryScreen from "../features/history/HistoryScreen";
 import SettingsScreen from "../features/settings/SettingsScreen";
+import ImportScreen from "../features/import/ImportScreen";
 
 /** Hash routes keep the app trivially static-hostable and keep handoff
  *  payloads out of server logs (§2, §6.2). */
@@ -16,6 +17,8 @@ export function AppRoutes() {
         <Route path="v/:vin" element={<SheetScreen />} />
         <Route path="history" element={<HistoryScreen />} />
         <Route path="settings" element={<SettingsScreen />} />
+        {/* §6.2 handoff receiver: `/#/i?d=<base64url>` from a QR or a link. */}
+        <Route path="i" element={<ImportScreen />} />
         <Route path="*" element={<Navigate to="/scan" replace />} />
       </Route>
     </Routes>

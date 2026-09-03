@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router";
+import { encodePayload, parseCarrier } from "../../lib/payload/codec";
 import { getSettings } from "../../lib/storage/settings";
 import type { ExtractResult } from "../../lib/vin/types";
 import { Banner } from "../../ui/Banner";
@@ -20,8 +22,26 @@ type Mode = "camera" | "manual";
 export function ScanScreen() {
   const [mode, setMode] = useState<Mode>("camera");
   const [savedOffline, setSavedOffline] = useState(false);
+  const navigate = useNavigate();
+  // §9-S3 phone-to-phone: the receiving phone shows the import preview rather than
+  // confirming a VIN. Both carriers are re-encoded into the single `d` the route reads,
+  // and an unreadable one just leaves the camera running.
+  const handleCarrier = useCallback(
+    (raw: string) => {
+      let payload;
+      try {
+        payload = parseCarrier(raw);
+      } catch {
+        return;
+      }
+      if (payload === null) return;
+      void navigate(`/i?d=${encodePayload(payload)}`);
+    },
+    [navigate],
+  );
   const { state, videoRef, torch, retry, rescan, accept } = useScanner({
     enabled: mode === "camera",
+    onCarrier: handleCarrier,
   });
   // `useAsIs` is renamed on the way out: it is a plain method, and the hooks lint reads any
   // `use…()` call inside a callback as a misplaced hook.

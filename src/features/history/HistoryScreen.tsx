@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { Link, useNavigate } from "react-router";
-import { db } from "../../lib/storage/db";
+import { buildExportBundle, toCsv } from "../../lib/payload/exportBundle";
+import { db, nowIso } from "../../lib/storage/db";
 import type { DecodeStatus, VehicleRecord } from "../../lib/vin/types";
 import { Button } from "../../ui/Button";
 import { Chip } from "../../ui/Chip";
@@ -141,6 +142,88 @@ function NoMatches({ onClear }: { onClear: () => void }) {
 }
 
 /**
+ * A file download, not a clipboard write, so the §6.5 synchronous rule does not apply —
+ * but two browser quirks do: some browsers honour `download` only on an anchor that is in
+ * the document, and Safari cancels an in-flight download if the object URL is revoked in
+ * the same tick.
+ */
+function downloadFile(fileName: string, contents: string, type: string): void {
+  const url = URL.createObjectURL(new Blob([contents], { type }));
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = fileName;
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
+}
+
+/**
+ * §9-S3 Export all. Occasional, so it sits below the list where it cannot be taken for a
+ * row action or crowd the search field. It exports every saved vehicle held by this screen
+ * — the same non-deleted set the list is built from, not the search result — and with
+ * nothing saved the actions are disabled rather than writing a file with only a header.
+ */
+function ExportActions({ records }: { records: VehicleRecord[] }) {
+  const count = records.length;
+  const empty = count === 0;
+
+  function exportJson() {
+    // One clock read for both the bundle stamp and the file name, so they cannot disagree
+    // across midnight. §5.1: `nowIso` is local time with an offset, and its first ten
+    // characters are that local date.
+    const exportedAt = nowIso();
+    const bundle = buildExportBundle(records, exportedAt);
+    downloadFile(
+      `vin-relay-export-${exportedAt.slice(0, 10)}.json`,
+      `${JSON.stringify(bundle, null, 2)}\n`,
+      "application/json",
+    );
+  }
+
+  function exportCsv() {
+    downloadFile(
+      `vin-relay-export-${nowIso().slice(0, 10)}.csv`,
+      toCsv(records),
+      "text/csv;charset=utf-8",
+    );
+  }
+
+  return (
+    <section className={`flex flex-col gap-3 p-4 ${PANEL}`} aria-labelledby="export-heading">
+      <h2 id="export-heading" className="text-base font-bold text-fg">
+        Export
+      </h2>
+      <p id="export-note" className="text-base leading-snug text-fg-muted">
+        {empty
+          ? "Nothing to export yet — scan a VIN first."
+          : `Downloads all ${count} saved ${count === 1 ? "vehicle" : "vehicles"} on this ` +
+            "device, not just what the search shows."}
+      </p>
+      {/* §6.1: two ≥ 48 px targets, one tap each, no gesture on either (N5). */}
+      <div className="grid grid-cols-2 gap-3">
+        <Button
+          variant="secondary"
+          onClick={exportJson}
+          disabled={empty}
+          aria-describedby="export-note"
+        >
+          Export JSON
+        </Button>
+        <Button
+          variant="secondary"
+          onClick={exportCsv}
+          disabled={empty}
+          aria-describedby="export-note"
+        >
+          Export CSV
+        </Button>
+      </div>
+    </section>
+  );
+}
+
+/**
  * A clock the render can read. Reading Date.now() during render is impure and
  * would make row labels shift on any unrelated re-render; this snapshots it per
  * mount and re-reads once a minute so a screen left open does not go stale.
@@ -236,6 +319,10 @@ export default function HistoryScreen() {
       ) : null}
 
       {body}
+
+      {/* Held back until the live query has answered, so the disabled state never flashes
+          over a database that is merely still loading. */}
+      {records !== undefined ? <ExportActions records={records} /> : null}
     </div>
   );
 }

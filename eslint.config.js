@@ -27,10 +27,21 @@ export default tseslint.config(
       ],
       "no-restricted-syntax": [
         "error",
-        { selector: "NewExpression[callee.name='Date']", message: "P3: take the current year as an argument (§4.4)." },
-        { selector: "MemberExpression[object.name='Date'][property.name='now']", message: "P3: take the current year as an argument (§4.4)." },
+        {
+          selector: "NewExpression[callee.name='Date']",
+          message: "P3: take the current year as an argument (§4.4).",
+        },
+        {
+          selector: "MemberExpression[object.name='Date'][property.name='now']",
+          message: "P3: take the current year as an argument (§4.4).",
+        },
       ],
     },
   },
-  { files: ["scripts/**/*.ts"], languageOptions: { globals: globals.node } },
+  // Node contexts: build scripts, the bench generators, and Playwright specs, which run
+  // in node rather than in the page.
+  {
+    files: ["scripts/**/*.ts", "bench/**/*.{ts,mjs,js}", "tests/**/*.ts"],
+    languageOptions: { globals: globals.node },
+  },
 );

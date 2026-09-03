@@ -10,7 +10,7 @@ export default defineConfig({
       // scanMachine is pure policy and carries the §6.3 rules, so it is gated like src/lib.
       include: ["src/lib/**/*.ts", "src/features/scan/scanMachine.ts"],
       exclude: ["src/lib/**/*.test.ts", "src/lib/**/test-setup.ts", "src/lib/vin/types.ts"],
-      // §13.5 gate. codec.ts joins the 100% list in S3.
+      // §13.5 gate.
       thresholds: {
         lines: 95,
         branches: 95,
@@ -23,6 +23,7 @@ export default defineConfig({
           functions: 100,
           statements: 100,
         },
+        "src/lib/payload/codec.ts": { lines: 100, branches: 100, functions: 100, statements: 100 },
       },
     },
   },
