@@ -1,0 +1,43 @@
+@import "tailwindcss";
+@import "./ui/tokens.css";
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-bg-elev: var(--bg-elev);
+  --color-fg: var(--fg);
+  --color-fg-muted: var(--fg-muted);
+  --color-accent: var(--accent);
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+  --color-danger: var(--danger);
+  --color-border: var(--border);
+  --radius-token: var(--radius);
+  --spacing-tap: var(--tap);
+  --spacing-tap-lg: var(--tap-lg);
+  --font-vin: var(--vin-font);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-text-size-adjust: 100%;
+}
+
+/* N5: no long-press menus, no text selection callouts on controls. */
+button,
+a[role="button"] {
+  -webkit-touch-callout: none;
+}
+
+:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}

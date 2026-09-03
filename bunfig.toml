@@ -1,0 +1,5 @@
+# `bun test` runs Bun's own runner: it rewrites `vitest` imports to `bun:test`,
+# ignores vitest.config.ts and reports no branch coverage, so it would pass a
+# gate the real suite might fail. The gate is `bun run test` (§2, §7, §13.5).
+[test]
+preload = ["./scripts/no-bun-test.ts"]
