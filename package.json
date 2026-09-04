@@ -22,6 +22,7 @@
     "bench:quick": "bun run bench/run.ts --quick --count 8"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.115.0",
     "@zxing/browser": "^0.2.1",
     "@zxing/library": "^0.23.0",
     "dexie": "^4.4.5",
