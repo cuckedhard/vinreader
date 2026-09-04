@@ -17,14 +17,17 @@
   --vin-font: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
 
+/* Every foreground is measured against both grounds, because --bg-elev is the harder
+   one and the nav, chips and banners all put body text on it. Ratios are on --bg then
+   on --bg-elev; §6.1's floor is 7:1 and the whole block clears it. */
 [data-theme="light"] {
   --bg: #ffffff;
   --bg-elev: #f1f4f7;
-  --fg: #0b0f14;
-  --fg-muted: #4a5764;
-  --accent: #0b63a8;
-  --ok: #12692f;
-  --warn: #7a4c00;
-  --danger: #b3261e;
+  --fg: #0b0f14; /* 19.22:1, 17.41:1 */
+  --fg-muted: #46525f; /* 7.98:1, 7.23:1 */
+  --accent: #09538e; /* 7.96:1, 7.21:1 — and the primary button's ground, with --bg on it */
+  --ok: #105e2a; /* 7.90:1, 7.16:1 */
+  --warn: #734800; /* 7.91:1, 7.16:1 */
+  --danger: #9c211a; /* 7.94:1, 7.19:1 — and the danger button's ground */
   --border: #c9d2db;
 }

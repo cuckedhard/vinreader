@@ -5,11 +5,11 @@ import { version } from "../../../package.json";
 import { db } from "../../lib/storage/db";
 import {
   clearAllData,
-  DEFAULT_SETTINGS,
   getSettings,
+  normalizeSettings,
   updateSettings,
 } from "../../lib/storage/settings";
-import type { SettingsRecord } from "../../lib/vin/types";
+import type { StoredSettings, Theme } from "../../lib/storage/settings";
 import { Banner } from "../../ui/Banner";
 import { Button } from "../../ui/Button";
 
@@ -80,6 +80,63 @@ function ToggleRow({ label, hint, checked, onChange }: ToggleRowProps) {
   );
 }
 
+const THEME_OPTIONS: { value: Theme; label: string }[] = [
+  { value: "dark", label: "Dark" },
+  { value: "light", label: "Light" },
+  { value: "system", label: "System" },
+];
+
+interface ThemeRowProps {
+  value: Theme;
+  onChange: (next: Theme) => void;
+}
+
+/**
+ * N5: three visible buttons rather than a control that cycles on tap — the choice in
+ * force is named, not inferred, and each option carries its own 48 px target. The
+ * selected one is marked with a tick as well as the fill, because a filled button and
+ * an unfilled one are the same shape in glare.
+ */
+function ThemeRow({ value, onChange }: ThemeRowProps) {
+  return (
+    <div
+      className={
+        "flex w-full flex-col gap-3 rounded-[var(--radius)] border border-border " +
+        "bg-bg-elev px-4 py-3"
+      }
+    >
+      <span className="flex flex-col gap-1">
+        <span className="text-base font-bold text-fg">Theme</span>
+        <span className="text-sm leading-snug text-fg-muted">
+          Dark is easiest at night. System follows the phone’s own setting.
+        </span>
+      </span>
+      <div role="radiogroup" aria-label="Theme" className="flex gap-2">
+        {THEME_OPTIONS.map((option) => {
+          const selected = option.value === value;
+          return (
+            <button
+              key={option.value}
+              type="button"
+              role="radio"
+              aria-checked={selected}
+              onClick={() => onChange(option.value)}
+              className={
+                "min-h-[var(--tap)] flex-1 rounded-[var(--radius)] border px-3 text-base " +
+                "font-bold active:opacity-80 " +
+                (selected ? "border-accent bg-accent text-bg" : "border-border bg-bg text-fg")
+              }
+            >
+              <span aria-hidden="true">{selected ? "✓ " : ""}</span>
+              {option.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export function SettingsScreen() {
   const uid = useId();
   const deviceLabelId = `${uid}-device-label`;
@@ -111,12 +168,11 @@ export function SettingsScreen() {
     );
   }
 
-  // A row written before a later version added a field keeps that field's default.
-  const settings: SettingsRecord = { ...DEFAULT_SETTINGS, ...stored };
+  const settings = normalizeSettings(stored);
   const labelValue = labelDraft ?? settings.deviceLabel;
   const canClear = confirmText.trim().toUpperCase() === CONFIRM_WORD;
 
-  function save(patch: Partial<Omit<SettingsRecord, "id">>): void {
+  function save(patch: Partial<Omit<StoredSettings, "id">>): void {
     setError(null);
     updateSettings(patch).catch((cause: unknown) => setError(describe(cause)));
   }
@@ -196,6 +252,7 @@ export function SettingsScreen() {
             {labelSaved ? "Saved ✓" : ""}
           </p>
         </div>
+        <ThemeRow value={settings.theme} onChange={(next) => save({ theme: next })} />
       </Section>
 
       <Section title="Scan and details">
