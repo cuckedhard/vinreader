@@ -1,5 +1,5 @@
 import fc from "fast-check";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { cooldownStore } from "./cooldownStore";
 import {
@@ -11,6 +11,7 @@ import {
   startingScanMachine,
 } from "./scanMachine";
 import type { ScanAction, ScanMachine, ScanSighting } from "./scanMachine";
+import { armLapseTimer } from "./useScanner";
 
 const VIN_A = "1HGCM82633A004352";
 const VIN_B = "1HGCM826X3A004350";
@@ -233,6 +234,111 @@ describe("scanReducer — the agreement window running out (Z9)", () => {
     const lapsed = scanReducer(candidate, { type: "tick", atMs: 3000 });
     expect(lapsed.cooldown).toEqual({});
     expect(run([saw(VIN_A, 4000), saw(VIN_A, 4200)], lapsed).state.kind).toBe("confirmed");
+  });
+});
+
+/**
+ * The other half of Z9, and the half that has no reducer in it. `scanReducer` decides
+ * *whether* a standing candidate has run out of window; `armLapseTimer` is what makes the
+ * question get asked at all, and the two fail in completely different ways. It lives beside
+ * the reducer because a timer that never fires and a reducer that never lapses are the same
+ * bug to the person holding the phone: "Reading… hold steady." over a preview of nothing.
+ *
+ * The scheduler is driven directly rather than through `useScanner`, because the bug is
+ * precisely what React does *not* do — a tick landing inside the window returns the
+ * identical machine, React bails out of the re-render, the effect never re-runs and its
+ * cleanup never fires. Rendering the hook would therefore hide the bug behind the very
+ * bail-out that causes it. Fake timers give the two clocks the platform actually has:
+ * `setTimeout` counts monotonic milliseconds, `Date.now()` follows the wall clock, and
+ * `vi.setSystemTime` moves one without the other exactly as an NTP correction does.
+ */
+describe("armLapseTimer — the §6.3 window, actually waited out (Z9)", () => {
+  /** A device stamps `Date.now()`, and a step back has to be a step back from something. */
+  const WALL_CLOCK = Date.UTC(2026, 8, 4, 12, 0, 0);
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(WALL_CLOCK);
+    // The scheduler reaches its timer through `window`, which the node test environment has
+    // not got. Only the two functions it is allowed to use are supplied, resolved at call
+    // time so they are the faked ones.
+    vi.stubGlobal("window", {
+      setTimeout: (fn: () => void, ms: number) => setTimeout(fn, ms),
+      clearTimeout: (id: number) => clearTimeout(id),
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
+
+  /** A candidate raised at `sightedAt`, with the timer the hook would have armed for it. */
+  function armed(sightedAt = Date.now()) {
+    let machine = run([saw(VIN_A, sightedAt)], streaming());
+    expect(machine.state.kind).toBe("candidate");
+    // Exactly what `useScanner` passes: the reducer's own dispatch, which is where the
+    // bail-out lives — a tick inside the window returns the identical machine and no
+    // re-render, so no effect cleanup and no second arming, come from this line.
+    const stop = armLapseTimer(sightedAt, (action) => {
+      machine = scanReducer(machine, action);
+    });
+    return { stop, state: () => machine.state };
+  }
+
+  it("lapses the candidate with no clock step at all", () => {
+    // The control. One timer, one tick, stamped on the deadline it was armed for.
+    const scan = armed();
+    vi.advanceTimersByTime(CONFIRM_WINDOW_MS + 1);
+    expect(scan.state()).toEqual({ kind: "streaming" });
+    expect(vi.getTimerCount()).toBe(0);
+    scan.stop();
+  });
+
+  // §6.3's window is measured with `Date.now()` at both ends while the timer that ends it
+  // counts monotonic milliseconds, so a backward wall-clock correction shortens the measured
+  // gap without moving the firing. A step anywhere in 1…CONFIRM_WINDOW_MS + 1 lands the tick
+  // back inside the window: the reducer correctly keeps the candidate, and a one-shot timer
+  // has then spent the only tick that was ever going to be sent. Past that the gap goes
+  // negative and the two-sided window lapses it on the first tick, which already worked.
+  it.each([
+    ["1 ms", 1],
+    ["half the window", Math.floor(CONFIRM_WINDOW_MS / 2)],
+    ["the whole window and one more ms", CONFIRM_WINDOW_MS + 1],
+  ])("still lapses when the wall clock steps back %s under it", (_label, backwards) => {
+    const scan = armed();
+    vi.setSystemTime(Date.now() - backwards);
+    // Far past any deadline: if this leaves the candidate standing, nothing else will take
+    // it down, and the screen says "hold steady" until the user gives up (Z9).
+    vi.advanceTimersByTime(HIDDEN_LOST_MS);
+    expect(scan.state()).toEqual({ kind: "streaming" });
+    expect(vi.getTimerCount()).toBe(0);
+    scan.stop();
+  });
+
+  it("lapses at once when the deadline is already behind, and arms nothing further", () => {
+    // The clamp, and the other way to get the re-arming wrong. A candidate can be a minute
+    // old by the time this runs — the clock jumped forward, or the effect is re-arming after
+    // a tab came back — and then the first firing lapses it. Re-arming unconditionally from
+    // there would leave a zero-delay timer dispatching ticks into a machine that has nothing
+    // left to lapse, on the main thread the decode loop is sharing (SCAN_DELAY_MS).
+    const scan = armed(Date.now() - 60_000);
+    vi.advanceTimersByTime(0);
+    expect(scan.state()).toEqual({ kind: "streaming" });
+    expect(vi.getTimerCount()).toBe(0);
+    scan.stop();
+  });
+
+  it("dispatches nothing after the cleanup, however the clock behaves", () => {
+    // §6.3's `hidden`, a new candidate, a disabled scanner and the unmount all land here.
+    // A self-rescheduling timer that outlived them would dispatch into a machine nobody is
+    // showing, which is the whole reason the arming returns a cleanup.
+    const scan = armed();
+    scan.stop();
+    vi.setSystemTime(Date.now() - 1);
+    vi.advanceTimersByTime(HIDDEN_LOST_MS);
+    expect(scan.state().kind).toBe("candidate");
+    expect(vi.getTimerCount()).toBe(0);
   });
 });
 
@@ -620,24 +726,30 @@ function drive(moves: readonly Move[]): Session {
     dispatch(STARTED);
   };
   /**
-   * The timer `useScanner` arms while a candidate stands (Z9). It is armed from the
-   * sighting's own stamp and cleared by anything that replaces or drops the candidate, so
-   * the only firings that reach the reducer are the ones where nothing happened for the
-   * whole §6.3 window — which is exactly the phone being lowered mid-read. The driver fires
-   * it where the hook would: on the way to the next thing, once its deadline is behind.
+   * The timer `useScanner` arms while a candidate stands (Z9), cleared by anything that
+   * replaces or drops that candidate. The driver fires it where the hook would — on the way
+   * to the next thing — and stamps it from its own clock, which is what the callback does:
+   * it reads `Date.now()` at the moment it runs.
+   *
+   * It is *not* stamped with the deadline it was armed for, and it is not withheld until
+   * that deadline is behind, because nothing makes the firing and the stamp agree. The
+   * timer counts monotonic milliseconds while the stamp follows the wall clock, so a
+   * backward correction under a standing candidate fires it early; a busy main thread fires
+   * it late; and now that the timer re-arms itself, a candidate is asked about repeatedly
+   * rather than once. Assuming the stamp equals the deadline generates only the on-time
+   * case — the one case a stranded candidate never takes. An early tick has to be the
+   * identity on the machine, which is the reducer's half of that same rule, and the laws
+   * below now see it on every session that raises a candidate.
    */
-  const lapseIfDue = (): void => {
-    const { state } = machine;
-    if (state.kind !== "candidate") return;
-    const dueAt = state.sighting.atMs + CONFIRM_WINDOW_MS + 1;
-    if (dueAt > clock) return;
-    dispatch({ type: "tick", atMs: dueAt });
+  const fireLapseTimer = (): void => {
+    if (machine.state.kind !== "candidate") return;
+    dispatch({ type: "tick", atMs: clock });
   };
 
   openScanScreen();
   for (const move of moves) {
     if ("dt" in move) clock += move.dt;
-    lapseIfDue();
+    fireLapseTimer();
     switch (move.k) {
       case "read":
         dispatch(saw(VINS[aimed]!, clock));
@@ -696,6 +808,12 @@ describe("scanReducer — properties", () => {
     // anything arriving after the deadline is outside the window and starts a fresh
     // candidate either way. Cooled-after-remount went 439 → 440: one reading is now dropped
     // on a screen that has gone back to `streaming` instead of on a stale candidate.
+    //
+    // Stamping that tick from the driver's clock instead of from the deadline it was armed
+    // for (see `fireLapseTimer`) left all five bit-identical again — an early tick is the
+    // identity on the machine, so nothing downstream of it can move — and added 537 early
+    // ticks, of which the model previously generated none. They are not counted below: a
+    // floor on them would gate the laws on a reading the reducer is required to ignore.
     let confirmations = 0;
     let writes = 0;
     let cooled = 0;

@@ -23,7 +23,7 @@ import { buildScanHints, toSymbology } from "../../lib/vin/symbologies";
 import type { ScanError } from "../../lib/vin/types";
 import { cooldownStore } from "./cooldownStore";
 import { CONFIRM_WINDOW_MS, scanReducer, startingScanMachine } from "./scanMachine";
-import type { ScanMachineState } from "./scanMachine";
+import type { ScanAction, ScanMachineState } from "./scanMachine";
 
 export interface TorchApi {
   available: boolean;
@@ -169,6 +169,59 @@ function subscribeVisibility(onChange: () => void): () => void {
 
 function isPageHidden(): boolean {
   return document.visibilityState === "hidden";
+}
+
+/**
+ * §6.3's agreement window, waited out. The reducer decides *whether* a standing candidate
+ * has run out of window (it compares the stamp this timer carries); this arms the ask, and
+ * keeps asking until the answer is yes.
+ *
+ * Why it re-arms rather than firing once. The scan screen runs on two clocks: `setTimeout`
+ * counts monotonic milliseconds, while both the sighting's stamp and this tick's come from
+ * `Date.now()`, which follows the wall clock. A backward correction of 1 ms to
+ * `CONFIRM_WINDOW_MS + 1` between the sighting and the firing shortens the *measured* gap
+ * without moving the firing, so the tick lands back inside the window — the reducer keeps
+ * the candidate, correctly, and returns the identical machine to say so. React then bails
+ * out of the re-render, this effect never re-runs, its cleanup never runs, and a one-shot
+ * timer has spent the only tick that was ever going to be sent: Z9's exact symptom returns,
+ * "Reading… hold steady." over a live preview, until another decode, a hide, a dead track or
+ * a navigation happens to take it down. So the tick that did not lapse anything schedules
+ * the next one from the clock as it now reads.
+ *
+ * It terminates on its own: it re-arms only while the deadline is still ahead, and every
+ * re-arm has a strictly positive delay, so a spent window arms nothing (a zero-delay chain
+ * would spin on the main thread the decode loop is sharing). The reducer stays pure — no
+ * clock is read there and no constant is restated here (§7 item 5); the deadline is the same
+ * arithmetic the first arming already used.
+ *
+ * It also closes the narrow case the Z9 ledger entry recorded as surviving: an engine that
+ * clamps `Date.now()` (Firefox with `resistFingerprinting`, to 100 ms) reads even an on-time
+ * tick as inside the window. A one-shot timer gave up there; this one waits out the
+ * millisecond the clamped clock says is left and asks again until it moves.
+ */
+export function armLapseTimer(
+  candidateAtMs: number,
+  dispatch: (action: ScanAction) => void,
+): () => void {
+  // One millisecond past the window, because §6.3's bound is inclusive: a tick landing on
+  // it is still inside it.
+  const deadline = candidateAtMs + CONFIRM_WINDOW_MS + 1;
+  let timer = 0;
+  function arm(delay: number): void {
+    timer = window.setTimeout(() => {
+      dispatch({ type: "tick", atMs: Date.now() });
+      // What is left of the window *by the wall clock*. At or past zero the tick just sent
+      // was at or past the deadline, so it lapsed the candidate (or there was none) and
+      // there is nothing further to wait for; above zero the clock moved back under us and
+      // the remainder still has to be waited out.
+      const remaining = deadline - Date.now();
+      if (remaining > 0) arm(remaining);
+    }, delay);
+  }
+  // Clamped at zero for a deadline that is already behind us.
+  arm(Math.max(deadline - Date.now(), 0));
+  // Clears whichever timer is currently armed, first or twentieth.
+  return () => window.clearTimeout(timer);
 }
 
 export function useScanner(options: {
@@ -416,13 +469,9 @@ export function useScanner(options: {
     // A disabled scanner dispatches nothing, and a hidden tab has already had its candidate
     // dropped by §6.3's `hidden`, so there is nothing left to lapse in either case.
     if (!enabled || pageHidden || candidateAtMs === null) return;
-    // One millisecond past the window, because §6.3's bound is inclusive: a tick landing on
-    // it is still inside it. Clamped at zero for a deadline that is already behind us.
-    const delay = Math.max(candidateAtMs + CONFIRM_WINDOW_MS + 1 - Date.now(), 0);
-    const timer = window.setTimeout(() => dispatch({ type: "tick", atMs: Date.now() }), delay);
     // Cleared when the candidate changes or goes, when the tab hides, and on unmount: a
     // timer that outlived the screen would dispatch into a machine nobody is showing.
-    return () => window.clearTimeout(timer);
+    return armLapseTimer(candidateAtMs, dispatch);
   }, [enabled, pageHidden, candidateAtMs]);
 
   const retry = useCallback(() => {
