@@ -1,5 +1,6 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { META_NEVER_EDITED } from "../vin/types";
+import type { VehicleRecord } from "../vin/types";
 import { db } from "./db";
 import { setVehicleMeta, upsertVehicle, type UpsertInput } from "./upsert";
 
@@ -169,5 +170,97 @@ describe("setVehicleMeta", () => {
 
   it("rejects a VIN it has never seen", async () => {
     await expect(setVehicleMeta(VIN, { unit: "TRK-118" })).rejects.toThrow(VIN);
+  });
+});
+
+/** RFC 4122 v4: version nibble 4, variant nibble 8–b. §5.2 says the id is a UUID. */
+const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+
+describe("§5.2 event ids on an origin without a secure context", () => {
+  const randomUUID = Object.getOwnPropertyDescriptor(globalThis.crypto, "randomUUID");
+  const getRandomValues = Object.getOwnPropertyDescriptor(globalThis.crypto, "getRandomValues");
+
+  function hide(name: "randomUUID" | "getRandomValues") {
+    Object.defineProperty(globalThis.crypto, name, {
+      configurable: true,
+      writable: true,
+      value: undefined,
+    });
+  }
+
+  afterEach(() => {
+    if (randomUUID) Object.defineProperty(globalThis.crypto, "randomUUID", randomUUID);
+    if (getRandomValues)
+      Object.defineProperty(globalThis.crypto, "getRandomValues", getRandomValues);
+  });
+
+  it("prefers crypto.randomUUID wherever it exists", async () => {
+    const fixed = "0189d3f0-0b6a-4f4e-9c2a-4d2f6a1b7c3e";
+    Object.defineProperty(globalThis.crypto, "randomUUID", {
+      configurable: true,
+      writable: true,
+      value: () => fixed,
+    });
+
+    await upsertVehicle(scan());
+    expect((await db.scanEvents.toArray())[0]!.id).toBe(fixed);
+  });
+
+  it("keeps the UUID shape when randomUUID is [SecureContext]-gated away", async () => {
+    hide("randomUUID");
+
+    await upsertVehicle(scan());
+    expect((await db.scanEvents.toArray())[0]!.id).toMatch(UUID_V4);
+  });
+
+  it("still writes distinct UUIDs with no crypto randomness at all", async () => {
+    // The last resort. §5.2's log is append-only and S4 pushes `id` as the primary key
+    // that makes a push idempotent (§4.12), so a repeat here is a lost scan event.
+    hide("randomUUID");
+    hide("getRandomValues");
+
+    for (let i = 0; i < 25; i += 1) await upsertVehicle(scan());
+
+    const ids = (await db.scanEvents.toArray()).map((event) => event.id);
+    expect(ids.every((id) => UUID_V4.test(id))).toBe(true);
+    expect(new Set(ids).size).toBe(25);
+  });
+});
+
+describe("§5.1 fields a stored row got wrong", () => {
+  /** The shapes §4.12's `jsonb` defaults and a half-written row deliver — the read path's
+   * `normalizeVehicle` guards them, and this is the write path's half. */
+  async function store(patch: Record<string, unknown>) {
+    const stored = (await db.vehicles.get(VIN))!;
+    await db.vehicles.put({ ...stored, ...patch } as VehicleRecord);
+  }
+
+  it("counts in numbers from a scanCount that is not one", async () => {
+    await upsertVehicle(scan({ at: T1 }));
+    await store({ scanCount: "3" });
+
+    expect((await upsertVehicle(scan({ at: T2 }))).scanCount).toBe(1);
+    // And the count keeps counting from there rather than concatenating again.
+    expect((await upsertVehicle(scan({ at: T2 }))).scanCount).toBe(2);
+  });
+
+  it("treats a fractional or negative count as absent", async () => {
+    await upsertVehicle(scan({ at: T1 }));
+    await store({ scanCount: -4 });
+    expect((await upsertVehicle(scan({ at: T2 }))).scanCount).toBe(1);
+
+    await store({ scanCount: 2.5 });
+    expect((await upsertVehicle(scan({ at: T2 }))).scanCount).toBe(1);
+  });
+
+  it("heals a timestamp that is not a string instead of writing it back", async () => {
+    await upsertVehicle(scan({ at: T2 }));
+    // `Date.parse` coerces before it parses, so `Date.parse(0)` is a real instant in 2000
+    // and a number here would otherwise win §4.12's min and land in a `string` field.
+    await store({ firstScannedAt: 0, lastScannedAt: 0 });
+
+    const record = await upsertVehicle(scan({ at: T1 }));
+    expect(record.firstScannedAt).toBe(T1);
+    expect(record.lastScannedAt).toBe(T1);
   });
 });
