@@ -245,12 +245,21 @@ export default function SheetScreen() {
 
       <StructuralBlock vin={record.vin} structural={structural} />
 
-      <DecodeSection key={record.vin} record={record} />
+      {/*
+       * Each of these three holds state belonging to one vehicle — a half-typed unit, an
+       * open QR, a Refresh in flight — so §6.2's `:vin` change has to remount them rather
+       * than hand the next record to the last one's state. The keys must also differ from
+       * each other: React's array reconciler gathers the outgoing siblings into a Map keyed
+       * by `key`, so one key shared by three siblings leaves one entry, only that sibling is
+       * deleted, and the other two keep their DOM after their fibers are gone. That is the
+       * previous vehicle's make, model and unit sitting under this vehicle's VIN (N2).
+       */}
+      <DecodeSection key={`decode-${record.vin}`} record={record} />
 
-      <MetaEditor key={record.vin} record={record} />
+      <MetaEditor key={`meta-${record.vin}`} record={record} />
 
       {/* §9-S3: the handoff actions sit below the record they act on. */}
-      <Actions key={record.vin} record={record} />
+      <Actions key={`actions-${record.vin}`} record={record} />
     </div>
   );
 }
