@@ -211,6 +211,21 @@ describe("§4.12 backoff — attempts are persisted and rows are never dropped",
 
     expect(await dueRows({ now: T1 })).toHaveLength(1);
   });
+
+  it("treats a nextAttemptAt that is not a string as due, whatever it would parse as", async () => {
+    // The case above only reaches the `Number.isNaN` half of the guard, because a string
+    // that fails to parse and a non-string that fails to parse are due for the same
+    // reason. This is the `typeof` half. IndexedDB stores a `Date` as a `Date`, so a row
+    // written by a build that put one here — or by any code that skipped `nowIso` — comes
+    // back holding an object, and `Date.parse` coerces before it parses: a future one then
+    // reads as "not due yet" on every pass, forever. §4.12 never drops a row, so a row the
+    // push engine can never see again is worse than a failed push — it is a scan that
+    // silently never reaches the account, with a full outbox chip and nothing to show.
+    const stranded = { ...vehicleDeleteRow(VIN), nextAttemptAt: new Date(Date.parse(T2)) };
+    await appendOutbox([stranded as unknown as OutboxRow]);
+
+    expect(await dueRows({ now: T1 })).toHaveLength(1);
+  });
 });
 
 describe("§4.12 push order", () => {

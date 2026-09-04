@@ -159,6 +159,23 @@ describe("normalizeVehicle — the decisions the cases above only execute", () =
     }
   });
 
+  it("rejects a vin that is not a string, including one that would coerce to a valid one", () => {
+    // "returns null for a row with no grammar-valid VIN" proves the *grammar* half of that
+    // guard, and it is the only case that reaches the `typeof` half at all — but every
+    // value it passes in fails the grammar too, so the type check is never what decided.
+    // It has to be: §4.1's check is a regex and `RegExp.test` coerces its argument first,
+    // so a one-element array, or anything at all with a `toString`, reads to it as a
+    // perfectly valid VIN. The type check is then the only thing between a corrupted row
+    // (§13.2) and `buildStructural`, which would slice a non-string and hand back a record
+    // whose primary key is not a key. Dexie stores what it is given and IndexedDB keeps
+    // the type, so this is a shape a §5.6 import or a half-written row can really produce.
+    for (const vin of [[VIN], { toString: () => VIN }, Object(VIN)]) {
+      expect(
+        normalizeVehicle({ ...syncShaped(), vin } as unknown as VehicleRecord, 2026),
+      ).toBeNull();
+    }
+  });
+
   it("leaves the row it was handed exactly as it found it", () => {
     // The rows come out of a Dexie live query, and in dev React renders the same objects
     // twice. A normaliser that filled the blocks in place would look identical on the

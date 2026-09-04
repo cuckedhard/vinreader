@@ -1,7 +1,7 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { META_NEVER_EDITED } from "../vin/types";
 import type { VehicleRecord } from "../vin/types";
-import { db } from "./db";
+import { db, newId } from "./db";
 import { setVehicleMeta, softDeleteVehicle, upsertVehicle, type UpsertInput } from "./upsert";
 
 const VIN = "1HGCM82633A004352"; // §4.11 fixture: grammar ok, check digit valid.
@@ -190,6 +190,9 @@ describe("§5.2 event ids on an origin without a secure context", () => {
   }
 
   afterEach(() => {
+    // Unstub first: one case below replaces `crypto` itself, and the descriptors cannot be
+    // put back on an object that is not there.
+    vi.unstubAllGlobals();
     if (randomUUID) Object.defineProperty(globalThis.crypto, "randomUUID", randomUUID);
     if (getRandomValues)
       Object.defineProperty(globalThis.crypto, "getRandomValues", getRandomValues);
@@ -212,6 +215,39 @@ describe("§5.2 event ids on an origin without a secure context", () => {
 
     await upsertVehicle(scan());
     expect((await db.scanEvents.toArray())[0]!.id).toMatch(UUID_V4);
+  });
+
+  it("builds the id out of getRandomValues, and not out of Math.random, wherever it is", () => {
+    // R3-L's middle tier, and the one nothing could tell apart from the last resort: both
+    // produce a v4-shaped string, so the assertions either side of this one pass whichever
+    // ran. Known bytes make the source observable — this id can only have come from
+    // `getRandomValues` — and show RFC 4122 being stamped on top of them: byte 6 `0x06`
+    // becomes `0x46` (version) and byte 8 `0x08` becomes `0x88` (variant). A `getRandomValues`
+    // that went unused is not a cosmetic loss: §5.2 is append-only and §4.12 pushes this id
+    // as the key that makes a push idempotent, so the id must not collide, and `Math.random`
+    // is the one tier of the three that carries no such promise.
+    hide("randomUUID");
+    Object.defineProperty(globalThis.crypto, "getRandomValues", {
+      configurable: true,
+      writable: true,
+      value: (bytes: Uint8Array) => {
+        bytes.set(Array.from({ length: bytes.length }, (_, index) => index));
+        return bytes;
+      },
+    });
+
+    expect(newId()).toBe("00010203-0405-4607-8809-0a0b0c0d0e0f");
+  });
+
+  it("keeps generating ids in a runtime with no crypto object at all", () => {
+    // Not the same case as the two above: there `crypto` exists and its members are gated
+    // away, here the object itself is absent, which is what an old embedded webview does.
+    // Reaching through it unguarded would throw out of `newId`, and `newId` is called
+    // inside the §4.12 transaction — so every local write on that device would fail, not
+    // just its id.
+    vi.stubGlobal("crypto", undefined);
+
+    expect(newId()).toMatch(UUID_V4);
   });
 
   it("still writes distinct UUIDs with no crypto randomness at all", async () => {
@@ -263,6 +299,94 @@ describe("§5.1 fields a stored row got wrong", () => {
     const record = await upsertVehicle(scan({ at: T1 }));
     expect(record.firstScannedAt).toBe(T1);
     expect(record.lastScannedAt).toBe(T1);
+  });
+});
+
+/**
+ * §4.12's aggregates are a min and a max over instants, and every case above compares two
+ * instants that differ, so the comparisons are only ever asked the easy question. Two
+ * stamps that name one instant is not an exotic input: §5.1 stamps carry an offset, so an
+ * instant has as many spellings as there are zones, and an import replaying a scan this
+ * device already holds — §5.6 — arrives as one of them.
+ */
+describe("§4.12 aggregates when the stored stamp and the incoming one name one instant", () => {
+  /** T1 as a device in UTC would have written it: the same instant, a different string. */
+  const T1_UTC = "2026-01-05T14:15:00.000+00:00";
+
+  it("takes the incoming stamp on a tie, in the min and in the max alike", async () => {
+    expect(Date.parse(T1_UTC)).toBe(Date.parse(T1));
+
+    await upsertVehicle(scan({ at: T1 }));
+    const record = await upsertVehicle(scan({ at: T1_UTC }));
+
+    // Neither choice moves the aggregate as an *instant*, which is why nothing else in the
+    // suite can see the difference, and why the tie has to be pinned here or nowhere.
+    // Strict `<` and `>` mean the stored string is the one the latest write carried, so
+    // what the row holds — and what §4.12 pushes — is a stamp this device actually wrote,
+    // rather than another zone's spelling of it kept indefinitely.
+    expect(record.firstScannedAt).toBe(T1_UTC);
+    expect(record.lastScannedAt).toBe(T1_UTC);
+  });
+});
+
+/**
+ * D11: the LWW clock moves only when the write actually lands unit or notes. Every case
+ * above changes both fields or neither, and on those `||` and `&&` agree — so the rule is
+ * executed constantly and never asked what it means. One-sided writes are the real ones:
+ * §5.6's import carries whichever columns the file had. Under `&&` a truck that gains a
+ * unit number keeps a `metaUpdatedAt` older than the edit, and §4.12's last-writer-wins
+ * then quietly hands the field back to whatever another device holds.
+ */
+describe("D11 — a write that lands one of the two meta fields moves metaUpdatedAt", () => {
+  /** An edit old enough that any stamp the device clock produces is distinguishable. */
+  const EDITED_LONG_AGO = "2020-07-01T00:00:00.000+00:00";
+
+  /** A stored record carrying the meta fields `patch` names, and that old meta clock. */
+  async function storedWith(patch: Partial<VehicleRecord>): Promise<void> {
+    await upsertVehicle(scan({ at: T1 }));
+    const row = (await db.vehicles.get(VIN))!;
+    await db.vehicles.put({ ...row, ...patch, metaUpdatedAt: EDITED_LONG_AGO });
+  }
+
+  /** An import carrying both columns, one of them the value already stored. */
+  function importing(unit: string, notes: string): UpsertInput {
+    return scan({ at: T2, origin: "import", symbology: "import", unit, notes });
+  }
+
+  function movedOffTheOldClock(record: VehicleRecord): void {
+    expect(record.metaUpdatedAt).toMatch(ISO_WITH_OFFSET);
+    expect(Date.parse(record.metaUpdatedAt)).toBeGreaterThan(Date.parse(EDITED_LONG_AGO));
+  }
+
+  it("moves it for a unit while the notes are handed back unchanged", async () => {
+    await storedWith({ unit: null, notes: "spare key" });
+
+    const record = await upsertVehicle(importing("TRK-204", "spare key"));
+
+    expect(record.unit).toBe("TRK-204");
+    expect(record.notes).toBe("spare key");
+    movedOffTheOldClock(record);
+  });
+
+  it("moves it for notes while the unit is handed back unchanged", async () => {
+    await storedWith({ unit: "TRK-204", notes: null });
+
+    const record = await upsertVehicle(importing("TRK-204", "rear light out"));
+
+    expect(record.unit).toBe("TRK-204");
+    expect(record.notes).toBe("rear light out");
+    movedOffTheOldClock(record);
+  });
+
+  it("leaves it alone when the write lands both fields exactly as they already stand", async () => {
+    // The fourth corner, and the one D11 was written for. The re-scan that carries nothing
+    // is covered above; this is the import that carries the same values, which changes the
+    // record not at all and so must not outrank an edit made on another device.
+    await storedWith({ unit: "TRK-204", notes: "spare key" });
+
+    const record = await upsertVehicle(importing("TRK-204", "spare key"));
+
+    expect(record.metaUpdatedAt).toBe(EDITED_LONG_AGO);
   });
 });
 
