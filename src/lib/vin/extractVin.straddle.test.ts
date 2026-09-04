@@ -370,3 +370,85 @@ describe("[R2-01 residue] §4.2 refuses a misread VIN beside a stray character (
     expect(extractVin(VALID)).toEqual({ vin: VALID, raw: VALID, checkDigitValid: true });
   });
 });
+
+/**
+ * [M2] The same rule, one scope out: §4.2 step 4(a) counts the check-digit-valid windows
+ * in the whole PAYLOAD, and every test above it reaches that count through a single run.
+ *
+ * WHY THIS DESCRIBE EXISTS. Round 5 ran `bun run mutate` for the first time. Two mutants
+ * survived in `extractVin.ts`, and they are the only two in that whole report whose
+ * surviving behaviour is a VIN shown as fact where the original refuses:
+ *
+ *   line 76  `valid.length === 1` → `true` — the ambiguity half of 4(a) is deleted, and
+ *            the first check-valid window that is a run of its own wins no matter how many
+ *            others validated.
+ *   line 25  `run.slice(offset, offset + VIN_LENGTH)` → `run` — every run longer than 17
+ *            characters contributes no window at all (the whole run fails §4.1's length),
+ *            so it stops competing and a payload that was ambiguous resolves.
+ *
+ * Both need the same input, and no test in the suite had it: a payload whose SECOND run
+ * also contributes a check-digit-valid window. Every ambiguity test above builds its
+ * competing windows inside ONE run, where `wholeRun` is empty — the second conjunct is
+ * what refuses, so deleting the first changes nothing, and a rule about long runs cannot
+ * bite when the long run was the only run.
+ *
+ * These tests therefore guard behaviour that was already correct and simply unasserted,
+ * and the harm they price is N2's: the bytes do not say which run the user was pointing
+ * the camera at, so resolving one of two validating readings is a guess shown as fact —
+ * with `checkDigitValid: true`, so §6.3's mismatch banner never appears and §6.1's
+ * "Got it ✓" fires on it.
+ *
+ * ORDER IS PART OF THE INPUT. `valid[0]` is the first distinct valid window in run order,
+ * and the line-76 mutant only reaches its wrong answer when that window is a run of its
+ * own. With the runs the other way round it refuses for the wrong reason and looks
+ * correct, which is one reason a payload like this could sit uncovered behind 100% branch
+ * coverage on this file.
+ */
+describe("[M2] §4.2 refuses an ambiguous payload across runs, not only inside one", () => {
+  /** A second check-digit-valid VIN, on another WMI so it reads as another vehicle. */
+  const OTHER_VALID = "5YJ3E1EA0KF000316";
+
+  it("refuses a printed VIN beside a longer run that also holds a validating window", () => {
+    // Run 1 is `VALID` as its own field, so it is a whole run and `valid[0]`. Run 2 is the
+    // R4-A shape — a misread VIN with one stray legal character in front — whose offset-0
+    // window passes §4.3 by chance. Two distinct VINs validate, so the payload is
+    // ambiguous and N2 refuses it.
+    const raw = `${VALID}-B${MISREAD}`;
+    expect(extractVin(raw)).toBeNull();
+    // Measured, not argued: each mutant above answers this payload with
+    // { vin: VALID, raw, checkDigitValid: true } — the first because it no longer counts
+    // the competition, the second because the 18-character run produced no window for it
+    // to count. Both of these still pass §4.3, which is what makes the count the only
+    // thing standing between this payload and an answer.
+    expect(isCheckDigitValid(VALID)).toBe(true);
+    expect(isCheckDigitValid(`B${MISREAD.slice(0, 16)}`)).toBe(true);
+    // The same two fields in the other order, where `valid[0]` is the straddle instead.
+    expect(extractVin(`B${MISREAD}-${VALID}`)).toBeNull();
+    // And the shape §4.2 lists as covered: the two fields inside a 2D code's JSON, where
+    // the quotes and commas do the splitting.
+    expect(extractVin(`{"vin":"${VALID}","asset":"B${MISREAD}"}`)).toBeNull();
+  });
+
+  it("refuses two printed VINs that both validate, whichever comes first", () => {
+    // A tractor plate and a trailer plate in one 2D code, or two rows of a manifest
+    // pasted together. Both are runs of their own and both pass §4.3, so `wholeRun`
+    // holds both and `valid.length` is 2. Nothing in the bytes says which one was being
+    // scanned, and N2 says show neither rather than the one that happens to be first.
+    expect(isCheckDigitValid(OTHER_VALID)).toBe(true);
+    expect(OTHER_VALID).not.toBe(VALID);
+    for (const raw of [
+      `${VALID}/${OTHER_VALID}`,
+      `${OTHER_VALID}/${VALID}`,
+      `{"tractor":"${VALID}","trailer":"${OTHER_VALID}"}`,
+    ]) {
+      expect(extractVin(raw), raw).toBeNull();
+    }
+    // Each is still read on its own, so this refuses a payload rather than a vehicle.
+    expect(extractVin(VALID)).toEqual({ vin: VALID, raw: VALID, checkDigitValid: true });
+    expect(extractVin(OTHER_VALID)).toEqual({
+      vin: OTHER_VALID,
+      raw: OTHER_VALID,
+      checkDigitValid: true,
+    });
+  });
+});

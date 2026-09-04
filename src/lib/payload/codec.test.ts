@@ -15,6 +15,7 @@ import {
   parseCarrier,
   payloadFromRecord,
   PayloadError,
+  type PayloadErrorKind,
   TEXT_PREFIX,
 } from "./codec";
 import type { Payload } from "./schema";
@@ -47,11 +48,54 @@ function byteLength(value: string): number {
   return new TextEncoder().encode(value).length;
 }
 
+/**
+ * The same encoding the codec uses, over BYTES rather than text: a body that arrived from
+ * another device can carry bytes no `TextEncoder` would ever produce, and one of them is
+ * what pins the UTF-8 guard below (M1).
+ */
+function bytesToBase64Url(bytes: Uint8Array): string {
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
 /** The same encoding the codec uses, so a test can hand it a body it chose. */
 function toBase64Url(text: string): string {
-  let binary = "";
-  for (const byte of new TextEncoder().encode(text)) binary += String.fromCharCode(byte);
-  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  return bytesToBase64Url(new TextEncoder().encode(text));
+}
+
+/**
+ * §6.4 microcopy, quoted from `codec.ts`. Three different guards there raise `"encoding"`,
+ * so the sentence is the only thing that says which one answered — and every one of these
+ * strings mutates to `""` without a test noticing until they are asserted (M1).
+ */
+const NO_PAYLOAD = "This link carries no payload.";
+const NOT_READABLE = "This link's payload is not readable.";
+const CUT_OFF = "This link's payload is cut off.";
+
+/**
+ * A rejection as `kind` AND message, which is how every test below asserts one.
+ *
+ * M1, round 5's mutation run: `codec.ts` scored 76.83% — the worst of the four files
+ * §13.5 gates at 100% coverage — and 27 of its 38 survivors were this single habit. The
+ * tests asserted `PayloadError.kind` and nothing else, while the base64url alphabet, the
+ * `1 mod 4` length, the UTF-8 decode and `JSON.parse` all raise `"encoding"`: no guard was
+ * pinned individually, and §6.4's sentences could all be emptied in silence.
+ *
+ * It also replaces a `try { … } catch (error) { expect(…) }` shape used in four places,
+ * which asserts nothing at all when nothing is thrown — the assertions sit in a branch the
+ * run never enters. Reaching the throw below is the test failing, which is the point.
+ */
+function rejection(call: () => unknown): { kind: PayloadErrorKind; message: string } {
+  try {
+    call();
+  } catch (error) {
+    // P6: nothing here may reach the caller as a platform error.
+    expect(error).toBeInstanceOf(PayloadError);
+    const { kind, message } = error as PayloadError;
+    return { kind, message };
+  }
+  throw new Error("expected a PayloadError; nothing was thrown");
 }
 
 function fromBase64Url(body: string): string {
@@ -214,75 +258,144 @@ describe("encodePayload / decodePayload", () => {
 });
 
 describe("decodePayload rejections", () => {
-  function kindOf(encoded: string): string {
-    try {
-      decodePayload(encoded);
-    } catch (error) {
-      // P6: nothing here may reach the caller as a platform error.
-      expect(error).toBeInstanceOf(PayloadError);
-      return (error as PayloadError).kind;
-    }
-    throw new Error(`expected a rejection for ${encoded}`);
-  }
+  const decoding = (encoded: string) => rejection(() => decodePayload(encoded));
+
+  /** §6.4's schema sentence, which every case below is a suffix of. */
+  const SCHEMA = "This payload is not a VIN Relay record: ";
 
   it("rejects empty and whitespace input as `empty`", () => {
-    expect(kindOf("")).toBe("empty");
-    expect(kindOf("   \n\t ")).toBe("empty");
+    expect(decoding("")).toEqual({ kind: "empty", message: NO_PAYLOAD });
+    expect(decoding("   \n\t ")).toEqual({ kind: "empty", message: NO_PAYLOAD });
   });
 
   it("rejects a body that is not base64url as `encoding`", () => {
-    expect(kindOf("not base64url!")).toBe("encoding");
-    expect(kindOf("eyJ2Ijox+Q")).toBe("encoding");
-    expect(kindOf("eyJ2IjoxfQ==")).toBe("encoding");
+    for (const body of ["not base64url!", "eyJ2Ijox+Q", "eyJ2IjoxfQ=="]) {
+      expect(decoding(body), body).toEqual({ kind: "encoding", message: NOT_READABLE });
+    }
   });
 
-  it("rejects a length of 1 mod 4, which no encoder can produce, as `encoding`", () => {
+  it("rejects a length of 1 mod 4, which no encoder can produce, as a body cut off", () => {
     const truncated = `${encodePayload(EXAMPLE)}A`.slice(
       0,
       encodePayload(EXAMPLE).length - (encodePayload(EXAMPLE).length % 4) + 1,
     );
     expect(truncated.length % 4).toBe(1);
-    expect(kindOf(truncated)).toBe("encoding");
-    expect(kindOf("A")).toBe("encoding");
+    // The MESSAGE is what this test is for. Delete the `1 mod 4` guard and `atob` throws
+    // instead, the catch below it names that "not readable", and the kind is `"encoding"`
+    // either way — so asserting the kind alone left the guard unpinned (M1). §6.4 tells a
+    // user whose link was cut in half something they can act on: send it again.
+    expect(decoding(truncated)).toEqual({ kind: "encoding", message: CUT_OFF });
+    expect(decoding("A")).toEqual({ kind: "encoding", message: CUT_OFF });
   });
 
   it("rejects bytes that are not UTF-8 as `encoding`", () => {
     // `____` is 0xff 0xff 0xff: never a valid UTF-8 sequence.
-    expect(kindOf("____")).toBe("encoding");
+    expect(decoding("____")).toEqual({ kind: "encoding", message: NOT_READABLE });
+  });
+
+  /**
+   * M1, and the reason the habit above matters. `new TextDecoder("utf-8", { fatal: true })`
+   * → `{ fatal: false }` survived the mutation run under 33 covering tests, the `____` one
+   * included: with `fatal` off those three bytes decode to U+FFFD, `JSON.parse` then fails,
+   * the kind is still `"encoding"` and the sentence is still the same one, so nothing goes
+   * red. The guard's own comment says it stops a corrupted record being STORED, so the
+   * input that pins it is the one where the mojibake is valid JSON — bytes that damage only
+   * a field. A 2D read that clips a multi-byte character does exactly that: 0xe6 0xbc is 漢
+   * with its third byte lost.
+   */
+  it("refuses bytes that are not UTF-8 even when the mojibake would have parsed", () => {
+    const text = new TextEncoder();
+    const bytes = Uint8Array.from([
+      ...text.encode(`{"v":1,"vin":"${VIN}","n":"`),
+      0xe6,
+      0xbc,
+      ...text.encode('"}'),
+    ]);
+    const body = bytesToBase64Url(bytes);
+    // Neither of the earlier guards can be what answers: this body is base64url and its
+    // length is not 1 mod 4, so it reaches the decoder.
+    expect(body).toMatch(/^[A-Za-z0-9_-]+$/);
+    expect(body.length % 4).not.toBe(1);
+
+    // What `fatal` is standing between the app and. The lossy decode is a payload the
+    // codec accepts, so with the flag off `decodePayload` returns it, §5.3 keys a record
+    // on it and the note renders as a replacement character forever.
+    const lossy = JSON.parse(new TextDecoder("utf-8").decode(bytes)) as Payload;
+    expect(lossy.n).toBe("\uFFFD");
+    expect(decodePayload(toBase64Url(JSON.stringify(lossy)))).toEqual({
+      v: 1,
+      vin: VIN,
+      n: "\uFFFD",
+    });
+
+    // And what it does instead.
+    expect(decoding(body)).toEqual({ kind: "encoding", message: NOT_READABLE });
   });
 
   it("rejects valid base64url that is not JSON as `encoding`", () => {
-    expect(kindOf(toBase64Url("not json at all"))).toBe("encoding");
+    expect(decoding(toBase64Url("not json at all"))).toEqual({
+      kind: "encoding",
+      message: NOT_READABLE,
+    });
   });
 
   it("rejects another version as `version`, naming both versions", () => {
-    const encoded = toBase64Url(JSON.stringify({ ...EXAMPLE, v: 2 }));
-    expect(kindOf(encoded)).toBe("version");
-    try {
-      decodePayload(encoded);
-    } catch (error) {
-      expect((error as PayloadError).message).toContain("version 2");
-      expect((error as PayloadError).message).toContain(`version ${PAYLOAD_VERSION}`);
+    expect(decoding(toBase64Url(JSON.stringify({ ...EXAMPLE, v: 2 })))).toEqual({
+      kind: "version",
+      message: `This payload is version 2; this app reads version ${PAYLOAD_VERSION}.`,
+    });
+  });
+
+  it("rejects a version that is not even a number as `version`, quoting what arrived", () => {
+    // The quotes are the point: a payload announcing `"1"` is not this app's version 1,
+    // and naming it `1` would tell the user their reader is broken (P6, §6.4).
+    expect(decoding(toBase64Url(JSON.stringify({ ...EXAMPLE, v: "1" })))).toEqual({
+      kind: "version",
+      message: `This payload is version "1"; this app reads version ${PAYLOAD_VERSION}.`,
+    });
+  });
+
+  it("rejects a payload zod refuses as `schema`, naming the field at fault", () => {
+    const cases: [unknown, string][] = [
+      [{ v: 1 }, "vin"],
+      [{ v: 1, vin: "NOT A VIN" }, "vin"],
+      // I, O and Q are outside the §4.1 alphabet.
+      [{ v: 1, vin: "1HGCM8263IA004352" }, "vin"],
+      [{ v: 1, vin: VIN, at: "yesterday" }, "at"],
+      [{ v: 1, vin: VIN, mk: 42 }, "mk"],
+    ];
+    for (const [payload, field] of cases) {
+      const json = JSON.stringify(payload);
+      const { kind, message } = decoding(toBase64Url(json));
+      expect(kind, json).toBe("schema");
+      // zod's own wording is not this file's to pin — which field it named is.
+      expect(message, json).toContain(`${SCHEMA}${field} `);
     }
   });
 
-  it("rejects a version that is not even a number as `version`", () => {
-    expect(kindOf(toBase64Url(JSON.stringify({ ...EXAMPLE, v: "1" })))).toBe("version");
+  it("rejects JSON that is not an object as `schema`, naming the payload itself", () => {
+    for (const json of ["[1,2,3]", '"just a string"', "null"]) {
+      const { kind, message } = decoding(toBase64Url(json));
+      expect(kind, json).toBe("schema");
+      // A fault with no path is the payload, not a field whose name came out empty.
+      expect(message, json).toContain(`${SCHEMA}payload `);
+    }
   });
 
-  it("rejects a payload zod refuses as `schema`", () => {
-    expect(kindOf(toBase64Url(JSON.stringify({ v: 1 })))).toBe("schema");
-    expect(kindOf(toBase64Url(JSON.stringify({ v: 1, vin: "NOT A VIN" })))).toBe("schema");
-    // I, O and Q are outside the §4.1 alphabet.
-    expect(kindOf(toBase64Url(JSON.stringify({ v: 1, vin: "1HGCM8263IA004352" })))).toBe("schema");
-    expect(kindOf(toBase64Url(JSON.stringify({ v: 1, vin: VIN, at: "yesterday" })))).toBe("schema");
-    expect(kindOf(toBase64Url(JSON.stringify({ v: 1, vin: VIN, mk: 42 })))).toBe("schema");
-  });
-
-  it("rejects JSON that is not an object as `schema`", () => {
-    expect(kindOf(toBase64Url("[1,2,3]"))).toBe("schema");
-    expect(kindOf(toBase64Url('"just a string"'))).toBe("schema");
-    expect(kindOf(toBase64Url("null"))).toBe("schema");
+  it("names at most three faults, so a bad payload is not a wall of zod (§6.4)", () => {
+    const { message } = decoding(
+      toBase64Url(JSON.stringify({ v: 1, vin: "NOT A VIN", mk: 42, at: "yesterday", u: 7 })),
+    );
+    expect(message.startsWith(SCHEMA)).toBe(true);
+    // Asserted as structure rather than as a zod snapshot: three faults, in schema order,
+    // joined by "; ". Both the cap and the separator survived the mutation run.
+    const named = message.slice(SCHEMA.length).split("; ");
+    expect(named.map((fault) => fault.split(" ")[0])).toEqual(["vin", "mk", "at"]);
+    // `u` is the fourth fault of that payload and is left out — not absent because zod
+    // ignored it, which is what this second decode establishes.
+    expect(decoding(toBase64Url(JSON.stringify({ v: 1, vin: VIN, u: 7 }))).message).toContain(
+      `${SCHEMA}u `,
+    );
   });
 });
 
@@ -529,21 +642,24 @@ describe("parseCarrier", () => {
     expect(() => parseCarrier(`https://vinrelay.example/#/i?d=${toBase64Url("nope")}`)).toThrow(
       PayloadError,
     );
-    try {
-      parseCarrier("VINRELAY1:A");
-    } catch (error) {
-      expect((error as PayloadError).kind).toBe("encoding");
-    }
-    try {
-      parseCarrier("https://vinrelay.example/#/i?d=");
-    } catch (error) {
-      expect((error as PayloadError).kind).toBe("empty");
-    }
-    try {
-      parseCarrier("VINRELAY1:");
-    } catch (error) {
-      expect((error as PayloadError).kind).toBe("empty");
-    }
+    // WAS three bare `try { … } catch { expect(kind) }` blocks, which assert nothing on the
+    // run where nothing is thrown — and the kind alone did not say which of the three
+    // `"encoding"` guards answered (M1). A carrier with a one-character body is a link cut
+    // in transit, and §6.4 says so rather than calling it unreadable.
+    expect(rejection(() => parseCarrier("VINRELAY1:A"))).toEqual({
+      kind: "encoding",
+      message: CUT_OFF,
+    });
+    // A carrier the user recognises with nothing behind the `=`: §6.4's empty state, not
+    // an encoding fault, because there is nothing to fail to decode.
+    expect(rejection(() => parseCarrier("https://vinrelay.example/#/i?d="))).toEqual({
+      kind: "empty",
+      message: NO_PAYLOAD,
+    });
+    expect(rejection(() => parseCarrier("VINRELAY1:"))).toEqual({
+      kind: "empty",
+      message: NO_PAYLOAD,
+    });
   });
 
   it("reads back everything `buildPayloadUrl` and `buildTextCarrier` produce", () => {
@@ -589,13 +705,12 @@ describe("parseCarrier", () => {
     expect(parseCarrier(`https://vinrelay.example/#/i?d=${escaped}`)).toEqual(EXAMPLE);
 
     // ...and a `%` that is not an escape is a damaged body, not another encoding: it is
-    // named by the base64url guard rather than swallowed (P7).
-    expect(() => parseCarrier(`https://vinrelay.example/#/i?d=%zz${body}`)).toThrow(PayloadError);
-    try {
-      parseCarrier(`https://vinrelay.example/#/i?d=%zz${body}`);
-    } catch (error) {
-      expect((error as PayloadError).kind).toBe("encoding");
-    }
+    // named by the base64url guard rather than swallowed (P7). The `%` is what that guard
+    // rejects, so the sentence is the unreadable one and not the cut-off one.
+    expect(rejection(() => parseCarrier(`https://vinrelay.example/#/i?d=%zz${body}`))).toEqual({
+      kind: "encoding",
+      message: NOT_READABLE,
+    });
   });
 
   it("answers every string the D14 guard accepts, and parses nothing it refuses", () => {
