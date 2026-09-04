@@ -272,9 +272,10 @@ export function SettingsScreen() {
           </div>
           <div className="flex justify-between gap-4">
             <dt>Build</dt>
-            {/* Stamped by the bundler at build time, so it cannot go stale the way the
-                hand-written slice number it replaces did. */}
-            <dd className="font-bold text-fg">{import.meta.env.MODE}</dd>
+            {/* The commit the installed app was built from, stamped by the bundler. The
+                §7 item 4 device matrix needs to say which build a phone is running, and
+                both a hand-written slice number and MODE ("production") fail at that. */}
+            <dd className="font-vin font-bold text-fg">{__BUILD_STAMP__}</dd>
           </div>
         </dl>
       </Section>

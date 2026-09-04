@@ -101,4 +101,20 @@ See B3. The glare band is sized to the image diagonal, so it covers far more of 
 | round | typecheck | lint | unit | e2e | coverage (lines/branches) | bench | notes |
 |---|---|---|---|---|---|---|---|
 | baseline | pass | pass | 548 | 16 | 100% / 98.7% | not yet built | state at the end of S3 |
-| 1 | pass | pass | 548 | 16 | 100% / 98.7% | 0 false accepts; 6 threshold cells missed | bench thresholds are not yet a trustworthy verdict — see B1 and B2 |
+| 1 (audit) | pass | pass | 548 | 16 | 100% / 98.7% | 0 false accepts; 6 threshold cells missed | bench thresholds are not yet a trustworthy verdict — see B1 and B2 |
+| 1 (fix) | pass | pass | 613 | 20 | 100% / 98.7% | 0 false accepts; 6 cells missed | 20 findings fixed; reviewer REJECTED the diff on 4 counts |
+| 1 (review fixes) | pass | pass | 613 | 21 | 100% / 98.7% | re-running full | N-01 to N-04 addressed; N-02 verified empirically |
+
+
+## Round 1 review (§13.3 step 3)
+
+The reviewer **rejected** the fix diff on four counts, having measured the behaviour of the parent and head trees rather than reading the code. All four are addressed.
+
+| id | sev | finding | resolution |
+|---|---|---|---|
+| N-01 | S2 | `bench/report.md` was overwritten by a `bench:quick` run — 120 attempts, not the 3,000 §13.4 specifies. It attested "0 false accepts" over a corpus 25× smaller than the ledger claims, and erased the evidence B1 rests on (`code_128` read 100/100/100, hiding the moderate-harder-than-severe inversion). | Full 200-VIN run regenerated and committed. |
+| N-02 | S3→S2 | **A regression the round-1 fix introduced.** `Use as-is` recorded the cooldown *before* awaiting the write, and because the store now outlives the screen, a failed write locked the VIN out for the full 10 s — measured at 10,757 ms against 1,582 ms before the fix, because the remount used to clear it. The user is shown "Scan again" and the scanner ignores the label. | `useAsIs` now reports success like `request` does; the cooldown is recorded only after the write lands, and a failure recovers through `rescan()`, which records nothing. Verified with a broken `IDBObjectStore.put`: the same VIN saves again in 899 ms. Kept as `tests/e2e/scan-failed-write.spec.ts`. |
+| N-03 | S4 | The §6.4 full stop was restored on the scanner path but not the manual one. | Fixed. |
+| N-04 | S4 | The build line was replaced with `import.meta.env.MODE`, which renders "production" — less use than the stale string it replaced, on the one screen §7 item 4 needs to identify a build from. | Stamped with the short commit hash at build time. |
+
+Non-blocking observations recorded rather than actioned: `cooldownStore` never sweeps expired entries (bounded by tab lifetime), three Prettier-only hunks in a props test, and a new microcopy string `"Check this read."` that §6.4 does not contain — supplied under §0 rule 4 because a success-green "Got it ✓" beside a mismatch banner contradicts §6.3, and reported here as required.

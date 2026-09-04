@@ -130,7 +130,7 @@ export function ManualEntry() {
       {pending !== null ? (
         <Banner
           tone="warn"
-          title="Check digit doesn't match"
+          title="Check digit doesn't match."
           actions={
             <>
               {/* h-14 pins the §6.1 56 px target: the Banner action row sets its children

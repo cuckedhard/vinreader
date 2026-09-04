@@ -75,14 +75,20 @@ export function ScanScreen() {
 
   const handleUseAsIs = useCallback(async () => {
     if (pending === null) return;
+    const vin = pending.vin;
     const settings = await getSettings();
-    // §6.3 order for this branch: once Use as-is is chosen, feedback, then the upsert.
-    // `accept` also lifts the machine out of `confirmed`, so a failed write leaves the
-    // screen recoverable rather than frozen on the read.
+    const saved = await saveAsIs();
+    if (!saved) {
+      // The record was never written, so no cooldown may be recorded: `accept` is what
+      // writes it, and the store now outlives this screen, so a premature entry would
+      // make the offered "Scan again" ignore the same label for a full ten seconds.
+      // `rescan` lifts the machine out of `confirmed` without recording anything.
+      rescan();
+      return;
+    }
     scanFeedback(settings);
-    accept(pending.vin);
-    await saveAsIs();
-  }, [pending, accept, saveAsIs]);
+    accept(vin);
+  }, [pending, saveAsIs, accept, rescan]);
 
   const handleRescan = useCallback(() => {
     // §6.3: the read was never persisted, so no cooldown is recorded and the same label

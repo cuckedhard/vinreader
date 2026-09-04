@@ -39,7 +39,7 @@ export interface VinCommitApi {
   error: string | null;
   /** Resolves true when the record was written, false when nothing was. */
   request: (candidate: ExtractResult, meta: VinCommitMeta) => Promise<boolean>;
-  useAsIs: () => Promise<void>;
+  useAsIs: () => Promise<boolean>;
   dismiss: () => void;
 }
 
@@ -111,12 +111,14 @@ export function useVinCommit(): VinCommitApi {
     [write],
   );
 
-  const useAsIs = useCallback(async (): Promise<void> => {
+  // Reports success like `request` does, so the caller can hold the §6.3 cooldown back
+  // until the record actually exists.
+  const useAsIs = useCallback(async (): Promise<boolean> => {
     const meta = metaRef.current;
-    if (pending === null || meta === null) return;
+    if (pending === null || meta === null) return false;
     // The second activation is turned away inside `write`, on the ref: this callback and
     // its `saving` are a render behind the tap that started the first one.
-    await write(pending, meta);
+    return await write(pending, meta);
   }, [pending, write]);
 
   const dismiss = useCallback(() => {
