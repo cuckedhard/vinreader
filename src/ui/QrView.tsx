@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { toCanvas } from "qrcode";
 import { groupVin } from "../lib/vin/grammar";
 
@@ -28,12 +28,54 @@ const INK = "#000000";
 const PAPER = "#ffffff";
 
 /**
- * Big enough to scan from arm's length across a truck hood, small enough to fit the
- * short side of a phone in landscape with the caption still on screen.
+ * The floor, in CSS px. A §4.9 payload at the 700-byte cap is a version-18 code — 89 modules,
+ * 93 with the quiet zone — so 200 px is 2.15 px per module, and physically ~53 mm across. The
+ * usual working rule for a phone camera is a scanning distance of about ten times the code's
+ * width, so 200 px is a code read from roughly half a metre: across a table, or a truck bed,
+ * which is what §9-S3's "show QR, scan QR" has to survive. Below this the code stops being the
+ * thing the other phone can read, so nothing here shrinks past it — if the viewport is too
+ * short to hold a 200 px code *and* the chrome, the overlay scrolls instead: it is the box the
+ * code sits in (`boxRef` below) that carries this as its `min-height`, so the code stays whole
+ * and the scrollbar is what gives. Measured, that starts under ~250 px of viewport height in
+ * landscape and under ~400 px in portrait, i.e. below every phone and every window in the gate.
  */
-function fitSize(): number {
-  const shortest = Math.min(window.innerWidth, window.innerHeight);
-  return Math.max(200, Math.min(Math.round(shortest * 0.74), 520));
+const MIN_CODE_PX = 200;
+
+/** Past this a bigger code buys a desktop nothing and just costs the rest of the layout room. */
+const MAX_CODE_PX = 520;
+
+/**
+ * A *visual* inset, not a reservation for the caption: the code stops short of the edges the
+ * hand is holding, so a glove or a thumb on the bezel does not land on a finder pattern (§6.1,
+ * "one hand free"). The room the caption and Close need is measured, not budgeted — see below.
+ */
+const CODE_INSET = 0.74;
+
+/**
+ * The code is the smallest of three bounds:
+ *
+ *  1. **the box actually left for it** — `box`, the measured content rect of the one flex item
+ *     the code lives in. Everything else in the overlay (the brightness hint, the grouped VIN,
+ *     the optional note, Close, the gaps between them and the dialog's padding) takes its space
+ *     first and the code flexes into the remainder, so adding a line of caption shrinks the code
+ *     by that line with no constant here to keep in step. That is R4-I: the old version took 74%
+ *     of the viewport's shorter side and reserved *nothing* for chrome, so whenever the shorter
+ *     side was the height — a phone held sideways, a short desktop window — the ~207 px of chrome
+ *     went below the fold and took the way out with it;
+ *  2. `CODE_INSET` of the viewport's shorter side;
+ *  3. `MAX_CODE_PX`.
+ *
+ * Floored at `MIN_CODE_PX`, which wins over all three: an unscannable code is not a smaller
+ * problem than a scrollbar.
+ *
+ * `box` is null only for the first render, before there is an element to measure; the viewport
+ * inset is the opening guess and the layout effect below corrects it before the frame is painted.
+ */
+function fitSize(box: { w: number; h: number } | null): number {
+  const inset = Math.round(Math.min(window.innerWidth, window.innerHeight) * CODE_INSET);
+  // Floor, not round: the box is what the code has to stay inside, to the subpixel.
+  const room = box === null ? inset : Math.floor(Math.min(box.w, box.h));
+  return Math.max(MIN_CODE_PX, Math.min(room, inset, MAX_CODE_PX));
 }
 
 /** Draw at device pixels so the module edges stay hard; capped so huge DPRs stay cheap. */
@@ -48,18 +90,37 @@ function pixelRatio(): number {
 export function QrView({ value, vin, note, onClose }: QrViewProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const dialogRef = useRef<HTMLDialogElement>(null);
-  const [size, setSize] = useState(() => fitSize());
+  const boxRef = useRef<HTMLDivElement>(null);
+  const [size, setSize] = useState(() => fitSize(null));
   const [failed, setFailed] = useState(false);
 
-  useEffect(() => {
-    const update = () => setSize(fitSize());
-    window.addEventListener("resize", update);
-    window.addEventListener("orientationchange", update);
-    return () => {
-      window.removeEventListener("resize", update);
-      window.removeEventListener("orientationchange", update);
-    };
+  const measure = useCallback((node: HTMLElement) => {
+    const rect = node.getBoundingClientRect();
+    // Same number ⇒ React bails out, so a resize that changes nothing redraws nothing.
+    setSize(fitSize({ w: rect.width, h: rect.height }));
   }, []);
+
+  /**
+   * A `ResizeObserver` on the code's own box rather than a `resize` listener on the window: the
+   * box is what the code has to fit, and it moves for reasons the window does not report — the
+   * caption rewrapping, the note line appearing, the failure line appearing. It subsumes the
+   * window listeners this replaces, because the box is anchored to `inset-0` and so changes on
+   * every viewport resize and every orientation change that changes it at all.
+   *
+   * It cannot feed back on itself: the box is `flex-1` from a zero basis with a fixed minimum,
+   * so its size is a function of the viewport and the other rows, never of the canvas inside it.
+   *
+   * A layout effect, and it measures once by hand before subscribing: the observer's first
+   * delivery is early enough not to be seen, but the opening guess should not be painted at all.
+   */
+  useLayoutEffect(() => {
+    const node = boxRef.current;
+    if (node === null) return;
+    measure(node);
+    const observer = new ResizeObserver(() => measure(node));
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [measure]);
 
   /**
    * §6.6 — Tab, Escape and the focus ring have to work here too, and this is the one screen
@@ -168,6 +229,11 @@ export function QrView({ value, vin, note, onClose }: QrViewProps) {
     // stating them again is how the two drift apart. The size utilities are not decoration:
     // the UA sizes a dialog to its contents and caps it below the viewport, and this one is
     // a light field for a camera to read, edge to edge.
+    //
+    // `justify-start`, not `justify-center`: the group below grows into every spare pixel, so
+    // the two are identical until the overlay overflows — and a centred overflow in a scroll
+    // container puts its top out of reach of the scrollbar. Measured before this fix on a
+    // 658 × 320 phone: the brightness hint sat at y = −46 with no way to scroll up to it.
     <dialog
       ref={dialogRef}
       aria-label={`QR code for VIN ${groupVin(vin)}`}
@@ -178,51 +244,85 @@ export function QrView({ value, vin, note, onClose }: QrViewProps) {
         event.preventDefault();
         onClose();
       }}
-      className="fixed inset-0 z-50 flex h-full max-h-none w-full max-w-none flex-col items-center justify-center gap-4 overflow-y-auto p-4"
+      className="fixed inset-0 z-50 flex h-full max-h-none w-full max-w-none flex-col items-center justify-start gap-4 overflow-y-auto p-4"
       style={{ backgroundColor: PAPER, color: INK }}
     >
       <p className="max-w-[520px] text-center text-base leading-snug" style={{ color: INK }}>
         {BRIGHTNESS_HINT}
       </p>
 
-      {failed ? (
-        <p
-          className="max-w-[520px] text-center text-base leading-snug font-bold"
-          style={{ color: INK }}
+      {/*
+        Two groups, and the direction between them is the whole of R4-I's fix: stacked while the
+        screen is taller than it is wide, side by side once it is not. A phone held sideways has
+        no spare height for a column — 320 px of it, less ~207 px of chrome, leaves 113 px, under
+        the floor a code has to keep — but it has spare *width*, and this spends it. Measured
+        after: the code is 228 px on a 658 × 320 galaxy-s9 (was 237), 305 on an 839 × 412 pixel-7
+        (unchanged) and 426 in a 1024 × 576 window (unchanged), so at most 9 px of code buys back
+        a Close button that was 46 px under the fold, and nothing in the overlay scrolls.
+      */}
+      <div className="flex min-h-0 w-full flex-1 flex-col items-center justify-center gap-4 landscape:flex-row">
+        {/*
+          The one item that flexes: the code's box is whatever is left after every other row has
+          taken its height (or, in landscape, its width). `flex-1` from a zero basis is what makes
+          that "the remainder" rather than "the canvas's own size", and the minimum is the floor —
+          when the viewport is too small to hold both, the box keeps the code readable and the
+          dialog scrolls (it is `overflow-y-auto`, and Escape and the focus trap do not care).
+        */}
+        <div
+          ref={boxRef}
+          className="flex flex-1 items-center justify-center self-stretch"
+          style={{ minWidth: MIN_CODE_PX, minHeight: MIN_CODE_PX }}
         >
-          This code couldn&apos;t be drawn. Use Share, Copy link or Download JSON instead.
-        </p>
-      ) : null}
+          {failed ? (
+            <p
+              className="max-w-full text-center text-base leading-snug font-bold"
+              style={{ color: INK }}
+            >
+              This code couldn&apos;t be drawn. Use Share, Copy link or Download JSON instead.
+            </p>
+          ) : null}
 
-      {/* Kept mounted while `failed` so the redraw on the next resize has a canvas to use. */}
-      <canvas
-        ref={canvasRef}
-        className={failed ? "hidden" : "block"}
-        style={{ width: `${size}px`, height: `${size}px`, backgroundColor: PAPER }}
-      />
+          {/* Kept mounted while `failed` so the redraw on the next resize has a canvas to use.
+              `shrink-0`: the box is a flex container, and a code squeezed narrower than its
+              backing store is the R4-H shape of failure again, one axis at a time. */}
+          <canvas
+            ref={canvasRef}
+            className={failed ? "hidden" : "block shrink-0"}
+            style={{ width: `${size}px`, height: `${size}px`, backgroundColor: PAPER }}
+          />
+        </div>
 
-      <p
-        className="max-w-full text-center font-vin text-[18px] font-semibold break-words"
-        style={{ color: INK }}
-      >
-        {groupVin(vin)}
-      </p>
+        {/*
+          `min-w-[var(--tap)]`: in the landscape row this column and the code split the width, and
+          §6.1's 48 px floor is not something a narrow window gets to negotiate away. A viewport
+          under 200 + 16 + 48 + 32 = 296 px wide cannot hold the code, the gap, a legal target and
+          the padding at once; there the overlay scrolls rather than shrinking either one.
+        */}
+        <div className="flex w-full max-w-[520px] min-w-[var(--tap)] flex-col items-center gap-4 landscape:flex-1">
+          <p
+            className="max-w-full text-center font-vin text-[18px] font-semibold break-words"
+            style={{ color: INK }}
+          >
+            {groupVin(vin)}
+          </p>
 
-      {note !== undefined ? (
-        <p className="max-w-[520px] text-center text-sm leading-snug" style={{ color: INK }}>
-          {note}
-        </p>
-      ) : null}
+          {note !== undefined ? (
+            <p className="max-w-full text-center text-sm leading-snug" style={{ color: INK }}>
+              {note}
+            </p>
+          ) : null}
 
-      {/* §6.1: the way out is a 56 px target, not a gesture (N5). */}
-      <button
-        type="button"
-        onClick={onClose}
-        className="min-h-[var(--tap-lg)] w-full max-w-[520px] rounded-[var(--radius)] border-2 px-6 text-lg font-bold active:opacity-80"
-        style={{ borderColor: INK, color: INK, backgroundColor: PAPER }}
-      >
-        Close
-      </button>
+          {/* §6.1: the way out is a 56 px target, not a gesture (N5). */}
+          <button
+            type="button"
+            onClick={onClose}
+            className="min-h-[var(--tap-lg)] w-full rounded-[var(--radius)] border-2 px-6 text-lg font-bold active:opacity-80"
+            style={{ borderColor: INK, color: INK, backgroundColor: PAPER }}
+          >
+            Close
+          </button>
+        </div>
+      </div>
     </dialog>
   );
 }

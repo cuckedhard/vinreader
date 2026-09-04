@@ -122,7 +122,8 @@ test("exports every saved record as a JSON bundle and as CSV", async ({ page }) 
  *     resolution on a 3x screen is mush, so "make it fit" must not be done by dropping the
  *     multiply;
  *  3. the way out is on screen without scrolling and is a §6.1-sized target;
- *  4. and all of that survives a resize, which re-runs the draw.
+ *  4. nothing in the overlay needs scrolling to reach at all (R4-I);
+ *  5. and all of that survives a resize and a rotation, which re-run the draw.
  */
 
 /** Mirrors the cap in `pixelRatio()` in `src/ui/QrView.tsx`. Two places, on purpose: if the cap
@@ -140,6 +141,9 @@ interface QrGeometry {
   /** The painted CSS box, which is what the other phone's camera sees. */
   canvas: { x: number; y: number; w: number; h: number };
   overlay: { x: number; y: number; w: number; h: number };
+  /** The overlay's scroll box: `scrollHeight > clientHeight` is content the user has to go and
+   *  find, and `scrollTop > 0` is content the browser has already had to go and find for them. */
+  scroll: { height: number; client: number; top: number };
   close: { x: number; y: number; w: number; h: number };
   /** What is actually on top at the centre of each: a control nothing can hit is not a control. */
   topAtCanvasCentre: string;
@@ -174,6 +178,11 @@ async function qrGeometry(page: Page): Promise<QrGeometry> {
       backing: { w: canvas.width, h: canvas.height },
       canvas: canvasBox,
       overlay: box(overlay),
+      scroll: {
+        height: overlay.scrollHeight,
+        client: overlay.clientHeight,
+        top: overlay.scrollTop,
+      },
       close: closeBox,
       topAtCanvasCentre: topAt(canvasBox, canvas),
       topAtCloseCentre: topAt(closeBox, close),
@@ -231,32 +240,83 @@ async function expectAScannableQr(page: Page) {
       `Close bottom vs the fold: ${JSON.stringify(g)}`,
     ).toBeLessThanOrEqual(g.viewport.h);
     expect(g.topAtCloseCentre).toBe("itself");
+
+    // 4. And nothing else in the overlay is off the fold either. §6.1's reality is gloves, cold
+    //    hands and one free hand: a full-screen overlay whose brightness hint or way out has to
+    //    be scrolled to is not usable there, and the overlay sizes the code precisely so that it
+    //    does not have to be. Stated as the whole box rather than as "Close is visible" because
+    //    the browser scrolls a focused button into view by itself — which is how an overlay that
+    //    overflows by 49 px still shows Close, with the top of the code off screen instead.
+    expect(
+      g.scroll.height,
+      `the overlay needs scrolling to read in full: ${JSON.stringify(g)}`,
+    ).toBeLessThanOrEqual(g.scroll.client);
+    expect(g.scroll.top).toBe(0);
   }).toPass({ timeout: 10_000 });
 }
 
-test("shows a scannable QR for the record", async ({ page }) => {
+/** Import a record, land on its sheet, and open the QR overlay from the button that owns it. */
+async function openQr(page: Page) {
   await page.goto(`/#/i?d=${PAYLOAD}`);
   await page.getByRole("button", { name: /^import$/i }).click();
   await expect(page).toHaveURL(new RegExp(`#/v/${VIN}`));
 
   await page.getByRole("button", { name: /qr code/i }).click();
   await expect(page.locator("canvas")).toBeVisible();
+}
+
+test("shows a scannable QR for the record", async ({ page }) => {
+  await openQr(page);
   await expectAScannableQr(page);
 
-  // 4. Redraw on resize is the other path that can put a pixel-sized box on screen: the
-  //    library re-runs and writes its inline size again, after React has already written the
-  //    new one. Narrow the window so the code actually changes size on every profile — a
-  //    resize that computes the same size never re-renders and so proves nothing.
-  //
-  //    Deliberately still portrait. The overlay sizes the code off the *shorter* side of the
-  //    viewport, and when that side is the height it does not reserve room for its own caption
-  //    and Close button: at 1024 x 576 (DPR 1) Close lands at y = 588.5 on a 576 px viewport.
-  //    That is a separate finding, reported, not this guard's subject — and not something to
-  //    launder by never resizing.
+  // Redraw on resize is the other path that can put a pixel-sized box on screen: the library
+  // re-runs and writes its inline size again, after React has already written the new one.
+  // Narrow the window so the code actually changes size on every profile — a resize that
+  // computes the same size never re-renders and so proves nothing.
   const before = await qrGeometry(page);
   await page.setViewportSize({
     width: Math.round(Math.min(before.viewport.w, before.viewport.h) * 0.8),
     height: before.viewport.h,
   });
+  await expectAScannableQr(page);
+});
+
+/**
+ * R4-I. Every profile in this gate starts portrait, so the case where the viewport's shorter
+ * side is its *height* — a phone held sideways, a short desktop window — was the one geometry
+ * nothing here had ever looked at, and it was the one that was broken: the overlay sized the
+ * code off the shorter side and reserved nothing for the ~207 px of chrome that does not shrink
+ * (brightness hint, grouped VIN, three 16 px gaps, 32 px of padding, a 56 px button).
+ *
+ * Measured against the component before the fix, all three below failed on assertion 4 and two
+ * of them on assertion 3 as well:
+ *
+ * | viewport             | code | Close bottom vs fold | overlay scroll |
+ * |----------------------|------|----------------------|----------------|
+ * | 658 × 320 galaxy-s9  | 237  | 366 vs 320 — 46 under| 382 / 320      |
+ * | 839 × 412 pixel-7    | 305  | 446 vs 412 — 34 under| 462 / 412      |
+ * | 1024 × 576 desktop   | 426  | 588.5 vs 576 — 12.5  | 605 / 576      |
+ *
+ * and on all three the brightness hint was centred *above* the top of the scroll box (y = −46 on
+ * the phone), where no amount of scrolling reaches it.
+ *
+ * Rotating the profile's own viewport rather than hard-coding two phone sizes: the numbers then
+ * come from `playwright.config.ts`, and a device added there is covered here for free.
+ */
+test("the code and the way out stay on screen when the short side is the height", async ({
+  page,
+}) => {
+  await openQr(page);
+  const upright = await qrGeometry(page);
+  await expectAScannableQr(page);
+
+  // The same phone, held sideways. (On the desktop project this is the reverse rotation, which
+  // is a fair resize but not this finding — the short window below is the desktop's case.)
+  await page.setViewportSize({ width: upright.viewport.h, height: upright.viewport.w });
+  await expectAScannableQr(page);
+
+  // A short window on a wide screen: the same geometry with no rotation to blame it on, and the
+  // one shape of it that a laptop can produce (§6.6 — this app runs on desktop Chrome too).
+  await page.setViewportSize({ width: 1024, height: 576 });
   await expectAScannableQr(page);
 });
