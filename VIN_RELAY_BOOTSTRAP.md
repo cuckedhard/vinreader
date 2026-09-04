@@ -100,19 +100,21 @@ Display grouping (always, monospace): `WMI VDS C Y P SERIAL` → e.g. `1HG CM826
 1. Uppercase. Strip whitespace and `*` (Code 39 start/stop, if a decoder ever passes them through).
 2. Split the string into **runs** of allowed characters (`[A-HJ-NPR-Z0-9]+`). Any other character is a separator.
 3. Over every run of length ≥ 17, slide a 17-char window. Collect windows that match the grammar.
-4. Choose, in order: (a) if exactly one **distinct** VIN among the windows has a valid check digit, that VIN; (b) if none has, and exactly one grammar-valid window exists at all, that window with `checkDigitValid = false`; (c) otherwise → `NO_VIN`.
+4. Choose, in order: (a) if exactly one **distinct** VIN among the windows has a valid check digit **and that window is an entire run**, that VIN; (b) if none has, and exactly one grammar-valid window exists at all, that window with `checkDigitValid = false`; (c) otherwise → `NO_VIN`.
 
 Uniqueness in (a) is by VIN, not by window: the same VIN found at two offsets is one answer, not two. (b) counts windows, because an identifier with no check digit is only locatable when it is a run of its own — a long run of repeated characters collapses to one distinct string without becoming any less of a guess.
 
 **Why uniqueness and not precedence.** Roughly one window in eleven passes the check digit by chance, so a window straddling the boundary between a VIN and whatever else is printed beside it validates too. A label reading `UNIT B` above the VIN yielded `TB1HGCM82633A0043` marked check-digit-valid, and nothing downstream could tell it from a real read: §6.3's two-read agreement holds because a 2D code decodes identically every frame, and §4.3's gate is satisfied because the check digit genuinely matches. Ranking the candidates — by run alignment or by position — only chooses which wrong answer to show. When several distinct VINs validate, the run is ambiguous, and N2 requires showing nothing rather than picking one.
 
-**Known limit, and it is deliberate.** A run that contains more than one plausible VIN yields `NO_VIN`, and so does an identifier carrying no check digit unless it is a run of its own. Both are the normal case on real labels: a door-jamb barcode holds the VIN alone, the ANSI `I` data identifier splits off, and delimited payloads (JSON, separated text) split into runs. An undelimited multi-field payload is refused rather than guessed at; the user rescans or types.
+Uniqueness turned out to be necessary and not sufficient (R4-A). An identifier that fails its check digit, or carries none, never enters the contest, so uniqueness alone still let a lone chance-passing straddle win. A window is therefore returned only when it is the whole run. Measured: that takes the fabrication rate to zero on both populations — 0 of 133,328 identifiers carrying no check digit and 0 of 60,755 misread VINs — while leaving a bare code, an `I`-prefixed label, a VIN in JSON and punctuation-delimited text all at 100%.
+
+**Known limit, and it is deliberate.** A run that contains more than one plausible VIN yields `NO_VIN`, and so does an identifier — carrying a check digit or not — unless it is a run of its own (R4-A). A run longer than 17 characters holds one window per offset, and the window that passes §4.3 is as likely to be a straddle as the identifier, because on a misread it is precisely the identifier that fails; the bytes cannot say which is which. Both are the normal case on real labels: a door-jamb barcode holds the VIN alone, the ANSI `I` data identifier splits off, and delimited payloads (JSON, separated text) split into runs. An undelimited multi-field payload is refused rather than guessed at; the user rescans or types.
 5. Return `{ vin, raw, checkDigitValid }`.
 
 Covered cases (these are tests):
 - Plain 17-char Code 39 → the VIN.
 - **Leading `I`** (ANSI MH10.8.2 data identifier for VIN, common on door labels): `I1HGCM82633A004352` → `I` is not an allowed char, so it splits off → `1HGCM82633A004352`.
-- A 2D code carrying JSON or delimited text that contains the VIN → extracted from the run.
+- A 2D code carrying JSON or delimited text that contains the VIN → extracted **when the delimiters leave it a run of its own**. JSON and punctuation do; whitespace does not, because step 1 strips it before step 2 splits.
 - Garbage / partial reads → `NO_VIN`, scanner keeps going.
 
 ### 4.3 Check digit (position 9)
