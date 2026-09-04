@@ -1,0 +1,78 @@
+# Local Supabase stack for VIN Relay (§2, §4.12). `supabase start` reads this file and brings up
+# Postgres, GoTrue, PostgREST, Realtime, Storage, Studio and the edge runtime in Docker, then
+# applies everything in supabase/migrations/.
+#
+# Deliberately small. Every key the CLI understands has a default, and a key this file does not
+# set is a key that cannot drift from the CLI's own idea of a sane local stack — while an
+# unrecognised key stops `supabase start` outright. Keys that are useful but only exist in newer
+# CLI releases are left commented, with what they do, rather than guessed at.
+
+project_id = "vin-relay"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+# The §4.12 pull pages at 500, so the default ceiling is never the thing that truncates a page.
+max_rows = 1000
+
+[db]
+port = 54322
+shadow_port = 54320
+# `major_version` is intentionally unset: the schema in 0001_init.sql uses nothing newer than
+# statement triggers with transition tables (PostgreSQL 10), so the CLI's default major version
+# is always sufficient and pinning one here would only go stale.
+
+[studio]
+enabled = true
+port = 54323
+
+# The local mail catcher. `supabase start` prints its URL; sign-in codes land there instead of in
+# a real inbox.
+[inbucket]
+enabled = true
+port = 54324
+
+[realtime]
+enabled = true
+
+[auth]
+enabled = true
+# The dev server runs over HTTPS because the camera needs a secure context (N4, §2).
+site_url = "https://localhost:5173"
+additional_redirect_urls = ["https://localhost:5173", "http://localhost:5173"]
+jwt_expiry = 3600
+enable_refresh_token_rotation = true
+refresh_token_reuse_interval = 10
+enable_signup = true
+
+[auth.email]
+enable_signup = true
+double_confirm_changes = true
+# Local only: a new address is usable immediately instead of waiting on a confirmation click.
+# It does not affect the §4.12 sign-in flow, which is `signInWithOtp` with a 6-digit code.
+enable_confirmations = false
+# The 6-digit code is GoTrue's default OTP length, so it is not set here. If a CLI release
+# changes that default, pin it:
+# otp_length = 6
+# otp_expiry = 3600
+
+# §4.12: "the email template must include the token". GoTrue's stock magic-link template sends a
+# link and no code, so the code the sign-in screen asks for never arrives. Fix it in both places:
+# hosted, in Authentication → Email Templates → Magic Link, add {{ .Token }}; locally, write a
+# template containing {{ .Token }} and point this at it (the file does not exist yet — see
+# supabase/README.md).
+# [auth.email.template.magic_link]
+# subject = "Your VIN Relay sign-in code"
+# content_path = "./supabase/templates/magic_link.html"
+
+# For CI, a fixed code for one address, with no mail sent at all. Needs a recent CLI:
+# [auth.email.test_otp]
+# "ci@vinrelay.test" = "123456"
+
+[functions.delete-account]
+# Belt: the platform rejects a request with no valid JWT before the function is invoked.
+# Braces: the function verifies the caller itself, because the anon key is also a valid JWT and
+# would pass this gate. Both are needed — see functions/delete-account/index.ts.
+verify_jwt = true
