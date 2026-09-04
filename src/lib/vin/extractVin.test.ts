@@ -21,6 +21,8 @@ describe("extractVin", () => {
   });
 
   it("picks the check-valid window out of an 18-character run", () => {
+    // §4.11 fixture. Both windows of this run carry a check digit, so the one that fails
+    // is genuinely refuted and the one that passes is the answer (Z6).
     const raw = `${VALID}1`;
     expect(extractVin(raw)).toEqual({ vin: VALID, raw, checkDigitValid: true });
   });
@@ -55,6 +57,31 @@ describe("extractVin", () => {
     // Several distinct windows pass the check digit here, so §4.2 4(a) yields NO_VIN
     // rather than ranking them and showing the winner as fact (N2).
     expect(extractVin("1HGCM82633A0043531HGCM82633A004352")).toBeNull();
+  });
+
+  it("refuses a run holding a window the check digit cannot speak for (Z6)", () => {
+    // A JCB PIN behind a field label. `JCB4CX00CJ2345678` has a letter at position 9, so
+    // §4.3 never tests it and failing the check digit does not refute it; the only window
+    // that validates is the straddle `NJCB4CX00CJ234567`, which used to be returned as
+    // fact. The run is ambiguous between the two and N2 refuses it.
+    expect(extractVin("PIN JCB4CX00CJ2345678")).toBeNull();
+    // The cost, stated as a test: an ordinary VIN with a stray legal character beside it
+    // is refused too when the character puts an untested window in the run. Here the year
+    // code is a letter, so the offset-1 window carries no check digit.
+    const yearLetter = (() => {
+      const body = "1HGCM8263AA004352";
+      return body.slice(0, 8) + expectedCheckDigit(body) + body.slice(9);
+    })();
+    expect(yearLetter[9]).toBe("A");
+    expect(extractVin(`${yearLetter}9`)).toBeNull();
+  });
+
+  it("still reads a VIN whose own run is settled when another run is not (Z6)", () => {
+    // Scoped to the run, because only a window inside the same run can straddle this one.
+    // §4.2's covered cases include a 2D code carrying JSON, whose other fields — here a
+    // machine PIN that carries no check digit — split off into runs of their own.
+    const raw = `{"pin":"JCB4CX00CJ2345678","vin":"${VALID}"}`;
+    expect(extractVin(raw)).toEqual({ vin: VALID, raw, checkDigitValid: true });
   });
 
   it("falls back to the only interior window when nothing is run-aligned", () => {

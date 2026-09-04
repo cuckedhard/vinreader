@@ -8,10 +8,12 @@
  * by requiring the chosen window to be the only distinct VIN that validates, so they now
  * assert the hazard is CLOSED. They are the regression guard for it.
  *
- * The tests marked [R2-F] pin a SECOND straddle that Z1's rule cannot reach, found in
- * round 2 and open on the NEEDS-ZACH list as Z6. They assert the current, wrong
- * behaviour on purpose, so the defect is executable and so they fail the moment §4.2 is
- * corrected. Read the block comment above them before touching them.
+ * The tests marked [R2-F] pinned a SECOND straddle that Z1's rule could not reach: an
+ * identifier carrying no check digit (§4.3) never competes, so the one window that
+ * validated was a straddle and step 4(a) returned it as fact. Zach resolved it (ledger
+ * Z6) by requiring the winning window to sit in a run the check digit can speak for —
+ * one in which every window carries a check digit — so they now assert the hazard is
+ * CLOSED, and they are the regression guard for it.
  */
 
 import { describe, expect, it } from "vitest";
@@ -92,71 +94,90 @@ describe("[A-01] §4.2 refuses a run that holds more than one plausible VIN", ()
 });
 
 /**
- * [R2-F] CHARACTERISATION, NOT APPROVAL. These tests assert what §4.2 does TODAY, and the
- * behaviour they pin is a defect: ledger Z6, severity S1, open on the NEEDS-ZACH list.
+ * [R2-F] CLOSED. These tests pinned a §4.2 false accept and now guard against its return.
  *
  * Z1 closed the straddle for identifiers that carry a check digit, because a real VIN
  * validates and therefore competes — two distinct valid VINs make the run ambiguous and
  * step 4(a) refuses. An off-highway machine PIN carries no ISO 3779 check digit at all
- * (§4.3 `checkDigitApplies`, §4.7 puts those vehicles in scope), so it can never enter
- * that contest. Exactly one window validates, that window is not the identifier, and
- * step 4(a) returns it as fact with `checkDigitValid: true`. Step 4(b) never runs.
+ * (§4.3 `checkDigitApplies`, §4.7 puts those vehicles in scope), so it could never enter
+ * that contest: exactly one window validated, that window was not the identifier, and
+ * step 4(a) returned it as fact with `checkDigitValid: true`.
  *
- * §4.2's own prose already states the intended behaviour — "an identifier carrying no
- * check digit [yields NO_VIN] unless it is a run of its own" — and step 4(a), which
- * fires first, does not implement it. Closing that gap changes a §4 constant, so no
- * agent may do it (CLAUDE.md rule 2). These tests exist so the hazard is executable
- * rather than a paragraph, and so THEY FAIL THE MOMENT §4.2 IS CORRECTED. When Zach
- * picks an option in Z6, flip them to assert the refusal, as [A-01] was flipped.
+ * Zach resolved it (ledger Z6) by finishing the sentence §4.2's own "Known limit" prose
+ * already wrote — "an identifier carrying no check digit [yields NO_VIN] unless it is a
+ * run of its own". Step 4(a) now settles a run only when every window in it carries a
+ * check digit and can therefore be refuted by one; a run holding an untested window is
+ * ambiguous between a printed identifier and a chance-validating overlap, and N2 refuses
+ * it. A run of its own still reads, through step 4(b).
  */
-describe("[R2-F] §4.2 replaces a no-check-digit identifier with a straddling window (Z6, OPEN)", () => {
+describe("[R2-F] §4.2 refuses a run in which an untested window could be the identifier (Z6)", () => {
   // Position 9 is "C", so §4.3 says this identifier carries no check digit at all.
   const PIN = "JCB4CX00CJ2345678";
 
   it("carries no check digit, so it can never win step 4(a) on its own merits", () => {
     expect(checkDigitApplies(PIN)).toBe(false);
     expect(isCheckDigitValid(PIN)).toBe(false);
-    // Alone, it is a run of its own: exactly one window, so step 4(b) returns it.
+    // Alone, it is a run of its own: exactly one window, so step 4(b) returns it. §4.3
+    // exists so this vehicle is not told its read is wrong, and it still is not.
     expect(extractVin(PIN)).toEqual({ vin: PIN, raw: PIN, checkDigitValid: false });
   });
 
-  it("is replaced by a VIN nobody printed as soon as one field precedes it", () => {
-    const got = extractVin(`PIN ${PIN}`);
-    // The defect, stated as an assertion: not null, not the PIN, and marked valid.
-    expect(got).not.toBeNull();
-    expect(got?.vin).not.toBe(PIN);
-    expect(got?.vin).toBe("NJCB4CX00CJ234567");
-    expect(got?.checkDigitValid).toBe(true);
+  it("is refused, not replaced, as soon as another field shares its run", () => {
+    expect(extractVin(`PIN ${PIN}`)).toBeNull();
+    // `NJCB4CX00CJ234567` is the window that used to come back marked check-digit-valid.
+    // It still passes §4.3 — that is why nothing downstream could ever have caught it —
+    // so what changed is that the run is refused, not that the window stopped validating.
+    expect(isCheckDigitValid("NJCB4CX00CJ234567")).toBe(true);
+    for (const raw of [`SN ${PIN}`, `UNIT 42 ${PIN}`, `${PIN} 01`, `PIN ${PIN} USA`]) {
+      expect(extractVin(raw), raw).toBeNull();
+    }
+    // A separator instead of a space leaves the PIN a run of its own, and it reads.
+    expect(extractVin(`PIN: ${PIN}`)).toEqual({
+      vin: PIN,
+      raw: `PIN: ${PIN}`,
+      checkDigitValid: false,
+    });
   });
 
-  it("does it often enough to matter: 5% of prefixed off-highway reads", () => {
-    // Deterministic LCG, same shape as the [A-01] measurement above, so the rate in the
-    // Z6 ledger entry is reproducible from the suite rather than from a scratch script.
-    let seed = 0x2c6b;
-    const rng = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
-    const pick = <T>(from: readonly T[]) => from[Math.floor(rng() * from.length)]!;
-    const pickChar = (s: string) => s[Math.floor(rng() * s.length)]!;
-    // "X" excluded: it is a legal check character, so a PIN ending its ninth position
-    // with X would carry a check digit and belong to the class Z1 already closed.
+  it("fabricates none now: 0 of 2,000 prefixed, 0 of 5,000 prefixed and suffixed", () => {
+    // The same deterministic generator that measured the defect, so the before and after
+    // are the same population and the ledger's number is reproducible from the suite.
+    // "X" excluded at position 9: it is a legal check character, so a PIN carrying one
+    // would belong to the class Z1 already closed.
     const NO_CHECK = ALPHABET.replace(/[0-9X]/g, "");
     const PREFIXES = ["PIN ", "UNIT B ", "SN ", "P/N ", "ID: ", "A ", "MDL 4CX "];
+    const SUFFIXES = [" 01", " USA", " REV C", " 2019", " B", " KG 4200", " CAT"];
 
-    let fabricated = 0;
-    const N = 2000;
-    for (let i = 0; i < N; i += 1) {
-      let id = "";
-      for (let j = 0; j < 17; j += 1) id += j === 8 ? pickChar(NO_CHECK) : pickChar(ALPHABET);
-      const got = extractVin(pick(PREFIXES) + id);
-      if (got !== null && got.vin !== id) fabricated += 1;
-    }
-    // Measured: 103 of 2000, 5.1%. A field printed AFTER the identifier as well as before
-    // roughly doubles it, to 11.1% over 5000 (recorded in ledger Z6) — every extra
-    // character adds another window and another one-in-eleven chance to validate.
-    //
-    // The assertion is a floor well under that, not the measurement itself: a floor keeps
-    // a partial fix from reading as a full one without making the test brittle about a
-    // number no rule depends on. §13.6 criterion 4 wants this at zero.
-    expect(fabricated).toBeGreaterThan(50);
+    const measure = (seed0: number, n: number, suffixed: boolean) => {
+      let seed = seed0;
+      const rng = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
+      const pick = <T>(from: readonly T[]) => from[Math.floor(rng() * from.length)]!;
+      const pickChar = (s: string) => s[Math.floor(rng() * s.length)]!;
+      let fabricated = 0;
+      let read = 0;
+      for (let i = 0; i < n; i += 1) {
+        let id = "";
+        for (let j = 0; j < 17; j += 1) id += j === 8 ? pickChar(NO_CHECK) : pickChar(ALPHABET);
+        const raw = pick(PREFIXES) + id + (suffixed ? pick(SUFFIXES) : "");
+        const got = extractVin(raw);
+        if (got === null) continue;
+        if (got.vin === id) read += 1;
+        else fabricated += 1;
+      }
+      return { fabricated, read };
+    };
+
+    // §13.6 criterion 4 is zero false accepts, so this asserts the count, not a ceiling.
+    // Before Z6 the same two draws gave 103 and 673 fabrications (5.2% and 13.5%) — a
+    // field printed after the identifier as well as before roughly doubles the rate,
+    // because every extra character adds another window and another one-in-eleven chance.
+    const prefixed = measure(0x2c6b, 2000, false);
+    expect(prefixed.fabricated).toBe(0);
+    expect(measure(0x5aff, 5000, true).fabricated).toBe(0);
+    // And the cost of that is nil on this population: the 307 identifiers that read before
+    // — the ones a separator left in a run of their own — all still read. The 103 became
+    // refusals, not wrong answers, which is the trade N2 asks for.
+    expect(prefixed.read).toBe(307);
   });
 });
 
@@ -179,7 +200,12 @@ describe("adversary — hostile text that must stay NO_VIN", () => {
     for (const n of [3_000, 300_000]) {
       expect(extractVin("A".repeat(n))).toBeNull();
     }
-    expect(extractVin(`${"A".repeat(100_000)} ${VIN}`)).not.toBeNull();
+    // §4.2 step 1 strips the space before step 2 splits, so this is ONE run and the VIN
+    // shares it with 100,000 windows that carry no check digit: refused, not mined (Z6).
+    expect(extractVin(`${"A".repeat(100_000)} ${VIN}`)).toBeNull();
+    // A separator makes the VIN a run of its own and it still reads out of a payload this
+    // size, so the refusal above is the Z6 rule rather than the scan giving up.
+    expect(extractVin(`${"A".repeat(100_000)}-${VIN}`)?.vin).toBe(VIN);
   });
 
   it("keeps raw byte-for-byte however hostile it was", () => {

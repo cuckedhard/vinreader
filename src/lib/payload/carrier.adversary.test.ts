@@ -14,7 +14,10 @@
  *
  * Pure modules only, no clock, no randomness that is not seeded here.
  *
- * Findings: [R3-C] and [R3-D] — the two `FAILS today` tests below.
+ * Findings: [R3-C] and [R3-D]. Both are CLOSED — R3-F and R3-M put one §4.9 grammar
+ * behind both recognisers and taught it every version (bf95090), and ledger Z6 then
+ * narrowed §4.2 step 4(a) underneath. The tests below are the regression guard for both,
+ * and each keeps the behaviour it used to pin, so a return is legible when it comes.
  */
 import { describe, expect, it } from "vitest";
 import { isPayloadCarrier } from "./carrier";
@@ -26,6 +29,7 @@ import {
   TEXT_PREFIX,
 } from "./codec";
 import type { Payload } from "./schema";
+import { isCheckDigitValid } from "../vin/checkDigit";
 import { extractVin } from "../vin/extractVin";
 
 const ORIGIN = "https://vinrelay.example";
@@ -67,11 +71,12 @@ describe("[R3-C] every string the guard accepts gets an answer", () => {
   it("never answers a recognised carrier with silence", () => {
     // A QR generator that uppercases the URL to reach alphanumeric mode produces this.
     // The body is then unrecoverable either way — but P7 wants that said out loud, and
-    // the two recognisers disagree instead: `isPayloadCarrier` matches `d=` case-
-    // insensitively (carrier.ts URL_CARRIER_RE), while `parseCarrier` reads the parameter
+    // the two recognisers disagreed instead: `isPayloadCarrier` matched `d=` case-
+    // insensitively (carrier.ts URL_CARRIER_RE), while `parseCarrier` read the parameter
     // through URLSearchParams, whose names are case-sensitive (codec.ts).
     //
-    // FAILS today: "silent". The camera keeps running and nothing is ever said.
+    // WAS: "silent" — the camera kept running and nothing was ever said. R3-F closed it
+    // by making one match answer both questions (carrier.ts `matchCarrier`).
     const shouted = URL_CARRIER.replace("#/i?d=", "#/I?D=");
     expect(isPayloadCarrier(shouted)).toBe(true);
     expect(outcome(shouted), "#/I?D=").not.toBe("silent");
@@ -86,7 +91,7 @@ describe("[R3-C] every string the guard accepts gets an answer", () => {
   });
 });
 
-describe("[R3-D] the guard is pinned to version 1, and `extractVin` is what catches the rest", () => {
+describe("[R3-D] a carrier of any version is named rather than mined, twice over", () => {
   it("names the version when a payload from another version arrives as a URL", () => {
     // The URL recogniser is version-agnostic — it matches the route, not the body — so a
     // future payload is decoded far enough to be named. This is the behaviour the text
@@ -105,35 +110,54 @@ describe("[R3-D] the guard is pinned to version 1, and `extractVin` is what catc
   it("recognises a VIN Relay text carrier whatever version digit it carries", () => {
     // §4.9 fixes this app's prefix at `VINRELAY1:` and that constant is not in question:
     // v1 is still the only thing written and the only thing decoded. What is in question
-    // is the guard — `TEXT_CARRIER_RE` in carrier.ts is `/^VINRELAY1:/i`, so a carrier
-    // that announces itself as VIN Relay in the very first nine characters is treated as
+    // was the guard — `TEXT_CARRIER_RE` in carrier.ts was `/^VINRELAY1:/i`, so a carrier
+    // that announces itself as VIN Relay in its very first nine characters was treated as
     // ordinary label text and mined for a VIN.
     //
-    // FAILS today: `isPayloadCarrier` is false, so this reaches `extractVin`.
+    // WAS: `isPayloadCarrier` false, so this reached `extractVin` and was mined. R3-M
+    // widened `TEXT_CARRIER_RE` to `/^VINRELAY\d+:/i`; `TEXT_PREFIX` is still v1, because
+    // recognising a carrier is not decoding one (§4.9 unchanged).
     const future = `VINRELAY2:${buildTextCarrier({ ...PAYLOAD, v: 2 }).slice(TEXT_PREFIX.length)}`;
     expect(isPayloadCarrier(future)).toBe(true);
     expect(outcome(future)).toBe("banner");
   });
 
-  it("fabricates a check-digit-valid VIN out of the body when the guard misses", () => {
-    // Characterisation, and the reason the guard has to be exhaustive rather than nearly
-    // right. This carrier holds N97KFLV0NZ6W5ZSE6. Nothing on it, and nothing a human
-    // could read off it, is DLRKXWME5ANLC1WLN — but that window of the base64url body
-    // passes §4.3, a QR decodes identically every frame so §6.3's two-read rule agrees,
-    // and the record is written, beeped and shown as fact (N2).
+  it("refuses the base64url body as well, so the §4.9 guard is belt and §4.2 is braces", () => {
+    // WHY THE GUARD EXISTS, kept executable. §4.9's carrier guard is there precisely
+    // because `extractVin` would otherwise mine this body: carrier.ts measures 9.7% of
+    // realistic payloads fabricating a VIN that way. While the guard was pinned to
+    // `VINRELAY1:` (R3-M, the test above), this exact string fell through to §4.2 and came
+    // back as `DLRKXWME5ANLC1WLN`, `checkDigitValid: true`. The carrier holds
+    // N97KFLV0NZ6W5ZSE6; nothing on it, and nothing a human could read off it, is that
+    // number — but the window passed §4.3, a QR decodes identically every frame so §6.3's
+    // two-read rule agreed, and the record was written, beeped and shown as fact (N2).
+    // Measured over 3,000 seeded payloads: 8.3% of bodies that reached `extractVin`
+    // yielded a VIN and every one was wrong — the same figure for a `%23`-escaped URL
+    // carrier and for a text carrier with a label in front, so it was the body doing it,
+    // not the wrapper.
     //
-    // Measured over 3,000 seeded payloads: 8.3% of bodies that reach `extractVin` yield a
-    // VIN, and every one of them is wrong. Same figure for a `%23`-escaped URL carrier and
-    // for a text carrier with a label in front of it — the body is what does it, not the
-    // wrapper. If §4.2 ever changes (Z1, Z6) this test is the one that says so.
+    // BELT: R3-M widened the guard, so the body no longer reaches §4.2 at all, and the
+    // user is told which version this is instead of being shown a VIN (P7).
     const future =
       "VINRELAY2:eyJ2IjoyLCJ2aW4iOiJOOTdLRkxWME5aNlc1WlNFNiIsInkiOiIyMDE5IiwibWsiOiJDQVRF" +
       "UlBJTExBUiIsIm1kIjoiMzIwRCIsInUiOiJVTklULTQyIn0";
-    const mined = extractVin(future);
-    expect(mined).not.toBeNull();
-    expect(mined!.vin).toBe("DLRKXWME5ANLC1WLN");
-    expect(mined!.checkDigitValid).toBe(true);
-    expect(mined!.vin).not.toBe("N97KFLV0NZ6W5ZSE6");
+    expect(isPayloadCarrier(future)).toBe(true);
+    expect(outcome(future)).toBe("banner");
+
+    // BRACES: ledger Z6 narrowed §4.2 step 4(a) — a check-digit-valid window may only be
+    // returned from a run in which EVERY window satisfies §4.3 `checkDigitApplies`, since
+    // a window whose position 9 is a letter was never tested and so is not refuted by
+    // failing. Uppercased, this body's only long run is `TDLRKXWME5ANLC1WLNFN`: four
+    // windows, and three of them — `TDLRKXWME5ANLC1WL`, `LRKXWME5ANLC1WLNF`,
+    // `RKXWME5ANLC1WLNFN`, position 9 `E`, `A`, `N` — carry no check digit at all. The run
+    // cannot be settled, so it is refused whole. Base64url bodies are like this by
+    // construction: 64 characters of noise, so most windows land a letter in position 9.
+    expect(extractVin(future)).toBeNull();
+    // The window still passes §4.3. What changed is that the RUN is refused, not that the
+    // fabrication stopped validating — which is why the guard can never be "nearly right"
+    // and why this test stays: it is what notices if §4.2 is ever widened again, or if a
+    // carrier shape slips past the guard the way `VINRELAY2:` once did.
+    expect(isCheckDigitValid("DLRKXWME5ANLC1WLN")).toBe(true);
   });
 });
 
