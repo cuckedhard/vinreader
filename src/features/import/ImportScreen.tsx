@@ -1,7 +1,7 @@
 /**
  * §6.2 Import — the receiving half of the handoff. Four ways in: a shared link's `?d=`
- * payload, a pasted carrier or bare VIN, a `.json` record or export bundle, or nothing
- * yet. All four land on the same preview, and nothing is written without a tap (§6.4).
+ * payload, a pasted carrier, summary or bare VIN, a `.json` record or export bundle, or
+ * nothing yet. All land on the same preview, and nothing is written without a tap (§6.4).
  */
 import { useMemo, useRef, useState } from "react";
 import type { ChangeEvent } from "react";
@@ -15,6 +15,7 @@ import {
 } from "../../lib/payload/codec";
 import type { Payload } from "../../lib/payload/schema";
 import { exportBundleSchema, vehicleRecordSchema } from "../../lib/payload/schema";
+import { parseShareTextVin } from "../../lib/payload/shareText";
 import { kickDecodeQueue } from "../../lib/storage/decodeQueue";
 import { upsertVehicle } from "../../lib/storage/upsert";
 import { checkDigitApplies, isCheckDigitValid } from "../../lib/vin/checkDigit";
@@ -101,6 +102,24 @@ function itemFromPayload(payload: Payload, raw: string): ImportItem {
     notes: text(payload.n),
     at: text(payload.at),
     by: text(payload.by),
+    raw,
+  };
+}
+
+/**
+ * A VIN and nothing else — the two paste paths that carry no fields. §4.9 says the
+ * receiver runs its own vPIC decode, so a VIN alone is a whole import.
+ */
+function itemFromVin(vin: string, raw: string): ImportItem {
+  return {
+    vin,
+    year: null,
+    make: null,
+    model: null,
+    unit: null,
+    notes: null,
+    at: null,
+    by: null,
     raw,
   };
 }
@@ -332,29 +351,25 @@ export default function ImportScreen() {
       return;
     }
 
-    // Not a carrier: §4.2 still finds a bare VIN typed here, or one copied with whatever
+    // Not a carrier, but §4.9's share text is this app's own format too, so it is parsed
+    // rather than mined: "Copy summary" over there has to import here (§6.5), and §4.2
+    // cannot read it — step 1 fuses the "VIN" label onto the grouped VIN and R4-A refuses
+    // the run that leaves. Same order as the carrier above: our formats first, `extractVin`
+    // only for bytes no format claims (D14).
+    const summarised = parseShareTextVin(raw);
+    if (summarised !== null) {
+      accept({ source: "Pasted summary", items: [itemFromVin(summarised, raw)] });
+      return;
+    }
+
+    // Neither: §4.2 still finds a bare VIN typed here, or one copied with whatever
     // text came along with it.
     const extracted = extractVin(raw);
     if (extracted === null) {
       fail(ERR_NOT_A_CARRIER, HINT_PASTE);
       return;
     }
-    accept({
-      source: "Pasted VIN",
-      items: [
-        {
-          vin: extracted.vin,
-          year: null,
-          make: null,
-          model: null,
-          unit: null,
-          notes: null,
-          at: null,
-          by: null,
-          raw: extracted.raw,
-        },
-      ],
-    });
+    accept({ source: "Pasted VIN", items: [itemFromVin(extracted.vin, extracted.raw)] });
   }
 
   async function readFile(file: File): Promise<void> {
@@ -488,8 +503,8 @@ export default function ImportScreen() {
         <div className="flex flex-col gap-5">
           <p className="text-base leading-snug text-fg-muted">
             Vehicles shared from another device land here. Open the link someone sent you or scan
-            its QR code, paste a link, a VINRELAY1 code or a VIN below, or pick a .json file VIN
-            Relay exported.
+            its QR code, paste a link, a VINRELAY1 code, a copied summary or a VIN below, or pick a
+            .json file VIN Relay exported.
           </p>
 
           <section className={`flex flex-col gap-3 p-5 ${PANEL}`}>

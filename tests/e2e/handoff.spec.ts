@@ -320,3 +320,42 @@ test("the code and the way out stay on screen when the short side is the height"
   await page.setViewportSize({ width: 1024, height: 576 });
   await expectAScannableQr(page);
 });
+
+/**
+ * §4.9 round trip, through the real screens: the block "Copy summary" puts on the clipboard
+ * (§6.5) has to import back into the app that wrote it. This is the field workflow — text the
+ * summary to the shop, the shop pastes it into Import (§6.2) — and it was broken with nothing
+ * to say so, through two changes to §4.2 (Z6, then R4-A).
+ *
+ * The clipboard rather than a string built in the test: what has to be readable is what the
+ * button actually writes, and only the browser can say what that was.
+ *
+ * Measured against the tree before `parseShareTextVin` existed: Preview import answered "That
+ * text isn't a VIN Relay link, a VINRELAY1 code, or a VIN" — the failure microcopy, for text
+ * this app produced.
+ */
+test("imports the summary its own Copy summary button wrote", async ({ page, context }) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+
+  await page.goto(`/#/i?d=${PAYLOAD}`);
+  await page.getByRole("button", { name: /^import$/i }).click();
+  await expect(page).toHaveURL(new RegExp(`#/v/${VIN}`));
+
+  await page.getByRole("button", { name: /copy summary/i }).click();
+  await expect(page.getByText("Copied")).toBeVisible();
+  const summary = await page.evaluate(() => navigator.clipboard.readText());
+  // §4.9's VIN line, with the §4.1 grouping the sheet prints — the spaces are the reason
+  // §4.2 alone cannot read this block back.
+  expect(summary).toContain("VIN 1HG CM826 3 3 A 004352");
+
+  await page.goto("/#/i");
+  await page.getByLabel(/paste a link/i).fill(summary);
+  await page.getByRole("button", { name: /preview import/i }).click();
+
+  // §6.4: preview then confirm, the same as every other way in. Asserted on the preview's
+  // own heading, because the paste box still holds the summary and matching the page for
+  // the grouped VIN would pass on the text the user typed rather than on a preview.
+  await expect(page.getByRole("heading", { level: 2 })).toContainText("1HG CM826 3 3 A 004352");
+  await page.getByRole("button", { name: /^import$/i }).click();
+  await expect(page).toHaveURL(new RegExp(`#/v/${VIN}`));
+});
