@@ -27,6 +27,9 @@ export default defineConfig({
     tailwindcss(),
     basicSsl(),
     VitePWA({
+      // A service worker cannot register from a sandboxed preview frame, so the
+      // single-file demo build turns it off rather than crashing on load.
+      disable: process.env.PWA_DISABLED === "1",
       registerType: "prompt", // never auto-reload: a reload mid-scan is unacceptable (§9-S0)
       includeAssets: ["favicon.svg"],
       manifest: {
