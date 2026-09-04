@@ -16,7 +16,9 @@
     "symbologies": [
       "code_39",
       "code_39_i",
+      "code_39_check",
       "code_128",
+      "code_128_fnc1",
       "data_matrix",
       "qr_code"
     ],
@@ -30,7 +32,7 @@
       ],
       "tryHarder": true
     },
-    "suppressedZxingWarnings": 5149
+    "suppressedZxingWarnings": 7934
   },
   "thresholds": {
     "decodeRate": {
@@ -41,9 +43,9 @@
     "falseAccepts": 0
   },
   "totals": {
-    "attempts": 3000,
-    "hits": 2373,
-    "misses": 626,
+    "attempts": 4200,
+    "hits": 2839,
+    "misses": 1360,
     "falseAccepts": 1,
     "errors": 0
   },
@@ -151,6 +153,57 @@
       }
     },
     {
+      "symbology": "code_39_check",
+      "tier": "clean",
+      "attempts": 200,
+      "hits": 48,
+      "misses": 152,
+      "falseAccepts": 0,
+      "errors": 0,
+      "decodeRate": 0.24,
+      "threshold": 0.99,
+      "pass": false,
+      "missReasons": {
+        "no_decode": 0,
+        "no_vin": 152,
+        "carrier": 0
+      }
+    },
+    {
+      "symbology": "code_39_check",
+      "tier": "moderate",
+      "attempts": 200,
+      "hits": 37,
+      "misses": 163,
+      "falseAccepts": 0,
+      "errors": 0,
+      "decodeRate": 0.185,
+      "threshold": 0.9,
+      "pass": false,
+      "missReasons": {
+        "no_decode": 49,
+        "no_vin": 114,
+        "carrier": 0
+      }
+    },
+    {
+      "symbology": "code_39_check",
+      "tier": "severe",
+      "attempts": 200,
+      "hits": 25,
+      "misses": 175,
+      "falseAccepts": 0,
+      "errors": 0,
+      "decodeRate": 0.125,
+      "threshold": 0.7,
+      "pass": false,
+      "missReasons": {
+        "no_decode": 92,
+        "no_vin": 83,
+        "carrier": 0
+      }
+    },
+    {
       "symbology": "code_128",
       "tier": "clean",
       "attempts": 200,
@@ -198,6 +251,57 @@
       "missReasons": {
         "no_decode": 80,
         "no_vin": 1,
+        "carrier": 0
+      }
+    },
+    {
+      "symbology": "code_128_fnc1",
+      "tier": "clean",
+      "attempts": 200,
+      "hits": 200,
+      "misses": 0,
+      "falseAccepts": 0,
+      "errors": 0,
+      "decodeRate": 1,
+      "threshold": 0.99,
+      "pass": true,
+      "missReasons": {
+        "no_decode": 0,
+        "no_vin": 0,
+        "carrier": 0
+      }
+    },
+    {
+      "symbology": "code_128_fnc1",
+      "tier": "moderate",
+      "attempts": 200,
+      "hits": 155,
+      "misses": 45,
+      "falseAccepts": 0,
+      "errors": 0,
+      "decodeRate": 0.775,
+      "threshold": 0.9,
+      "pass": false,
+      "missReasons": {
+        "no_decode": 45,
+        "no_vin": 0,
+        "carrier": 0
+      }
+    },
+    {
+      "symbology": "code_128_fnc1",
+      "tier": "severe",
+      "attempts": 200,
+      "hits": 1,
+      "misses": 199,
+      "falseAccepts": 0,
+      "errors": 0,
+      "decodeRate": 0.005,
+      "threshold": 0.7,
+      "pass": false,
+      "missReasons": {
+        "no_decode": 199,
+        "no_vin": 0,
         "carrier": 0
       }
     },
@@ -307,27 +411,27 @@
   "timings": [
     {
       "scope": "all",
-      "decodes": 3000,
-      "meanMs": 10.543695595000042,
-      "p95Ms": 49.59186899999622
+      "decodes": 4200,
+      "meanMs": 18.78603255285699,
+      "p95Ms": 87.12934699998004
     },
     {
       "scope": "clean",
-      "decodes": 1000,
-      "meanMs": 3.117042225000234,
-      "p95Ms": 4.841970999994373
+      "decodes": 1400,
+      "meanMs": 5.56383345285706,
+      "p95Ms": 11.6550909999969
     },
     {
       "scope": "moderate",
-      "decodes": 1000,
-      "meanMs": 10.641683093999948,
-      "p95Ms": 66.5944579999923
+      "decodes": 1400,
+      "meanMs": 19.521614243571097,
+      "p95Ms": 103.31222399999388
     },
     {
       "scope": "severe",
-      "decodes": 1000,
-      "meanMs": 17.87236146599995,
-      "p95Ms": 45.216701999997895
+      "decodes": 1400,
+      "meanMs": 31.27264996214281,
+      "p95Ms": 70.15847999999824
     }
   ],
   "falseAccepts": [
@@ -344,7 +448,7 @@
       "format": "CODE_128",
       "extracted": "EH8U2YHX60HU7VAWD",
       "checkDigitValid": false,
-      "ms": 2.3535480000136886,
+      "ms": 2.9589149999956135,
       "error": null,
       "verdict": "false_accept",
       "missReason": null
@@ -358,8 +462,13 @@
     "code_39 severe: 51.0% < 70.0% (102/200 correct, -19.0 pp)",
     "code_39_i moderate: 79.0% < 90.0% (158/200 correct, -11.0 pp)",
     "code_39_i severe: 45.5% < 70.0% (91/200 correct, -24.5 pp)",
+    "code_39_check clean: 24.0% < 99.0% (48/200 correct, -75.0 pp)",
+    "code_39_check moderate: 18.5% < 90.0% (37/200 correct, -71.5 pp)",
+    "code_39_check severe: 12.5% < 70.0% (25/200 correct, -57.5 pp)",
     "code_128 moderate: 81.0% < 90.0% (162/200 correct, -9.0 pp)",
     "code_128 severe: 59.0% < 70.0% (118/200 correct, -11.0 pp)",
+    "code_128_fnc1 moderate: 77.5% < 90.0% (155/200 correct, -12.5 pp)",
+    "code_128_fnc1 severe: 0.5% < 70.0% (1/200 correct, -69.5 pp)",
     "data_matrix severe: 55.0% < 70.0% (110/200 correct, -15.0 pp)",
     "qr_code clean: 98.5% < 99.0% (197/200 correct, -0.5 pp)",
     "qr_code severe: 43.5% < 70.0% (87/200 correct, -26.5 pp)"

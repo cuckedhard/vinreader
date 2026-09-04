@@ -1,6 +1,6 @@
 # §13.4 scan-robustness bench
 
-**FAIL** — 10 §13.6 thresholds missed.
+**FAIL** — 15 §13.6 thresholds missed.
 
 ## Run
 
@@ -8,18 +8,18 @@
 |---|---|
 | Run seed | `0x5eed1a7c` |
 | VINs | 200 (full) |
-| Symbologies | code_39, code_39_i, code_128, data_matrix, qr_code |
+| Symbologies | code_39, code_39_i, code_39_check, code_128, code_128_fnc1, data_matrix, qr_code |
 | Tiers | clean, moderate, severe |
-| Attempts | 3000 |
-| Decoder hints (§4.6) | CODE_39, CODE_128, DATA_MATRIX, QR_CODE; TRY_HARDER |
+| Attempts | 4200 |
+| Decoder hints (§4.6) | CODE_39, CODE_128, DATA_MATRIX, QR_CODE; TRY_HARDER, ASSUME_GS1 |
 | Severe extras (Z5) | 2 of warp, glare, low_light, jpeg, drawn per frame from the seed |
-| ZXing per-reader warnings swallowed | 5149 |
+| ZXing per-reader warnings swallowed | 7934 |
 
 Every degradation seed is `runSeed ^ fnv1a("vin|symbology|tier")`, so this run reproduces exactly, and any single row below reproduces on its own.
 
 ## Headline: false accepts (§13.6 requires 0)
 
-**1 FALSE ACCEPT** in 3000 attempts (threshold 0). A wrong VIN accepted is an S1 blocker (§13.3).
+**1 FALSE ACCEPT** in 4200 attempts (threshold 0). A wrong VIN accepted is an S1 blocker (§13.3).
 
 | Expected VIN | Returned VIN | Symbology | Tier | Drawn extras | ZXing format | Check digit | Decoded text | Seed |
 |---|---|---|---|---|---|---|---|---|
@@ -37,7 +37,9 @@ degrade(await renderBarcode("EH8U2YHX60HU8VGWD", "code_128"), "severe", 0xc5d369
 |---|---|---|---|
 | code_39 | 100.0% PASS | 77.5% FAIL | 51.0% FAIL |
 | code_39_i | 100.0% PASS | 79.0% FAIL | 45.5% FAIL |
+| code_39_check | 24.0% FAIL | 18.5% FAIL | 12.5% FAIL |
 | code_128 | 100.0% PASS | 81.0% FAIL | 59.0% FAIL |
+| code_128_fnc1 | 100.0% PASS | 77.5% FAIL | 0.5% FAIL |
 | data_matrix | 100.0% PASS | 99.0% PASS | 55.0% FAIL |
 | qr_code | 98.5% FAIL | 97.5% PASS | 43.5% FAIL |
 
@@ -56,9 +58,15 @@ through ZXing and §4.2 `extractVin`, not the fraction that merely decoded.
 | code_39_i | clean | 200 | 200 | 0 | 0 | 0 | 100.0% | 99.0% | +1.0 pp | PASS |
 | code_39_i | moderate | 200 | 158 | 42 | 0 | 0 | 79.0% | 90.0% | -11.0 pp | FAIL |
 | code_39_i | severe | 200 | 91 | 109 | 0 | 0 | 45.5% | 70.0% | -24.5 pp | FAIL |
+| code_39_check | clean | 200 | 48 | 152 | 0 | 0 | 24.0% | 99.0% | -75.0 pp | FAIL |
+| code_39_check | moderate | 200 | 37 | 163 | 0 | 0 | 18.5% | 90.0% | -71.5 pp | FAIL |
+| code_39_check | severe | 200 | 25 | 175 | 0 | 0 | 12.5% | 70.0% | -57.5 pp | FAIL |
 | code_128 | clean | 200 | 200 | 0 | 0 | 0 | 100.0% | 99.0% | +1.0 pp | PASS |
 | code_128 | moderate | 200 | 162 | 38 | 0 | 0 | 81.0% | 90.0% | -9.0 pp | FAIL |
 | code_128 | severe | 200 | 118 | 81 | 0 | 1 | 59.0% | 70.0% | -11.0 pp | FAIL |
+| code_128_fnc1 | clean | 200 | 200 | 0 | 0 | 0 | 100.0% | 99.0% | +1.0 pp | PASS |
+| code_128_fnc1 | moderate | 200 | 155 | 45 | 0 | 0 | 77.5% | 90.0% | -12.5 pp | FAIL |
+| code_128_fnc1 | severe | 200 | 1 | 199 | 0 | 0 | 0.5% | 70.0% | -69.5 pp | FAIL |
 | data_matrix | clean | 200 | 200 | 0 | 0 | 0 | 100.0% | 99.0% | +1.0 pp | PASS |
 | data_matrix | moderate | 200 | 198 | 2 | 0 | 0 | 99.0% | 90.0% | +9.0 pp | PASS |
 | data_matrix | severe | 200 | 110 | 90 | 0 | 0 | 55.0% | 70.0% | -15.0 pp | FAIL |
@@ -68,14 +76,14 @@ through ZXing and §4.2 `extractVin`, not the fraction that merely decoded.
 
 ### Severe: what each frame drew
 
-| Drawn extras | Frames | code_39 | code_39_i | code_128 | data_matrix | qr_code |
-|---|---:|---:|---:|---:|---:|---:|
-| glare + jpeg | 158 | 74.2% | 64.5% | 61.8% | 89.3% | 97.1% |
-| glare + low_light | 190 | 9.4% | 7.3% | 10.0% | 7.3% | 63.9% |
-| low_light + jpeg | 159 | 57.6% | 72.7% | 86.7% | 96.9% | 100.0% |
-| warp + glare | 161 | 60.6% | 44.8% | 63.3% | 75.0% | 0.0% |
-| warp + jpeg | 156 | 72.7% | 57.1% | 74.2% | 86.7% | 0.0% |
-| warp + low_light | 176 | 34.2% | 35.5% | 71.4% | 2.7% | 0.0% |
+| Drawn extras | Frames | code_39 | code_39_i | code_39_check | code_128 | code_128_fnc1 | data_matrix | qr_code |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| glare + jpeg | 234 | 74.2% | 64.5% | 10.5% | 61.8% | 0.0% | 89.3% | 97.1% |
+| glare + low_light | 255 | 9.4% | 7.3% | 2.9% | 10.0% | 0.0% | 7.3% | 63.9% |
+| low_light + jpeg | 203 | 57.6% | 72.7% | 11.1% | 86.7% | 0.0% | 96.9% | 100.0% |
+| warp + glare | 236 | 60.6% | 44.8% | 8.3% | 63.3% | 0.0% | 75.0% | 0.0% |
+| warp + jpeg | 229 | 72.7% | 57.1% | 26.2% | 74.2% | 3.2% | 86.7% | 0.0% |
+| warp + low_light | 243 | 34.2% | 35.5% | 12.5% | 71.4% | 0.0% | 2.7% | 0.0% |
 
 §13.4 lists six degradations for `severe`; two of them — 50% scale and heavier grain — are harder settings of degradations `moderate` already applies, so they are on for every frame and the tier stays a strict superset of `moderate` whatever is drawn. The other four are drawn 2 at a time (Z5): all four at once is not one bad photo, it is every bad photo, and it left no cell above 57%.
 
@@ -89,9 +97,15 @@ through ZXing and §4.2 `extractVin`, not the fraction that merely decoded.
 | code_39_i | clean | 0 | 0 | 0 |
 | code_39_i | moderate | 42 | 0 | 0 |
 | code_39_i | severe | 103 | 6 | 0 |
+| code_39_check | clean | 0 | 152 | 0 |
+| code_39_check | moderate | 49 | 114 | 0 |
+| code_39_check | severe | 92 | 83 | 0 |
 | code_128 | clean | 0 | 0 | 0 |
 | code_128 | moderate | 38 | 0 | 0 |
 | code_128 | severe | 80 | 1 | 0 |
+| code_128_fnc1 | clean | 0 | 0 | 0 |
+| code_128_fnc1 | moderate | 45 | 0 | 0 |
+| code_128_fnc1 | severe | 199 | 0 | 0 |
 | data_matrix | clean | 0 | 0 | 0 |
 | data_matrix | moderate | 2 | 0 | 0 |
 | data_matrix | severe | 90 | 0 | 0 |
@@ -105,10 +119,10 @@ through ZXing and §4.2 `extractVin`, not the fraction that merely decoded.
 
 | Scope | Decodes | Mean ms | p95 ms |
 |---|---:|---:|---:|
-| all | 3000 | 10.5 | 49.6 |
-| clean | 1000 | 3.1 | 4.8 |
-| moderate | 1000 | 10.6 | 66.6 |
-| severe | 1000 | 17.9 | 45.2 |
+| all | 4200 | 18.8 | 87.1 |
+| clean | 1400 | 5.6 | 11.7 |
+| moderate | 1400 | 19.5 | 103.3 |
+| severe | 1400 | 31.3 | 70.2 |
 
 Times cover the ZXing pipeline only — luminance packing, binarisation and the read — because the app hands ZXing canvas pixels and never parses a PNG. Timings are the one part of this report that is not bit-reproducible; no threshold rides on them.
 
@@ -119,8 +133,13 @@ Times cover the ZXing pipeline only — luminance packing, binarisation and the 
 - code_39 severe: 51.0% < 70.0% (102/200 correct, -19.0 pp)
 - code_39_i moderate: 79.0% < 90.0% (158/200 correct, -11.0 pp)
 - code_39_i severe: 45.5% < 70.0% (91/200 correct, -24.5 pp)
+- code_39_check clean: 24.0% < 99.0% (48/200 correct, -75.0 pp)
+- code_39_check moderate: 18.5% < 90.0% (37/200 correct, -71.5 pp)
+- code_39_check severe: 12.5% < 70.0% (25/200 correct, -57.5 pp)
 - code_128 moderate: 81.0% < 90.0% (162/200 correct, -9.0 pp)
 - code_128 severe: 59.0% < 70.0% (118/200 correct, -11.0 pp)
+- code_128_fnc1 moderate: 77.5% < 90.0% (155/200 correct, -12.5 pp)
+- code_128_fnc1 severe: 0.5% < 70.0% (1/200 correct, -69.5 pp)
 - data_matrix severe: 55.0% < 70.0% (110/200 correct, -15.0 pp)
 - qr_code clean: 98.5% < 99.0% (197/200 correct, -0.5 pp)
 - qr_code severe: 43.5% < 70.0% (87/200 correct, -26.5 pp)
