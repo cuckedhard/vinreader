@@ -9,9 +9,11 @@ import type { ModelYear, VehicleRecord } from "../../lib/vin/types";
 import { Banner } from "../../ui/Banner";
 import { Button } from "../../ui/Button";
 import { Chip } from "../../ui/Chip";
+import { SyncChip } from "../../ui/SyncChip";
 import { VinDisplay } from "../../ui/VinDisplay";
 import { Actions } from "./Actions";
 import { DecodeGroups } from "./DecodeGroups";
+import { DeleteVehicle, DeletedNotice } from "./DeleteVehicle";
 import { StructuralBlock } from "./StructuralBlock";
 
 const LABEL = "text-sm font-bold tracking-wide text-fg-muted uppercase";
@@ -194,23 +196,53 @@ function MetaEditor({ record }: { record: VehicleRecord }) {
   );
 }
 
-function NoRecord({ vin }: { vin: string }) {
-  const navigate = useNavigate();
+function NoRecord({ vin, onBack }: { vin: string; onBack?: () => void }) {
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 p-4">
       <VinDisplay vin={vin} size="lg" className="break-all" />
       <p className="text-lg text-fg">No record for this VIN.</p>
-      <Button variant="primary" full onClick={() => void navigate("/history")}>
-        Back to History
-      </Button>
+      {onBack ? (
+        <Button variant="primary" full onClick={onBack}>
+          Back to History
+        </Button>
+      ) : null}
     </div>
   );
 }
 
-/** §6.2 the record view at /v/:vin. */
-export default function SheetScreen() {
+/**
+ * §4.12's tombstone, read defensively. `deletedAt` is `string | null` on every write path,
+ * so this is `!== null` for every row the app itself made; a row that somehow carries
+ * `undefined` is one that was never deleted, and reading it as deleted would hide a vehicle
+ * the user still has (N2).
+ */
+function isTombstoned(record: VehicleRecord): boolean {
+  return typeof record.deletedAt === "string" && record.deletedAt !== "";
+}
+
+export interface SheetScreenProps {
+  /**
+   * §6.6: at ≥ 900 px History renders the Sheet in a right-hand pane, where there is no
+   * `:vin` route param to read. Given, it wins over the param and the screen also drops the
+   * two things that only make sense as a whole screen — the "Back to History" buttons —
+   * because the pane has its own Close and leaving would take History with it.
+   */
+  vin?: string;
+  /**
+   * Called with the VIN after a delete this screen performed, so a host can react to it.
+   * The screen already shows the outcome on its own; this is for the pane, which may want
+   * to close rather than sit on a deleted vehicle.
+   */
+  onDeleted?: (vin: string) => void;
+}
+
+/** §6.2 the record view at /v/:vin, and §6.6's pane at ≥ 900 px. */
+export default function SheetScreen({ vin: vinProp, onDeleted }: SheetScreenProps) {
   const params = useParams<{ vin: string }>();
-  const vin = (params.vin ?? "").trim().toUpperCase();
+  const navigate = useNavigate();
+  const embedded = vinProp !== undefined;
+  const vin = (vinProp ?? params.vin ?? "").trim().toUpperCase();
+  const back = embedded ? undefined : () => void navigate("/history");
 
   // `undefined` is "the query has not answered yet" and `null` is "no such record";
   // without the sentinel the two look alike and the screen flashes "No record" on load.
@@ -222,8 +254,11 @@ export default function SheetScreen() {
   }, [vin]);
 
   if (record === undefined) return null;
-  // §4.12: a tombstoned record is gone as far as the user is concerned.
-  if (record === null || record.deletedAt !== null) return <NoRecord vin={vin} />;
+  if (record === null) return <NoRecord vin={vin} onBack={back} />;
+  // §4.12: a tombstoned record is gone as far as the user's history is concerned — but it
+  // is not the same fact as a VIN this device never had, and only one of the two is undone
+  // by scanning the label again, so it gets its own state rather than "No record".
+  if (isTombstoned(record)) return <DeletedNotice vin={record.vin} onBack={back} />;
 
   /**
    * §4.4 / §9-S2. vPIC's `ModelYear` overrides the structural candidates when present, and
@@ -239,19 +274,29 @@ export default function SheetScreen() {
 
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-8 p-4 pb-10">
-      <h1>
-        <VinDisplay vin={record.vin} size="lg" />
-      </h1>
+      {/*
+       * §6.2 puts the sync chip on this screen. It sits beside the VIN rather than below
+       * the record because it describes the account, not this vehicle, and it renders
+       * nothing at all signed out (or in a build with no Supabase) — so signed out this row
+       * is the same single heading it was before S4.
+       */}
+      <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
+        <h1>
+          <VinDisplay vin={record.vin} size="lg" />
+        </h1>
+        <SyncChip className="shrink-0" />
+      </div>
 
       <StructuralBlock vin={record.vin} structural={structural} />
 
       {/*
-       * Each of these three holds state belonging to one vehicle — a half-typed unit, an
-       * open QR, a Refresh in flight — so §6.2's `:vin` change has to remount them rather
-       * than hand the next record to the last one's state. The keys must also differ from
+       * Each of these four holds state belonging to one vehicle — a half-typed unit, an
+       * open QR, a Refresh in flight, an armed delete — so a `:vin` change (§6.2), or a new
+       * row chosen in §6.6's pane, has to remount them rather than hand the next record to
+       * the last one's state. The keys must also differ from
        * each other: React's array reconciler gathers the outgoing siblings into a Map keyed
-       * by `key`, so one key shared by three siblings leaves one entry, only that sibling is
-       * deleted, and the other two keep their DOM after their fibers are gone. That is the
+       * by `key`, so one key shared by several siblings leaves one entry, only that sibling
+       * is deleted, and the rest keep their DOM after their fibers are gone. That is the
        * previous vehicle's make, model and unit sitting under this vehicle's VIN (N2).
        */}
       <DecodeSection key={`decode-${record.vin}`} record={record} />
@@ -260,6 +305,10 @@ export default function SheetScreen() {
 
       {/* §9-S3: the handoff actions sit below the record they act on. */}
       <Actions key={`actions-${record.vin}`} record={record} />
+
+      {/* §6.2 lists Delete last. Keyed with the rest: an armed confirmation belongs to one
+          vehicle, and must never be handed to the next one shown here. */}
+      <DeleteVehicle key={`delete-${record.vin}`} vin={record.vin} onDeleted={onDeleted} />
     </div>
   );
 }

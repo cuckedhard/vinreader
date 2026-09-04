@@ -1,13 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
-import { buildPayloadUrl, buildTextCarrier, payloadFromRecord } from "../../lib/payload/codec";
-import { shareText } from "../../lib/payload/shareText";
 import { db } from "../../lib/storage/db";
 import type { VehicleRecord } from "../../lib/vin/types";
 import { Banner } from "../../ui/Banner";
 import { Button } from "../../ui/Button";
 import { Chip } from "../../ui/Chip";
 import { QrView } from "../../ui/QrView";
+import { buildCopyTexts } from "./copyTexts";
 
 const LABEL = "text-sm font-bold tracking-wide text-fg-muted uppercase";
 
@@ -19,6 +18,14 @@ const COPIED = "Copied ✓";
 const COPIED_MS = 1500;
 
 const SHARE_FAILED = "Sharing didn't finish. Copy or download instead.";
+
+/**
+ * Supplied under §0 rule 4: §6.4 has no line for "Row", and the button label alone does not
+ * say what the row is for. §6.5 describes the History pair it shares a format with as
+ * pasting "into Excel or Google Sheets as columns", so this says the same thing about one
+ * record — the two screens must not describe one format two ways.
+ */
+const ROW_HINT = "Copy row pastes into Excel or Google Sheets as one row of columns.";
 
 /** §6.5 fallback when the Clipboard API is missing: pre-selected text and what to do with it. */
 const MANUAL_COPY_PROMPT =
@@ -60,23 +67,13 @@ export function Actions({ record }: { record: VehicleRecord }) {
   /**
    * Every copyable string, built during render and held in memory. This is not an
    * optimisation: §6.5 and §11 require the clipboard write to be the first thing a tap
-   * handler does, so nothing may be computed asynchronously at tap time.
+   * handler does, so nothing may be computed asynchronously at tap time. `./copyTexts`
+   * builds them all synchronously from this record and nothing else.
    */
-  const texts = useMemo(() => {
-    const payload = payloadFromRecord(record, deviceLabel);
-    return {
-      vin: record.vin,
-      summary: shareText(record),
-      // §6.5 calls this "Link" while §4.9 gives links to the URL carrier: the button keeps
-      // the §6.5 name and the §4.9 text-prefix behaviour, which is what another VIN Relay
-      // imports from a message.
-      link: buildTextCarrier(payload),
-      json: JSON.stringify(record, null, 2),
-      // The URL carrier points back at whatever deployment is on screen (§4.9); the
-      // fragment carries the payload, so it never reaches that host's server.
-      ...buildPayloadUrl(payload, window.location.origin),
-    };
-  }, [record, deviceLabel]);
+  const texts = useMemo(
+    () => buildCopyTexts(record, deviceLabel, window.location.origin),
+    [record, deviceLabel],
+  );
 
   const [copied, setCopied] = useState(false);
   const [manual, setManual] = useState<string | null>(null);
@@ -198,7 +195,21 @@ export function Actions({ record }: { record: VehicleRecord }) {
         <Button variant="secondary" style={COPY_TARGET} onClick={() => copy(texts.json)}>
           Copy JSON
         </Button>
+        {/*
+         * §6.2 lists Copy row last of the five, and it is the widest thing this grid
+         * writes, so it takes the full width rather than leaving an odd cell beside it.
+         */}
+        <Button
+          variant="secondary"
+          className="col-span-2"
+          style={COPY_TARGET}
+          onClick={() => copy(texts.row)}
+        >
+          Copy row
+        </Button>
       </div>
+
+      <p className="text-sm leading-snug text-fg-muted">{ROW_HINT}</p>
 
       {/* Reserved height, so the confirmation never shifts the buttons under a thumb. */}
       <div className="min-h-[32px]" aria-live="polite">
