@@ -15,6 +15,7 @@ import {
 } from "../../lib/payload/codec";
 import type { Payload } from "../../lib/payload/schema";
 import { exportBundleSchema, vehicleRecordSchema } from "../../lib/payload/schema";
+import { kickDecodeQueue } from "../../lib/storage/decodeQueue";
 import { upsertVehicle } from "../../lib/storage/upsert";
 import { checkDigitApplies, isCheckDigitValid } from "../../lib/vin/checkDigit";
 import { extractVin } from "../../lib/vin/extractVin";
@@ -456,8 +457,9 @@ export default function ImportScreen() {
       return;
     }
 
-    // §5.3 kicks the decode from the write path; the receiver's own vPIC fetch fills the
-    // rest in. Nothing left to do but land the user where the records now live.
+    // §9-S3 ends the import the way the scan path ends: upsert, then kick the queue, or
+    // the receiving phone reads "Fetching details from NHTSA…" until §5.4's 60 s poll.
+    void kickDecodeQueue();
     void navigate(items.length === 1 ? `/v/${items[0].vin}` : "/history");
   }
 

@@ -6,26 +6,10 @@
 import { useCallback, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { checkDigitApplies } from "../../lib/vin/checkDigit";
-import { runDecodeQueueOnce } from "../../lib/storage/decodeQueue";
+import { kickDecodeQueue } from "../../lib/storage/decodeQueue";
 import { getSettings } from "../../lib/storage/settings";
 import { upsertVehicle } from "../../lib/storage/upsert";
 import type { ExtractResult, Symbology } from "../../lib/vin/types";
-
-/**
- * §5.3: a save on signal kicks the decode straight away, so the sheet fills in without
- * waiting for the §5.4 poll. It kicks the *queue* rather than this one VIN because the
- * queue honours §4.7's one-request-per-VIN rule — re-scanning an already-decoded VIN
- * must not go back to the network. N1: the caller never awaits this, and a failure is
- * swallowed because §5.4 retries.
- */
-async function kickDecode(autoDecode: boolean): Promise<void> {
-  try {
-    if (!autoDecode || !navigator.onLine) return;
-    await runDecodeQueueOnce();
-  } catch {
-    // A decode never surfaces as a save error; the scan is already stored.
-  }
-}
 
 export interface VinCommitMeta {
   origin: "scan" | "manual";
@@ -64,9 +48,8 @@ export function useVinCommit(): VinCommitApi {
       setSaving(true);
       setError(null);
       try {
-        // One settings read serves both the §5.2 `deviceLabel` and the auto-decode check
-        // below. N1: a settings read that fails must not fail the save — the event then
-        // carries no label, and §5.4's poll still picks the decode up.
+        // N1: a settings read that fails must not fail the save — the event then carries
+        // no label, and §5.4's poll still picks the decode up.
         const settings = await getSettings().catch(() => null);
         try {
           await upsertVehicle({
@@ -85,7 +68,9 @@ export function useVinCommit(): VinCommitApi {
           setSaving(false);
           return false;
         }
-        void kickDecode(settings?.autoDecode === true);
+        // §5.3: the save kicks the queue so the sheet fills in without waiting for the
+        // §5.4 poll. The kick reads §5.6's `autoDecode` and swallows its own failures.
+        void kickDecodeQueue();
         // `saving` and `pending` are left standing on purpose: the navigation unmounts the
         // caller, and resetting them first flashes the pre-save controls for a frame.
         navigate(`/v/${candidate.vin}`);
