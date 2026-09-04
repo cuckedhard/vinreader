@@ -20,6 +20,7 @@ import { describe, expect, it } from "vitest";
 
 import { checkDigitApplies, expectedCheckDigit, isCheckDigitValid } from "./checkDigit";
 import { extractVin } from "./extractVin";
+import { countingRandom } from "./rng.testutil";
 
 const VIN = "1HGCM82633A004352";
 const ALPHABET = "ABCDEFGHJKLMNPRSTUVWXYZ0123456789";
@@ -56,12 +57,19 @@ describe("[A-01] §4.2 refuses a run that holds more than one plausible VIN", ()
     expect(extractVin(`2\t${VIN}`)).toBeNull();
   });
 
+  /**
+   * Fixed seed (§13.2), shared mulberry32 (`rng.testutil.ts`): the rate is a measurement,
+   * not a flake. RE-MEASURED FOR LEDGER R4-B — the hand-rolled LCG this used to carry
+   * cycled with period 10,466, so these 2,000 trials were 659 distinct payloads. They are
+   * 2,000 now, and the floors below say so.
+   */
   it("never returns a wrong VIN across random single-field-plus-VIN payloads", () => {
-    // Deterministic LCG: the rate is a measurement, not a flake.
-    let seed = 12345;
-    const rng = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
+    const stream = countingRandom(12345);
+    const rng = stream.next;
     const pick = () => ALPHABET[Math.floor(rng() * ALPHABET.length)];
     let wrong = 0;
+    let read = 0;
+    const payloads = new Set<string>();
     const N = 2000;
     for (let i = 0; i < N; i += 1) {
       let body = "";
@@ -69,12 +77,24 @@ describe("[A-01] §4.2 refuses a run that holds more than one plausible VIN", ()
       const vin = body.slice(0, 8) + expectedCheckDigit(body) + body.slice(9);
       let prefix = "";
       for (let j = 0; j < 2 + Math.floor(rng() * 5); j += 1) prefix += pick();
-      const result = extractVin(`${prefix} ${vin}`);
+      const raw = `${prefix} ${vin}`;
+      payloads.add(raw);
+      const result = extractVin(raw);
       if (result !== null && result.vin !== vin) wrong += 1;
+      else if (result !== null) read += 1;
     }
+    // R4-B: the effective sample, asserted before the rate taken over it. 2,000 distinct
+    // payloads and 50,133 distinct draws measured; the broken LCG gave 659 payloads off
+    // 16,403 distinct draws, its entire reachable state space.
+    expect(payloads.size).toBe(N);
+    expect(stream.distinct()).toBeGreaterThanOrEqual(45_000);
     // Was 1-6% before Z1. A wrong VIN accepted is §13.6 criterion 4, so the bar is zero,
     // not "low": an ambiguous run is refused rather than resolved to the likelier guess.
     expect(wrong).toBe(0);
+    // What the refusal costs on this population, recorded because a rule that refused
+    // everything would also pass the line above: 49 of 2,000 (2.5%) still read, and the
+    // other 1,951 are runs where a straddle validated too. 2.97% over 200,000 trials.
+    expect(read).toBe(49);
   });
 
   /**
@@ -140,44 +160,67 @@ describe("[R2-F] §4.2 refuses a run in which an untested window could be the id
   });
 
   it("fabricates none now: 0 of 2,000 prefixed, 0 of 5,000 prefixed and suffixed", () => {
-    // The same deterministic generator that measured the defect, so the before and after
-    // are the same population and the ledger's number is reproducible from the suite.
-    // "X" excluded at position 9: it is a legal check character, so a PIN carrying one
-    // would belong to the class Z1 already closed.
+    // Fixed seeds (§13.2) on the shared mulberry32, RE-MEASURED FOR LEDGER R4-B: the
+    // hand-rolled LCG these two draws used to run on cycled with period 10,466, so the
+    // payload strings were distinct but the character stream underneath them came from a
+    // pool of 13,545 and 16,418 values rather than 2^32. The counts below are from the
+    // corrected stream. "X" excluded at position 9: it is a legal check character, so a PIN
+    // carrying one would belong to the class Z1 already closed.
     const NO_CHECK = ALPHABET.replace(/[0-9X]/g, "");
     const PREFIXES = ["PIN ", "UNIT B ", "SN ", "P/N ", "ID: ", "A ", "MDL 4CX "];
     const SUFFIXES = [" 01", " USA", " REV C", " 2019", " B", " KG 4200", " CAT"];
 
     const measure = (seed0: number, n: number, suffixed: boolean) => {
-      let seed = seed0;
-      const rng = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
+      const stream = countingRandom(seed0);
+      const rng = stream.next;
       const pick = <T>(from: readonly T[]) => from[Math.floor(rng() * from.length)]!;
       const pickChar = (s: string) => s[Math.floor(rng() * s.length)]!;
       let fabricated = 0;
       let read = 0;
+      const payloads = new Set<string>();
       for (let i = 0; i < n; i += 1) {
         let id = "";
         for (let j = 0; j < 17; j += 1) id += j === 8 ? pickChar(NO_CHECK) : pickChar(ALPHABET);
         const raw = pick(PREFIXES) + id + (suffixed ? pick(SUFFIXES) : "");
+        payloads.add(raw);
         const got = extractVin(raw);
         if (got === null) continue;
         if (got.vin === id) read += 1;
         else fabricated += 1;
       }
-      return { fabricated, read };
+      return { fabricated, read, payloads: payloads.size, draws: stream.distinct() };
     };
 
     // §13.6 criterion 4 is zero false accepts, so this asserts the count, not a ceiling.
-    // Before Z6 the same two draws gave 103 and 673 fabrications (5.2% and 13.5%) — a
-    // field printed after the identifier as well as before roughly doubles the rate,
-    // because every extra character adds another window and another one-in-eleven chance.
+    // The pre-Z6 counts these two draws used to quote — 103 and 673 — were taken on the
+    // degenerate stream and on code that no longer exists, so they are history rather
+    // than a baseline and are not restated as rates here. What survives the re-measure is
+    // the shape of the finding: a field printed after the identifier as well as before
+    // adds windows, and every extra window is another one-in-eleven chance to validate.
     const prefixed = measure(0x2c6b, 2000, false);
     expect(prefixed.fabricated).toBe(0);
-    expect(measure(0x5aff, 5000, true).fabricated).toBe(0);
-    // And the cost of that is nil on this population: the 307 identifiers that read before
-    // — the ones a separator left in a run of their own — all still read. The 103 became
-    // refusals, not wrong answers, which is the trade N2 asks for.
-    expect(prefixed.read).toBe(307);
+    const suffixedToo = measure(0x5aff, 5000, true);
+    expect(suffixedToo.fabricated).toBe(0);
+
+    // R4-B: the sample the two zeros were taken over. 36,000 and 95,000 draws, 35,999 and
+    // 95,000 of them distinct; the broken LCG reached 13,545 and 16,418 and stopped, that
+    // being all the state it had. The distinct-payload counts alone would NOT have caught
+    // it here — both draws were already fully distinct as strings, because the trial
+    // length is coprime enough with the cycle to keep shifting phase — which is why the
+    // floor is on the stream and not only on the payloads.
+    expect(prefixed.payloads).toBe(2000);
+    expect(suffixedToo.payloads).toBe(5000);
+    expect(prefixed.draws).toBeGreaterThanOrEqual(30_000);
+    expect(suffixedToo.draws).toBeGreaterThanOrEqual(90_000);
+
+    // And the cost of the refusal is not total: 267 of the 2,000 prefixed identifiers
+    // (13.4%) still read, the ones a separator such as `P/N ` or `ID: ` left in a run of
+    // their own, and none of them is wrong. With a suffix as well, nothing reads at all —
+    // 0 of 5,000 — because the trailing field always rejoins the run and always adds an
+    // untested window. The fabrications became refusals rather than wrong answers, which
+    // is the trade N2 asks for.
+    expect(prefixed.read).toBe(267);
+    expect(suffixedToo.read).toBe(0);
   });
 });
 
