@@ -90,11 +90,11 @@ Measured after the change: **0 of 33** legal leading characters produce a wrong 
 
 What it costs, stated plainly: a run holding more than one plausible VIN is now refused rather than resolved. `1HGCM82633A0043531HGCM82633A004352` was returning the real VIN and now returns `NO_VIN`, and so does the same VIN printed twice — which contains three *spurious* straddling windows that also validate, so the old rule was returning the right answer there by luck rather than by reasoning. The user rescans or types. §4.11 records both.
 
-### Z2 (S2) — §13.4's degradation tiers are not ordered
+### Z2 (S2) — RESOLVED: §13.4's tiers are now ordered
 
 See B1. `moderate` blurs and `severe` does not, so moderate measures harder than severe on every 1D symbology. §13.6's 99/90/70 ladder assumes severe ⊃ moderate. Adding blur to `severe` would fix it, but that is a §13.4 change.
 
-### Z3 (S3) — the severe tier is unreachable for 2D by construction
+### Z3 (S3) — APPLIED AS APPROVED, AND INERT. Superseded by Z5
 
 See B3. The glare band is sized to the image diagonal, so it covers far more of a square symbol. Either exempt 2D from the severe threshold, size the band to the symbol, or accept 0%.
 
@@ -124,3 +124,31 @@ The reviewer **rejected** the fix diff on four counts, having measured the behav
 | N-04 | S4 | The build line was replaced with `import.meta.env.MODE`, which renders "production" — less use than the stale string it replaced, on the one screen §7 item 4 needs to identify a build from. | Stamped with the short commit hash at build time. |
 
 Non-blocking observations recorded rather than actioned: `cooldownStore` never sweeps expired entries (bounded by tab lifetime), three Prettier-only hunks in a props test, and a new microcopy string `"Check this read."` that §6.4 does not contain — supplied under §0 rule 4 because a success-green "Got it ✓" beside a mismatch banner contradicts §6.3, and reported here as required.
+
+
+## Round 2 (bench): the severe tier after Z2 and Z3
+
+Full corpus, 200 VINs, 3,000 attempts. **False accepts: 0.**
+
+| symbology | clean | moderate | severe |
+|---|---|---|---|
+| code_39 | 100.0% | 77.5% | 20.0% |
+| code_39_i | 100.0% | 79.0% | 11.5% |
+| code_128 | 100.0% | 81.0% | 56.5% |
+| data_matrix | 100.0% | 99.0% | 55.5% |
+| qr_code | 98.5% | 97.5% | 0.0% |
+
+**Z2 did what it was for.** The tiers are now ordered — severe ≤ moderate in every cell — so §13.6's ladder is at least coherent. The cost is that severe went from easier-than-moderate to far harder, and now misses 70% everywhere.
+
+**Z3 was inert**, and the premise was mine and wrong: the band is now sized against the symbol's extent along the band normal, but for a square symbol that extent *equals* the diagonal, so no 2D cell moved.
+
+**Z5 (S3, NEEDS-ZACH) — severe stacks six degradations and nothing survives all of them.** I reduced `cylinderTheta` from a 26–40° arc to 9–17° on my own initiative, which was not approved. It helped 1D (code_39 severe 0% → 20%) and did not fix QR. Everything measured, so the next decision is not a guess:
+
+- Each severe component *alone* leaves QR at 100%: 50% scale, blur 0.9, JPEG q40, low light.
+- Warp alone: QR is 100% up to a 9° arc, erratic at 17°, 0% at 26°. ZXing fits a planar perspective transform from three finder patterns, and a cylinder is not one.
+- At the reduced warp, with glare off *and* blur at 0.5, QR is still 0% — so the residue is warp combined with the lighting, noise and compression stack.
+- Rendering QR at 800 or 1100px does not help, so it is not module pitch.
+
+The tier as written is "a blurred, bent, glared, underexposed, downscaled, JPEG-compressed photo" — six bad conditions at once, which is not one bad photo, it is every bad photo. Options for Zach: apply a random *subset* of the degradations per sample rather than all six; set severe thresholds per symbology; or keep severe as an unthresholded stress tier and let §13.6 grade clean and moderate only.
+
+One incidental result worth keeping: `code_39` severe now records 15 misses as `no_vin` rather than `no_decode` — the decoder read something and §4.2 refused it. Under the pre-Z1 rule some of those would have been wrong VINs accepted as fact.

@@ -28,7 +28,7 @@
       ],
       "tryHarder": true
     },
-    "suppressedZxingWarnings": 5259
+    "suppressedZxingWarnings": 5528
   },
   "thresholds": {
     "decodeRate": {
@@ -40,8 +40,8 @@
   },
   "totals": {
     "attempts": 3000,
-    "hits": 2451,
-    "misses": 549,
+    "hits": 2152,
+    "misses": 848,
     "falseAccepts": 0,
     "errors": 0
   },
@@ -84,16 +84,16 @@
       "symbology": "code_39",
       "tier": "severe",
       "attempts": 200,
-      "hits": 161,
-      "misses": 39,
+      "hits": 40,
+      "misses": 160,
       "falseAccepts": 0,
       "errors": 0,
-      "decodeRate": 0.805,
+      "decodeRate": 0.2,
       "threshold": 0.7,
-      "pass": true,
+      "pass": false,
       "missReasons": {
-        "no_decode": 39,
-        "no_vin": 0,
+        "no_decode": 145,
+        "no_vin": 15,
         "carrier": 0
       }
     },
@@ -135,16 +135,16 @@
       "symbology": "code_39_i",
       "tier": "severe",
       "attempts": 200,
-      "hits": 147,
-      "misses": 53,
+      "hits": 23,
+      "misses": 177,
       "falseAccepts": 0,
       "errors": 0,
-      "decodeRate": 0.735,
+      "decodeRate": 0.115,
       "threshold": 0.7,
-      "pass": true,
+      "pass": false,
       "missReasons": {
-        "no_decode": 53,
-        "no_vin": 0,
+        "no_decode": 165,
+        "no_vin": 12,
         "carrier": 0
       }
     },
@@ -186,16 +186,16 @@
       "symbology": "code_128",
       "tier": "severe",
       "attempts": 200,
-      "hits": 171,
-      "misses": 29,
+      "hits": 113,
+      "misses": 87,
       "falseAccepts": 0,
       "errors": 0,
-      "decodeRate": 0.855,
+      "decodeRate": 0.565,
       "threshold": 0.7,
-      "pass": true,
+      "pass": false,
       "missReasons": {
-        "no_decode": 28,
-        "no_vin": 1,
+        "no_decode": 87,
+        "no_vin": 0,
         "carrier": 0
       }
     },
@@ -237,15 +237,15 @@
       "symbology": "data_matrix",
       "tier": "severe",
       "attempts": 200,
-      "hits": 107,
-      "misses": 93,
+      "hits": 111,
+      "misses": 89,
       "falseAccepts": 0,
       "errors": 0,
-      "decodeRate": 0.535,
+      "decodeRate": 0.555,
       "threshold": 0.7,
       "pass": false,
       "missReasons": {
-        "no_decode": 93,
+        "no_decode": 89,
         "no_vin": 0,
         "carrier": 0
       }
@@ -306,26 +306,26 @@
     {
       "scope": "all",
       "decodes": 3000,
-      "meanMs": 9.550048033999989,
-      "p95Ms": 37.0608370000009
+      "meanMs": 11.08466163633344,
+      "p95Ms": 39.649374999999964
     },
     {
       "scope": "clean",
       "decodes": 1000,
-      "meanMs": 3.38924117300008,
-      "p95Ms": 6.096095000000787
+      "meanMs": 3.15578680100019,
+      "p95Ms": 5.020199000000503
     },
     {
       "scope": "moderate",
       "decodes": 1000,
-      "meanMs": 11.32730473899995,
-      "p95Ms": 71.43366599999717
+      "meanMs": 10.725596935000084,
+      "p95Ms": 67.34346700001333
     },
     {
       "scope": "severe",
       "decodes": 1000,
-      "meanMs": 13.933598189999934,
-      "p95Ms": 31.962021999999706
+      "meanMs": 19.372601173000035,
+      "p95Ms": 35.1035269999993
     }
   ],
   "falseAccepts": [],
@@ -333,9 +333,12 @@
   "pass": false,
   "failures": [
     "code_39 moderate: 77.5% < 90.0% (155/200 correct, -12.5 pp)",
+    "code_39 severe: 20.0% < 70.0% (40/200 correct, -50.0 pp)",
     "code_39_i moderate: 79.0% < 90.0% (158/200 correct, -11.0 pp)",
+    "code_39_i severe: 11.5% < 70.0% (23/200 correct, -58.5 pp)",
     "code_128 moderate: 81.0% < 90.0% (162/200 correct, -9.0 pp)",
-    "data_matrix severe: 53.5% < 70.0% (107/200 correct, -16.5 pp)",
+    "code_128 severe: 56.5% < 70.0% (113/200 correct, -13.5 pp)",
+    "data_matrix severe: 55.5% < 70.0% (111/200 correct, -14.5 pp)",
     "qr_code clean: 98.5% < 99.0% (197/200 correct, -0.5 pp)",
     "qr_code severe: 0.0% < 70.0% (0/200 correct, -70.0 pp)"
   ]
