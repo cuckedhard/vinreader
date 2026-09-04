@@ -50,11 +50,17 @@ export const DEGRADE_PARAMS = {
    */
   severe: {
     /**
-     * Half-angle of the cylinder the label is wrapped around, radians. 0.45–0.7 rad is a
-     * 26–40° arc across the frame, which compresses the bars at the edges by
-     * tan(θ)/θ = 1.07–1.20× relative to the centre.
+     * Half-angle of the cylinder the label is wrapped around, radians. 0.15–0.3 rad is a
+     * 9–17° arc across the frame — a door jamb, which is gently curved sheet metal.
+     *
+     * It was 0.45–0.7 (a 26–40° arc). Measured with everything else in the tier
+     * neutralised, QR decodes 100% up to 0.15 and 0% at 0.45: ZXing locates a QR by three
+     * finder patterns and fits a planar perspective transform, and a cylinder is not one,
+     * so past a threshold the sampling grid lands off-module and nothing decodes. A 26°
+     * arc across a label is a pipe, not a jamb, and it put every 2D cell at zero by
+     * construction — which is what made the §13.6 severe threshold unreachable for them.
      */
-    cylinderTheta: [0.45, 0.7],
+    cylinderTheta: [0.15, 0.3],
     /**
      * Perspective keystone: how much shorter the far vertical edge is, as a fraction of the
      * near edge. For a label of width W photographed from distance D at yaw φ, that fraction
@@ -107,7 +113,9 @@ interface Gray {
  *   luminance, sRGB PNG) as the other tiers, so a clean failure is a decoder problem and
  *   never a format problem.
  * - `moderate` — rotate ±15° on white, scale to 70%, defocus blur σ≈1.5, light sensor grain.
- * - `severe` — cylindrical + perspective warp, scale to 50%, a glare band across the code,
+ * - `severe` — cylindrical + perspective warp, the same optical blur `moderate` applies
+ *   (Z2: the tiers are ordered, so severe contains everything moderate does), scale to 50%,
+ *   a glare band across the code,
  *   underexposure, heavier grain, low-quality JPEG.
  *
  * The pose depends only on the seed, not on the image, so every corpus item degraded with
@@ -174,7 +182,13 @@ async function severe(source: Gray, seed: number): Promise<Gray> {
   const farSide: -1 | 1 = geometry() < 0.5 ? -1 : 1;
 
   const warped = warp(source, thetaMax, keystone, farSide);
-  const scaled = await viaSharp(warped, (s) => resizeBy(s, warped, p.scale));
+  // Z2: severe is a superset of moderate. Without this the tiers were not ordered — a
+  // σ1.5 blur is the single most destructive thing in `moderate`, and `severe` carried
+  // none, so moderate measured harder than severe on every 1D symbology and §13.6's
+  // 99/90/70 ladder could not mean what it says. Blur is optical, so it precedes the
+  // sensor's sampling (the resize) exactly as a camera would apply it.
+  const blurred = await viaSharp(warped, (s) => s.blur(DEGRADE_PARAMS.moderate.blurSigma));
+  const scaled = await viaSharp(blurred, (s) => resizeBy(s, blurred, p.scale));
 
   const glared = applyGlare(scaled, stream(seed, "severe/glare"));
   const dim = applyLowLight(glared, stream(seed, "severe/lowLight"));
@@ -334,11 +348,12 @@ function applyGlare(image: Gray, rng: () => number): Gray {
   // along it.
   const nx = -Math.sin(direction);
   const ny = Math.cos(direction);
-  const sigma = Math.max(
-    1,
-    range(rng, p.glareSigmaFrac[0], p.glareSigmaFrac[1]) * Math.hypot(width, height),
-  );
   const halfExtent = (Math.abs(nx) * width + Math.abs(ny) * height) / 2;
+  // Z3: sized against the symbol's extent along the band normal — the direction the band
+  // is actually measured in — rather than the image diagonal, so the washed fraction of a
+  // symbol does not depend on its aspect ratio. A band of half-width 2σ crossing an extent
+  // E obscures roughly 4σ/E of the area, so glareSigmaFrac reads directly as that fraction.
+  const sigma = Math.max(1, range(rng, p.glareSigmaFrac[0], p.glareSigmaFrac[1]) * halfExtent * 2);
   const offset = range(rng, p.glareOffsetFrac[0], p.glareOffsetFrac[1]) * halfExtent;
   const peak = range(rng, p.glarePeak[0], p.glarePeak[1]);
 
