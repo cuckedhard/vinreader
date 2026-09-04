@@ -9,7 +9,14 @@ export default defineConfig({
       provider: "v8",
       // scanMachine is pure policy and carries the §6.3 rules, so it is gated like src/lib.
       include: ["src/lib/**/*.ts", "src/features/scan/scanMachine.ts"],
-      exclude: ["src/lib/**/*.test.ts", "src/lib/**/test-setup.ts", "src/lib/vin/types.ts"],
+      exclude: [
+        "src/lib/**/*.test.ts",
+        "src/lib/**/test-setup.ts",
+        "src/lib/vin/types.ts",
+        // R4-D: test-only helpers live under src/ so vitest collects them, but they are
+        // not production source and must not pad the §13.5 denominator.
+        "src/lib/**/*.testutil.ts",
+      ],
       // §13.5 gates on these numbers, and a hardening round is read in exactly the state
       // where a failing test would otherwise suppress the whole report: a red tree.
       reportOnFailure: true,
