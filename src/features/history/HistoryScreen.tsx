@@ -261,7 +261,8 @@ export default function HistoryScreen() {
     const year = new Date().getFullYear();
     const live = rows
       .filter((row) => row.deletedAt === null)
-      .map((row) => normalizeVehicle(row, year));
+      .map((row) => normalizeVehicle(row, year))
+      .filter((row): row is VehicleRecord => row !== null);
     // db.ts: §5.1 timestamps carry an offset and do not sort lexicographically across
     // time zones, so the index order is refined here by instant.
     return live.sort((a, b) => Date.parse(b.lastScannedAt) - Date.parse(a.lastScannedAt));

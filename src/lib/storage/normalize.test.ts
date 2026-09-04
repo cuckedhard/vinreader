@@ -22,9 +22,15 @@ function syncShaped(): VehicleRecord {
   };
 }
 
+/** The normaliser returns null for a row it cannot rebuild; these cases all can be. */
+function must(row: VehicleRecord | null): VehicleRecord {
+  if (row === null) throw new Error("expected a normalisable row");
+  return row;
+}
+
 describe("normalizeVehicle", () => {
   it("rebuilds an empty structural block from the VIN rather than defending against it", () => {
-    const got = normalizeVehicle(syncShaped(), 2026);
+    const got = must(normalizeVehicle(syncShaped(), 2026));
     // The VIN is the primary key, so structural is always recoverable (§4.1–§4.5).
     expect(got.structural).toEqual(buildStructural(VIN, 2026));
     expect(got.structural.modelYear.resolved).toBe(2003);
@@ -32,7 +38,7 @@ describe("normalizeVehicle", () => {
   });
 
   it("defaults an empty decode block to pending", () => {
-    const got = normalizeVehicle(syncShaped(), 2026);
+    const got = must(normalizeVehicle(syncShaped(), 2026));
     expect(got.decode).toEqual({
       status: "pending",
       source: "nhtsa_vpic",
@@ -56,7 +62,7 @@ describe("normalizeVehicle", () => {
         fields: { Make: "HONDA" },
       },
     };
-    expect(normalizeVehicle(complete, 2026)).toEqual(complete);
+    expect(must(normalizeVehicle(complete, 2026))).toEqual(complete);
   });
 
   it("keeps a populated decode that is missing its fields map", () => {
@@ -68,7 +74,7 @@ describe("normalizeVehicle", () => {
       attempts: 2,
       lastError: "boom",
     } as VehicleRecord["decode"];
-    const got = normalizeVehicle(row, 2026);
+    const got = must(normalizeVehicle(row, 2026));
     expect(got.decode.status).toBe("partial");
     expect(got.decode.attempts).toBe(2);
     expect(got.decode.lastError).toBe("boom");
@@ -77,10 +83,18 @@ describe("normalizeVehicle", () => {
 
   it("carries every field outside the two blocks through unchanged", () => {
     const row = { ...syncShaped(), unit: "UNIT-42", notes: "rear light out", scanCount: 3 };
-    const got = normalizeVehicle(row, 2026);
+    const got = must(normalizeVehicle(row, 2026));
     expect(got.unit).toBe("UNIT-42");
     expect(got.notes).toBe("rear light out");
     expect(got.scanCount).toBe(3);
     expect(got.metaUpdatedAt).toBe("1970-01-01T00:00:00.000Z");
+  });
+
+  it("returns null for a row with no grammar-valid VIN, so callers drop that row alone", () => {
+    // P7: one unreadable row costs that row, not the route. buildStructural cannot run on
+    // a missing or malformed key, and throwing inside a live query kills the whole screen.
+    for (const vin of ["", "not-a-vin", "1HGCM8263IA004352", undefined as unknown as string]) {
+      expect(normalizeVehicle({ ...syncShaped(), vin }, 2026)).toBeNull();
+    }
   });
 });

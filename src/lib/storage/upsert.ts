@@ -23,7 +23,9 @@ export type UpsertInput = {
 };
 
 /** §5.1: every S0 record starts pending; S2 fills it in. */
-function pendingDecode(): VehicleDecode {
+/** §5.1: the decode block every record starts with. Exported so the sync-shape
+ * normaliser builds from the same default rather than restating it (§7 item 5). */
+export function pendingDecode(): VehicleDecode {
   return {
     status: "pending",
     source: "nhtsa_vpic",
