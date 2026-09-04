@@ -79,10 +79,10 @@ through ZXing and §4.2 `extractVin`, not the fraction that merely decoded.
 
 | Scope | Decodes | Mean ms | p95 ms |
 |---|---:|---:|---:|
-| all | 3000 | 11.1 | 39.6 |
-| clean | 1000 | 3.2 | 5.0 |
-| moderate | 1000 | 10.7 | 67.3 |
-| severe | 1000 | 19.4 | 35.1 |
+| all | 3000 | 9.9 | 33.6 |
+| clean | 1000 | 3.0 | 4.5 |
+| moderate | 1000 | 9.5 | 58.1 |
+| severe | 1000 | 17.3 | 30.0 |
 
 Times cover the ZXing pipeline only — luminance packing, binarisation and the read — because the app hands ZXing canvas pixels and never parses a PNG. Timings are the one part of this report that is not bit-reproducible; no threshold rides on them.
 

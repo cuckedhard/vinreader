@@ -8,3 +8,5 @@ coverage
 test-results
 playwright-report
 bench/*.y4m
+bench/*.quick.md
+bench/*.quick.json

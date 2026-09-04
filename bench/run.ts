@@ -68,6 +68,9 @@ const REPORT_PATH = fileURLToPath(new URL("report.md", import.meta.url));
  * times — round-1 review finding N-01 and again as R2-02. Separate paths make it impossible.
  */
 const QUICK_REPORT_PATH = fileURLToPath(new URL("report.quick.md", import.meta.url));
+/** Same split for the JSON: `bench` hardcodes --json, so --quick would otherwise overwrite
+ *  the tracked full-corpus artifact through the flag rather than the report path. */
+const QUICK_JSON_SUFFIX = ".quick.json";
 
 // ---------------------------------------------------------------------------
 // Attempts
@@ -734,9 +737,19 @@ async function main(): Promise<number> {
     markdownReport(options, cells, timings, attempts, vinCount, failures),
     "utf8",
   );
-  if (options.json !== null) {
+  // A --quick run never writes the tracked full-corpus artifacts: the `bench` script
+  // hardcodes --json, so without this an 8-VIN loop overwrites the §13.6 criterion-4
+  // evidence through the flag instead of through the report path.
+  const jsonPath =
+    options.json === null
+      ? null
+      : options.quick
+        ? options.json.replace(/\.json$/, QUICK_JSON_SUFFIX)
+        : options.json;
+
+  if (jsonPath !== null) {
     await writeFile(
-      resolve(process.cwd(), options.json),
+      resolve(process.cwd(), jsonPath),
       jsonReport(options, cells, timings, attempts, vinCount, failures),
       "utf8",
     );
@@ -779,7 +792,7 @@ async function main(): Promise<number> {
   const all = timings[0];
   lines.push(`  decode time: mean ${ms(all.meanMs)} ms, p95 ${ms(all.p95Ms)} ms`);
   lines.push(`  report: ${options.quick ? QUICK_REPORT_PATH : REPORT_PATH}`);
-  if (options.json !== null) lines.push(`  json:   ${resolve(process.cwd(), options.json)}`);
+  if (jsonPath !== null) lines.push(`  json:   ${resolve(process.cwd(), jsonPath)}`);
   lines.push("");
   if (failures.length === 0) {
     lines.push("  PASS — every §13.6 threshold met.");
