@@ -232,18 +232,33 @@ begin
 end $$;
 
 -- ---------------------------------------------------------------------------------------------
--- The meta clock a scan leaves behind — the hazard raised in the S4 session report
+-- The meta clock a scan leaves behind (§4.12: it moves only on a unit or notes edit)
 -- ---------------------------------------------------------------------------------------------
 
--- `apply_scan_event` seeds meta_updated_at from the event clock (§4.12 skeleton, kept literal).
--- The consequence, asserted here so that it is a decision on the record rather than a surprise
--- in the field: a row that only ever had scans carries a meta clock in the future relative to an
--- edit typed earlier on another device, and that edit is then dropped. If Zach approves seeding
--- the epoch instead, this block is the assertion that flips.
+-- `apply_scan_event` seeds meta_updated_at at the never-edited sentinel, because a scan is not
+-- an edit. Both assertions below used to say the opposite: they recorded the hazard raised in
+-- the S4 session report — an edit dropped by a later scan on another device — rather than the
+-- rule, and they flipped when Zach approved the fix. The scenario after this one is the data
+-- loss they were recording, run end to end.
+--
+-- The sentinel is the value the client already writes (`META_NEVER_EDITED`, src/lib/vin/types.ts,
+-- S3 D11). This file is the server half of "identical on server and client", so the literal here
+-- is the assertion that the two halves agree.
 insert into public.scan_events (id, user_id, vin, at, symbology, check_digit_valid, origin)
 values ('cccccccc-0000-4000-8000-000000000004', :'uid_c', '1FUJGLDR49SAV1234',
         '2026-09-10T12:00:00-07:00', 'code_39', true, 'scan');
 
+do $$
+declare v public.vehicles%rowtype;
+begin
+  select * into v from public.vehicles where vin = '1FUJGLDR49SAV1234';
+  perform public.t_assert(v.meta_updated_at = '1970-01-01T00:00:00.000Z'::timestamptz,
+    'a scan seeded meta_updated_at from the event clock instead of the never-edited sentinel');
+  perform public.t_assert(v.unit is null and v.notes is null, 'a scan invented unit or notes');
+end $$;
+
+-- So an edit older than the scan that created the row still wins: the sentinel is older than
+-- any real client clock, and losing to it is the one comparison an edit can never lose.
 select public.upsert_vehicle_meta('1FUJGLDR49SAV1234', 'UNIT-EARLIER', 'typed before that scan',
        '2026-09-09T12:00:00-07:00', null, null);
 
@@ -251,10 +266,74 @@ do $$
 declare v public.vehicles%rowtype;
 begin
   select * into v from public.vehicles where vin = '1FUJGLDR49SAV1234';
-  perform public.t_assert(v.meta_updated_at = '2026-09-10T12:00:00-07:00'::timestamptz,
-    'a scan no longer seeds meta_updated_at from the event clock — see the S4 report');
-  perform public.t_assert(v.unit is null,
-    'the earlier edit now survives the scan — the skeleton''s seed has been changed');
+  perform public.t_assert(v.unit = 'UNIT-EARLIER',
+    'an edit older than the scan that created the row was dropped: ' || coalesce(v.unit, '<null>'));
+  perform public.t_assert(v.notes = 'typed before that scan', 'the notes on that edit were dropped');
+  perform public.t_assert(v.meta_updated_at = '2026-09-09T12:00:00-07:00'::timestamptz,
+    'meta_updated_at is not the clock of the first real edit');
+end $$;
+
+-- ---------------------------------------------------------------------------------------------
+-- Two devices, one VIN: a typed unit survives a scan that reaches the server first
+-- ---------------------------------------------------------------------------------------------
+
+-- The scenario the seed above exists for, in arrival order. Device A types a unit at 10:01 while
+-- offline. Device B scans the same VIN at 12:00 and pushes first. A comes back on signal and
+-- pushes at 13:00, still carrying 10:01 — the clock is the edit's, not the push's (§4.12).
+--
+-- A's edit is genuinely older than B's scan and must still win, because B never edited anything.
+-- With the event clock as the seed it lost twice: A's push lost the LWW comparison, and A's next
+-- pull then carried the server's null unit back over the local one, so the typed value was gone
+-- from every device with nothing left to report it. §4.12's client-side rule about "an unpushed
+-- vehicle_meta newer than the server's meta_updated_at" cannot cover it — by the clock A's edit
+-- really is older.
+
+-- 12:00, device B: the scan reaches the server first and creates the row.
+insert into public.scan_events (id, user_id, vin, at, symbology, check_digit_valid, device_label, origin)
+values ('cccccccc-0000-4000-8000-000000000007', :'uid_c', '1HTMMAAL67H412345',
+        '2026-09-12T12:00:00-07:00', 'code_128', true, 'B phone', 'scan');
+
+do $$
+declare v public.vehicles%rowtype;
+begin
+  select * into v from public.vehicles where vin = '1HTMMAAL67H412345';
+  perform public.t_assert(v.meta_updated_at = '1970-01-01T00:00:00.000Z'::timestamptz,
+    'B''s scan moved the meta clock to the scan time');
+end $$;
+
+-- 13:00, device A: the push of a unit typed at 10:01, before B ever saw the truck.
+select public.upsert_vehicle_meta('1HTMMAAL67H412345', 'UNIT-A', null,
+       '2026-09-12T10:01:00-07:00', null, null);
+
+do $$
+declare v public.vehicles%rowtype;
+begin
+  select * into v from public.vehicles where vin = '1HTMMAAL67H412345';
+  perform public.t_assert(v.unit = 'UNIT-A',
+    'the unit A typed at 10:01 lost to B''s 12:00 scan: ' || coalesce(v.unit, '<null>'));
+  perform public.t_assert(v.meta_updated_at = '2026-09-12T10:01:00-07:00'::timestamptz,
+    'meta_updated_at is not A''s edit clock, so A''s next pull would erase the unit locally too');
+  -- The scan is still the scan: an edit never disturbs an aggregate derived from the event log.
+  perform public.t_assert(
+    v.scan_count = 1 and v.last_scanned_at = '2026-09-12T12:00:00-07:00'::timestamptz,
+    'the meta push disturbed an aggregate derived from the event log');
+end $$;
+
+-- The other direction, which was already right and must stay right: a scan arriving after an
+-- edit leaves the edit clock exactly where it is. (Asserted from the meta-first order too, on
+-- '1HGCM826X3A004350' above; this is the same rule with the row created by a scan instead.)
+insert into public.scan_events (id, user_id, vin, at, symbology, check_digit_valid, origin)
+values ('cccccccc-0000-4000-8000-000000000008', :'uid_c', '1HTMMAAL67H412345',
+        '2026-09-13T08:00:00-07:00', 'code_39', true, 'scan');
+
+do $$
+declare v public.vehicles%rowtype;
+begin
+  select * into v from public.vehicles where vin = '1HTMMAAL67H412345';
+  perform public.t_assert(v.meta_updated_at = '2026-09-12T10:01:00-07:00'::timestamptz,
+    'a later scan moved the meta clock off the edit that set it');
+  perform public.t_assert(v.unit = 'UNIT-A', 'a later scan wiped the unit');
+  perform public.t_assert(v.scan_count = 2, 'the later scan was not counted');
 end $$;
 
 -- ---------------------------------------------------------------------------------------------

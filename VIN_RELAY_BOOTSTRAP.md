@@ -296,7 +296,8 @@ create table public.vehicles (
   vin              text not null check (vin ~ '^[A-HJ-NPR-Z0-9]{17}$'),
   unit             text,
   notes            text,
-  meta_updated_at  timestamptz not null,                 -- client clock at last unit/notes edit (LWW)
+  meta_updated_at  timestamptz not null,                 -- client clock at last unit/notes edit (LWW);
+                                                        -- the epoch sentinel until one happens
   structural       jsonb not null default '{}'::jsonb,
   decode           jsonb not null default '{}'::jsonb,   -- { status, source, fetchedAt, fields }
   first_scanned_at timestamptz,
@@ -335,7 +336,10 @@ create trigger vehicles_touch before update on public.vehicles
 create or replace function public.apply_scan_event() returns trigger language plpgsql as $$
 begin
   insert into public.vehicles (user_id, vin, meta_updated_at, first_scanned_at, last_scanned_at, scan_count)
-  values (new.user_id, new.vin, new.at, new.at, new.at, 1)
+  -- A scan is not an edit, so it seeds the never-edited sentinel and never the event clock;
+  -- the client writes the same value (`META_NEVER_EDITED`). The DO UPDATE below leaves
+  -- meta_updated_at alone for the same reason.
+  values (new.user_id, new.vin, '1970-01-01T00:00:00.000Z'::timestamptz, new.at, new.at, 1)
   on conflict (user_id, vin) do update set
     first_scanned_at = least(vehicles.first_scanned_at, excluded.first_scanned_at),
     last_scanned_at  = greatest(vehicles.last_scanned_at, excluded.last_scanned_at),
@@ -381,6 +385,7 @@ Edge Function `delete-account`: verifies the caller's JWT, deletes the auth user
 
 **Merge rules (identical on server and client):**
 - `unit`, `notes`: last-writer-wins by `meta_updated_at` (device clock at edit time, ISO 8601 with offset). Ties keep the existing value.
+- `meta_updated_at` moves **only on a unit or notes edit**, on both sides, and a scan never moves it in either direction. A row that has only ever been scanned carries the never-edited sentinel `1970-01-01T00:00:00.000Z`, so it loses every LWW comparison to a real edit however old that edit is. Seeding it from the scan clock instead destroys typed data with nothing to report it: a unit typed on device A at 10:01 while offline loses to device B's 12:00 scan of the same VIN, A's 13:00 push is rejected as stale, and A's next pull erases the unit locally too. The client-side rule below cannot cover that case — by the clock A's edit really is older, because the clock was moved by something that was not an edit.
 - `decode`: rank `ok` 3 > `partial` 2 > `unsupported` 1 > `pending`/`failed` 0. Higher rank wins; equal rank → newer `fetchedAt`.
 - `structural`: first non-empty wins (it is deterministic per VIN anyway).
 - `first_scanned_at` = min, `last_scanned_at` = max, `scan_count` = number of events. Derived only; clients never push them.
@@ -492,28 +497,104 @@ Bottom nav: Scan · History · Settings. Sheet and Import are pushed screens.
 - Manual entry: 17-char input, uppercase forced, live grammar + check-digit validation, same downstream path with `symbology = "manual"`.
 
 ### 6.4 Microcopy (terse, plain, never blames the user)
+
+**What lives here, and what does not.** This section is every sentence the app *says* — a prompt, a status, a banner, a question — with the button words that answer it. Screen and section headings, the action labels §6.2 and §6.5 already name, the §4.8 field labels, §6.6's column headers, input placeholders, the in-flight inflection of a button's own label (*"Saving…"*, *"Deleting…"*, *"Importing…"*, *"Reading…"*), relative time formats (*"Just now"*, *"12 min ago"*), and accessible names and descriptions that only restate a control §6.2 or §6.6 already names are the screen's structure rather than its copy; those sections own them and they are not repeated here.
+
+**This list is the copy of record, and it is retrospective.** S0–S4 and five hardening rounds shipped strings where this section was silent; each was supplied and logged under §0 rule 4, and each is now written out below, verbatim as the code renders it. Where two screens say a near-identical thing in slightly different words — *"Check digit OK"* on the typed path against *"Check digit ok"* on the sheet, two wordings of *"Nothing was written"* — both are recorded. The difference is what ships; harmonising it is a code change, not a spec edit.
+
+**Scan — the camera running (§6.3 states)**
 - Scan prompt: *"Point at the barcode on the door-jamb sticker."*
+- Starting (`requesting` — the 1–3 s black frame while iOS opens the camera; silence here reads as a broken app): *"Starting camera…"*
 - Candidate: *"Reading… hold steady."*
 - Confirmed: *"Got it ✓"*
+- Confirmed but held by the check-digit gate: *"Check this read."* The status line never celebrates while the banner below is still asking (§6.3), and it points at the label, not at the storage.
+- Confirmed but the write failed: *"Not saved."*
+- Preview controls, shown only where the video track reports the capability (§6.1 torch, §9-S1 tap-to-refocus): *"Torch on"* / *"Torch off"*, and *"Tap to focus"*.
+
+**Scan — check digit**
 - Check digit: *"Check digit doesn't match. Usually a misread — try again."* Buttons: **Rescan** / **Use as-is**
   - On the **typed** path the same banner reads the same, but the primary button is **Edit**, not Rescan: there is no scan to repeat, and the field the user typed into is still on screen. (Z7, approved.)
-- Check digit not applicable: *"This number doesn't use a check digit."* Neutral note on the sheet, never a banner.
+
+**Scan — the camera cannot run**
 - Permission denied: *"Camera is blocked. Allow camera for this site in your browser settings, or type the VIN."*
 - Insecure context: *"Camera needs a secure (https) connection."*
+- No camera on the device: *"No camera is available on this device."* It blames the device, not the user.
+- Camera stopped (`idle.lost`, and the defensive `stream_lost` branch): *"Camera stopped. It starts again when this screen is active."*
+- Under a notice that can be retried: **Retry**, then **Type VIN instead**. Where nothing can be retried — an insecure context — **Type VIN instead** takes the primary weight, because it is the only route left (§6.1).
+
+**Scan — nothing was written**
+- Banner **"Couldn't save this VIN"**, with the underlying error printed beneath it in monospace. Camera path: *"Nothing was written. Read the label again, or type it."* → **Scan again**. Typed path: *"Nothing was written. Your entry is still here — try again."*
+
+**Scan — one of the app's own §4.9 codes**
+- Banner **"Couldn't read that code"** → **Keep scanning**. Where the decoder has a reason, it is the body — a version mismatch reads *"This payload is version {v}; this app reads version 1."*, the same words the Import route shows for the same payload. Otherwise: *"That VIN Relay code could not be read. Ask for it again, or type the VIN."* Never silence: the carrier test is what stops `extractVin` mining a VIN out of the base64url body (D14), so this screen owes the rejection.
+
+**Scan — typed entry**
+- Prompt: *"Type or paste the VIN from the door jamb label — spaces and a leading I are fine."*
+- Enough typed, grammar still failing: *"Not a VIN yet"* · *"A VIN is 17 characters and never uses I, O or Q. Keep typing, or check for a mistyped character."*
+- Live chips: *"Check digit OK"* / *"Check digit doesn't match"* / *"This number doesn't use a check digit."*
+- Buttons: **Save VIN**, and **Scan with the camera** back to the other mode.
+
+**Sheet**
+- Check digit not applicable: *"This number doesn't use a check digit."* Neutral note on the sheet, never a banner.
+- The other two structural-block states, as chips: *"Check digit ok"* / *"Check digit doesn't match"*
 - Offline at scan: *"Offline — VIN saved. Details will fill in when you're back on signal."*
 - Decode pending: *"Fetching details from NHTSA…"*
 - Decode partial: *"NHTSA returned partial data: {ErrorText}"*
 - Decode unsupported: *"This looks like an off-highway machine PIN. NHTSA can't decode it — showing what the number itself tells us."*
 - Decode failed: *"Couldn't reach NHTSA after several tries. Tap Refresh details to retry."*
 - Ambiguous year: *"1996 or 2026 — will confirm when details load"*
+- No such record on this device: *"No record for this VIN."* → **Back to History**. A tombstone is a different fact and gets the delete copy below, not this line (N2).
+- Unit / notes: an unsaved edit is chipped *"Not saved yet"*; a failed save is **"Could not save"** · *"What you typed is still in the boxes above. Tap Save to try again."*
 - Share fallback (no Web Share): *"Sharing isn't available here. Copy or download instead."*
-- Import preview: *"Import 2003 HONDA Accord · 1HG CM826 3 3 A 004352?"* → **Import** / **Cancel**
+- Share offered and then not completed: *"Sharing didn't finish. Copy or download instead."*
+- What Copy row is for, in the same words §6.5 gives its History pair: *"Copy row pastes into Excel or Google Sheets as one row of columns."*
+- QR: *"Turn your screen brightness all the way up, then hold the phone steady."* If the code cannot be drawn: *"This code couldn't be drawn. Use Share, Copy link or Download JSON instead."*
+
+**Sheet — Delete (S4)**
+The delete is a tombstone any later scan clears (§4.12), so it takes a second tap and never the typed `DELETE`; that word and *"can't be undone"* belong to the two account-level deletes, and spending them here is how a confirmation stops meaning anything.
+- **"Remove this vehicle"** · *"Takes it out of your history on this device, and on your other devices when you're signed in. Scanning or importing this VIN again brings it back."* → **Delete**
+- Armed, with the VIN shown so the wrong row cannot be deleted from the bottom of a long sheet: **"Delete this vehicle?"** → **Delete** / **Cancel**
+- Done: **"Vehicle deleted"** · *"It's out of your history. Scanning or importing this VIN again brings it back."* → **Back to History**
+- Failed: **"Couldn't delete this vehicle"** · *"It's still in your history. Tap Delete to try again."*
+
+**Copy, on every screen (§6.5)**
 - Copied: *"Copied ✓"*
-- Sign in (S4): *"Enter your email. We'll send a 6-digit code."* → *"Check your email for the code."* → *"That code didn't match. Try again or resend."*
-- Sync chip (S4): *"Synced"* / *"3 pending"* / *"Offline — will sync"* / *"Sync error — tap for details"*
-- First sign-in with local data (S4): *"Add the 14 records on this phone to your account?"* → **Add** / **Not now**
-- Sign out (S4): *"Keep the records on this phone?"* → **Keep** / **Clear this phone**
-- Delete cloud data / account (S4): typed confirmation `DELETE`; *"This removes your VIN history from your account on every device. It can't be undone."*
+- No Clipboard API, over the pre-selected textarea — which is labelled *"Text to copy"*: *"Copying isn't available here. The text below is selected — copy it with your keyboard or your phone's own copy menu."*
+
+**History**
+- Nothing saved yet: *"Nothing scanned yet"* · *"VINs you scan or type in are saved here on this device, and stay readable with no signal."* → **Go to Scan**
+- A search with no hits: *"No records match that search"* · *"Search looks at the VIN, the unit, and the make and model from the vehicle details."* → **Clear search**
+- Decode-status chips (§6.2): *"Details pending"* · *"Some details"* · *"No details published"* · *"Details failed — tap to retry"*. `ok` gets **no chip**, and an empty cell in §6.6's Status column: the row already shows the year, make and model that were fetched, and a fifth word for the healthy case would be a status §4.10 does not have (N6).
+- The bulk section: *"Everything on this device"* · with records, *"Copies or downloads all {n} saved vehicles on this device, not just what the search shows."* (*"1 saved vehicle"* when there is one) · with none, *"Nothing to copy or export yet — scan a VIN first."*
+- §6.6's side pane before a row is chosen: *"Choose a row to see that vehicle here."*
+
+**Import**
+- Import preview: *"Import 2003 HONDA Accord · 1HG CM826 3 3 A 004352?"* → **Import** / **Cancel**
+- What the preview says it read, under *"From"*: *"Shared link"* · *"Pasted link"* · *"Pasted summary"* · *"Pasted VIN"*. It is a claim about the input, so it names what was actually parsed rather than what was hoped for (N2).
+- Pasted text that is not a carrier: *"That text isn't a VIN Relay link, a VINRELAY1 code, or a VIN."* · *"A link looks like https://…/#/i?d=…, a code starts with VINRELAY1:, and a VIN is 17 characters."*
+- A payload that parses but carries no usable VIN: *"That payload's VIN isn't 17 valid characters, so there is nothing to save."* · *"Ask the sender to share it again, or paste the VIN below."*
+- A file that will not import: *"That file couldn't be read."* · *"That file isn't JSON, so there is nothing to read."* · *"That file is JSON, but it isn't a VIN Relay record or export."* · *"That export doesn't list any vehicles."* — each with *"Pick a .json file VIN Relay exported, or paste a link or a VIN instead."*
+- Check digit on the way in is a warning, never a block. One record: *"Check digit doesn't match. The sender may have accepted a misread — you can still import it."* Several: *"Some check digits don't match."* · *"The sender may have accepted a misread. Those rows are marked, and they still import."*
+- A save that failed. One record: *"Tap Import to try again."* Several: *"What is left is still listed below. Tap Import to try again."*
+
+**Settings**
+- A setting that would not save: **"Couldn’t save that"**. The device label confirms with *"Saved ✓"*.
+- What each toggle does, under its own switch: *"Plays a short beep when a scan is confirmed."* · *"Vibrates on a confirmed scan, where the phone supports it."* · *"Fetches vehicle details from NHTSA automatically when you’re online."*
+- The Account row (§6.2): signed out, *"Sign in to see this history on your other devices. Optional — everything here works without it."*; signed in, *"Signed in. Sync status, sign out, and deleting your cloud data or your account are all here."*
+- Clear all data — typed confirmation `DELETE`, because this one really is irreversible: *"Removes every vehicle, scan and setting from this phone. It can’t be undone, and nothing here is backed up."* Signed in, also: *"You’re signed in, so your account keeps its own copy and this phone will download it again. To empty the account, use Delete my cloud data on the Account screen."* Field prompt: *"Type DELETE to turn on the button"*.
+- Done: **"All data cleared"** · *"Every vehicle, scan and setting on this phone is gone."*, and signed in, *"What’s in your account will download again."*
+
+**Account (S4)**
+- Sign in: *"Enter your email. We'll send a 6-digit code."* → *"Check your email for the code."* → *"That code didn't match. Try again or resend."*
+- Before the session has been read: *"Checking…"* — showing either a sign-in form or a signed-in panel first would be a guess about who is holding the phone (N2).
+- Sign-in not built into this build (no Supabase variables): **"Sign-in isn’t set up in this build"** · *"Everything else works as usual — scans, details and handoff all stay on this phone."* Set but invalid, which is the loud case (P7): **"Sign-in is misconfigured in this build"** · *"The account settings this app was built with aren’t valid, so sign-in can’t be offered. Records stay on this phone."*
+- The other sign-in outcomes, unenumerated here until now, none of which blames the user and none of which guesses at a cause the client cannot see: *"The last code is still on its way. Give it a moment."* · *"That address doesn’t look like an email."* · *"Send a code first, then enter it here."* · *"Too many attempts. Wait a minute, then try again."* · *"No signal — that didn’t reach the sign-in service. Try again when you’re back online."* · *"Sign-in didn’t go through. Try again."* Any other failed action: **"That didn’t work"**, with the client's own message beneath as the detail.
+- Sync chip (S4): *"Synced"* / *"3 pending"* / *"Offline — will sync"* / *"Sync error — tap for details"*. Signed out there is **no chip at all**: all four are claims about an account, and a device without one has nothing to describe (N2).
+- The Account screen's own sync panel, where *"tap for details"* lands: *"Waiting to upload"* · *"Last upload"* · *"Last download"* · *"Never"* · **Sync now** · **"Sync error"** with §5.8's `lastError` beneath it · **"Sync is off"** · *"Scans stay on this phone until you add them. Nothing has been lost — the queue is waiting."* · *"Sync isn’t running in this session. Reload the app to start it."*
+- First sign-in with local data (S4): *"Add the 14 records on this phone to your account?"* → **Add** / **Not now**. Singular is an inflection of the same sentence, not a second one: *"Add the record on this phone to your account?"*
+- §6.2's queue button, likewise inflected: **Add 1 local record** / **Add {n} local records** → **"Records queued"** · *"They upload in the background. You can leave this screen."*
+- Sign out (S4): *"Keep the records on this phone?"* → **Keep** / **Clear this phone**, with the two spelled out because the words alone do not say what goes: *"Keep ends the session and leaves every record on this phone. Clear this phone removes the records, the queue and the session — use it on a shared or borrowed phone."* After: **"Signed out"** · *"The records on this phone are untouched. Sign in again to add them to an account."* or **"Signed out and cleared"** · *"No records, no queue and no session are left on this phone."*
+- Delete cloud data / account (S4): typed confirmation `DELETE`; *"This removes your VIN history from your account on every device. It can't be undone."* The account case adds what §9-S4 does and this sentence does not say, because nobody can consent to what they were not told: *"Your account goes with it, and this phone is cleared."* Field prompt: *"Type DELETE to turn on the button"*. After: **"Cloud data deleted"** · *"Your account is empty. The records on this phone are still here, and nothing is queued to upload."* or **"Account deleted"** · *"The account is gone and this phone has been cleared."* With no account service in the build: *"This build has no account service, so there is nothing to delete."*
 
 ### 6.5 Copy & paste rules (any device, one tap)
 - Every copy action is a visible button (long-press is banned, N5), one tap, confirmed by a *"Copied ✓"* toast (1.5 s).

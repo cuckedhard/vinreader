@@ -2,8 +2,8 @@
 --
 -- §4.12's SQL skeleton is authoritative for names, keys and merge semantics; this file completes
 -- it and renames nothing in it. Every statement the skeleton spells out is reproduced verbatim
--- apart from the two marked below, and everything else is an addition. The full list, so that a
--- diff against §4.12 needs no detective work:
+-- apart from the three marked CHANGED below, and everything else is an addition. The full list,
+-- so that a diff against §4.12 needs no detective work:
 --
 --   1. `scan_events_vin_grammar` — the §4.1 check the skeleton puts on vehicles.vin, on the log too.
 --   2. `scan_events_recount`     — the skeleton keeps `scan_count` honest on insert only, so a
@@ -19,10 +19,10 @@
 --                                  a promise to the planner, not a merge rule, and it was untrue.
 --   8. CHANGED: every function carries `set search_path = ''`. An attribute, not a behaviour:
 --                                  the bodies were already fully schema-qualified.
---
--- What is deliberately NOT changed: `apply_scan_event` seeds `meta_updated_at` from the event
--- clock. That is a merge semantic, it looks wrong, and §4.12 owns it — so it is raised in the S4
--- session report and left exactly as written. See the note above that function.
+--   9. CHANGED: `apply_scan_event` seeds `meta_updated_at` at the epoch sentinel rather than
+--                                  from the event clock. Raised in the S4 session report,
+--                                  approved by Zach, and now written into §4.12 in words as
+--                                  well as in SQL. See the note above that function.
 --
 -- Applied by `supabase db push` (remote) and by `supabase start` / `supabase db reset` (local).
 -- Exercised by supabase/tests/; see supabase/README.md for how to run them.
@@ -132,17 +132,32 @@ create trigger vehicles_touch before update on public.vehicles
 -- created by `upsert_vehicle_meta` (null first/last_scanned_at) takes the event's timestamps on
 -- the first scan instead of staying null.
 --
--- NOTE (raised in the S4 session report, left literal here): `meta_updated_at` is seeded from
--- the event clock, as the skeleton has it, even though the column is "client clock at last
--- unit/notes edit" and a scan is not an edit. A unit typed on device A at 10:01 loses to a scan
--- of the same VIN by device B at 12:00 when A pushes late. The client seeds its own
--- `metaUpdatedAt` at the epoch for exactly this reason (S3 report, D11). §4.12 is authoritative
--- for merge semantics, so the fix is Zach's to approve, not this file's to take.
+-- CHANGED, and the one merge semantic this file departs from the §4.12 skeleton on (approved by
+-- Zach; §4.12's own text now says it in words too). `meta_updated_at` is "client clock at last
+-- unit/notes edit (LWW)" and **a scan is not an edit**, so a scan may not move that clock in
+-- either direction. Seeding it from the event clock silently destroyed typed data:
+--
+--   A types a unit at 10:01, offline. B scans the same VIN at 12:00 and pushes, so the server's
+--   meta_updated_at jumps to 12:00 with `unit` still null. A pushes at 13:00 carrying
+--   p_meta_updated_at = 10:01, loses the LWW comparison in `upsert_vehicle_meta`, and A's next
+--   pull then erases the unit locally as well. The value is gone from every device, and nothing
+--   reports it. §4.12's client-side rule about "an unpushed vehicle_meta newer than the server's
+--   meta_updated_at" does not save it: by the clock A's edit is genuinely older — the clock was
+--   moved by something that was never an edit.
+--
+-- The epoch sentinel below is not an invention, it is the value the client already writes:
+-- `META_NEVER_EDITED` in src/lib/vin/types.ts, seeded by S3's D11 for exactly this reason. So
+-- until now the server and the client disagreed about a rule §4.12 says is identical on both,
+-- and it is that sentence this makes true. A never-edited row sorts below every real edit and
+-- loses every comparison it should lose.
+--
+-- The ON CONFLICT path leaves `meta_updated_at` alone, and always did. That is the same rule
+-- seen from the other side and it stays exactly as it is.
 create or replace function public.apply_scan_event() returns trigger language plpgsql
   set search_path = '' as $$
 begin
   insert into public.vehicles (user_id, vin, meta_updated_at, first_scanned_at, last_scanned_at, scan_count)
-  values (new.user_id, new.vin, new.at, new.at, new.at, 1)
+  values (new.user_id, new.vin, '1970-01-01T00:00:00.000Z'::timestamptz, new.at, new.at, 1)
   on conflict (user_id, vin) do update set
     first_scanned_at = least(vehicles.first_scanned_at, excluded.first_scanned_at),
     last_scanned_at  = greatest(vehicles.last_scanned_at, excluded.last_scanned_at),
