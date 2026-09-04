@@ -1,23 +1,24 @@
 /**
- * §13.4 scan-robustness bench — the decoder under test.
+ * §13.4 scan-robustness bench — the `rgb` decode path.
  *
- * ZXing has no DOM here: `@zxing/browser`'s readers all want a `<video>` or a `<canvas>`,
- * so this file drives the same core `@zxing/library` pipeline the browser wrapper drives,
- * straight from a PNG buffer. sharp decodes the PNG to raw pixels, those are packed into
- * the `0xRRGGBB` `Int32Array` that `RGBLuminanceSource` expects, and the rest —
- * `HybridBinarizer` → `BinaryBitmap` → `MultiFormatReader` — is byte-for-byte what the app
- * runs.
+ * **This is not the app's decoder.** It decodes a PNG in node through
+ * `RGBLuminanceSource` → `HybridBinarizer` → `MultiFormatReader.decode`, which is a
+ * different luminance source, a different `isRotateSupported()` answer and a different
+ * entry point than `BrowserMultiFormatReader` uses on a canvas. It is kept, and named
+ * `rgb`, as the *control*: `browser-entry.ts` runs the shipped path, and the report's delta
+ * table is the difference between the two on identical frames — the size of the error every
+ * bench number carried while this file was the only instrument (finding B2).
  *
  * The hints come from `src/lib/vin/symbologies.ts` — the same §4.6 module the scanner builds
  * its reader from, imported rather than copied so there is no second list to drift (§7 item
- * 5). A bench that decoded with different hints than the app ships would measure the wrong
- * program.
+ * 5). Both paths share it, so the delta measures the *pixels-to-decoder* plumbing and
+ * nothing else.
  *
  * A `NotFoundException` is the normal negative result — most degraded frames simply do not
- * decode — so it returns `{ text: null, format: null, ms }` instead of throwing. Checksum
- * and format failures are the same kind of answer ("this frame carries no readable symbol")
- * and are treated identically. Anything else is a real fault and propagates, so the runner
- * can report it rather than silently scoring it as a miss.
+ * decode — so it returns `{ text: null, ... }` instead of throwing. Checksum and format
+ * failures are the same kind of answer ("this frame carries no readable symbol") and are
+ * treated identically. Anything else is a real fault and comes back in `fault`, so the
+ * runner reports it rather than silently scoring it as a miss.
  */
 
 import type { Buffer } from "node:buffer";
@@ -44,11 +45,45 @@ export interface DecodeOutcome {
    * `null` when nothing decoded.
    */
   text: string | null;
+  /**
+   * Whether `stripAimIdentifier` actually removed a `]C1` (§4.6). Counted rather than
+   * assumed: the app strips it in `readScanResult` and the bench strips it here, and a
+   * count in the report is what would show if the two ever stopped agreeing. On the present
+   * corpus it is zero — no rendered row carries a *leading* FNC1 — so the strip is inert
+   * here and the rates below do not depend on it.
+   */
+  aimStripped: boolean;
   /** ZXing's `BarcodeFormat` name, e.g. `"CODE_39"`. `null` when nothing decoded. */
   format: string | null;
   /** Wall time of the ZXing pipeline in milliseconds — see `decodeImage`. */
   ms: number;
+  /**
+   * A decoder fault — neither a hit nor an honest miss, but the bench failing to measure the
+   * frame at all. `null` on every ordinary outcome. Both decode paths report faults this way
+   * so a single bad frame cannot take a whole batch down with it.
+   */
+  fault: string | null;
 }
+
+/**
+ * The instruments this bench can read the corpus with. `canvas` is the app's; the other two
+ * exist to bound it.
+ */
+export type DecodePath = "canvas" | "yuv" | "rgb";
+
+/** Canonical order. The first selected path is the one the report's verdict comes from. */
+export const DECODE_PATHS: readonly DecodePath[] = ["canvas", "yuv", "rgb"];
+
+/** One line each, printed in the report header, so no run can misdescribe its own instrument. */
+export const DECODE_PATH_NOTES: Readonly<Record<DecodePath, string>> = {
+  canvas:
+    "the app's path — Chromium, `BrowserMultiFormatReader.decodeFromCanvas`, " +
+    "`HTMLCanvasElementLuminanceSource`, `decodeWithState`",
+  yuv:
+    "`canvas`, with the frame first put through a **modelled** BT.601 studio-swing I420 round " +
+    "trip — the colour half of a camera capture, not a camera",
+  rgb: "node, `RGBLuminanceSource` + `MultiFormatReader.decode` — the control, not the app",
+};
 
 /** Human-readable §4.6 list, for the report header. The app's list, in the app's order. */
 export const BENCH_FORMAT_NAMES: readonly string[] = SCAN_FORMATS.map(
@@ -163,12 +198,13 @@ function packPixels(data: Uint8Array, width: number, height: number, channels: n
 }
 
 /**
- * Decode one PNG with the app's §4.6 configuration.
+ * Decode one PNG through the `rgb` control path, with the app's §4.6 hints.
  *
  * `ms` times the ZXing pipeline only — luminance packing, binarisation and the read — and
  * deliberately excludes sharp's PNG decode, because the app never decodes a PNG: it hands
  * ZXing pixels that already exist in a canvas. Timing the PNG parse would measure the
- * bench's own scaffolding and inflate every number in the report.
+ * bench's own scaffolding and inflate every number in the report. `browser-entry.ts` draws
+ * the same boundary around `decodeFromCanvas`, so the two paths' times compare.
  */
 export async function decodeImage(png: Buffer): Promise<DecodeOutcome> {
   const { data, info } = await sharp(png)
@@ -184,17 +220,29 @@ export async function decodeImage(png: Buffer): Promise<DecodeOutcome> {
   try {
     const result = decodeQuietly(bitmap);
     const ms = performance.now() - started;
-    // The same §4.6 strip the scan path applies, on the same side of `extractVin`: a bench
-    // that fed §4.2 the decoder's own metadata would measure a program the app is not.
+    // The §4.6 strip, where `readScanResult` applies it: above the §4.9 carrier test and
+    // above §4.2. `aimStripped` records every time it fires (see `DecodeOutcome`).
     const format = result.getBarcodeFormat();
+    const raw = result.getText();
+    const text = stripAimIdentifier(raw, format);
     return {
-      text: stripAimIdentifier(result.getText(), format),
+      text,
+      aimStripped: text !== raw,
       format: BarcodeFormat[format],
       ms,
+      fault: null,
     };
   } catch (error) {
     const ms = performance.now() - started;
-    if (isNoRead(error)) return { text: null, format: null, ms };
-    throw error;
+    if (isNoRead(error)) {
+      return { text: null, aimStripped: false, format: null, ms, fault: null };
+    }
+    return {
+      text: null,
+      aimStripped: false,
+      format: null,
+      ms,
+      fault: error instanceof Error ? `${error.name}: ${error.message}` : String(error),
+    };
   }
 }

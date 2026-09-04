@@ -19,7 +19,8 @@ S1 is the camera scanner: `useScanner.ts`, `scanMachine.ts`, `CameraView.tsx`, `
 | id | sev | area | spec ref | description | repro / test | bucket | status | commit |
 |---|---|---|---|---|---|---|---|---|
 | B1 | S2 | bench | §13.4, §13.6 | The degradation tiers are **not ordered**. `moderate` applies a σ1.5 blur; `severe` applies none. Measured over 200 VINs, moderate is harder than severe on every 1D symbology: code_39 77.5% moderate vs 80.5% severe, code_39_i 79.0% vs 73.5%, code_128 81.0% vs 85.5%. §13.6's 99/90/70 ladder assumes severe ⊃ moderate, so the thresholds cannot mean what they intend. The implementation matches §13.4 exactly — the gap is in the spec's tier definitions, so no agent may change it. | `bun run bench --count 200` | NEEDS-ZACH | fixed | 38fdd31 |
-| B2 | S2 | bench | §13.4 | `bench/decode.ts` is **not the app's decode path** and produces false negatives. It decodes a pristine PNG through `RGBLuminanceSource`; the app decodes a camera frame through a canvas, after YUV conversion and rescaling that smooth module edges. Verified: a §4.9 payload QR the harness scores as a miss is read correctly by the real scanner in Chromium through the fake camera. Every QR cell in the report is therefore unreliable as a statement about the app. | harness miss → browser reads it; see round-1 notes | FIX | open | — |
+| B2 | S2 | bench | §13.4 | `bench/decode.ts` was **not the app's decode path**: it decoded a PNG in node through `RGBLuminanceSource` + `MultiFormatReader.decode`, where the app runs `BrowserMultiFormatReader.decodeFromCanvas` over `HTMLCanvasElementLuminanceSource` + `decodeWithState`. Fixed by decoding in Chromium through the app's own reader, built from the app's `buildScanHints()` — `bench/browser-entry.ts` + `bench/browser-decode.ts`, one page pool, frames batched over CDP. Every frame is now degraded once and offered to each instrument, so the report carries the **delta** cell by cell. **The delta is zero.** 4,200 frames, seed `0x5eed1a7c`: `canvas` 2,839 correct, `rgb` 2,839 correct, 0 frames read only by one, and 0 frames where the decoded text differed by a byte. The false-negative claim does not reproduce: on a grey frame both luminance sources compute the same buffer (`(r+2g+b)/4` and `(306r+601g+117b+512)>>10` are both exactly `v` at `r=g=b=v`), and the two real differences — `isRotateSupported()` unlocking `OneDReader`'s 90° `TRY_HARDER` retry, which cannot help an already-horizontal symbol, and `decodeWithState` vs `decode(bitmap, hints)` — change no outcome here. So every previous round's bench numbers were right about the app by luck of the corpus being grey, and are now right by construction. See B2a for the part of the gap that is **not** zero. | `bun run bench` — the delta table in `bench/report.md`; `--paths canvas,rgb` isolates it | FIX | fixed | (uncommitted) |
+| B2a | S3 | bench | §13.4, §13.7 | **A real camera frame reads slightly *worse* than the bench's canvas, and the bench cannot see it.** `bench/camera-probe.ts` pads a corpus subset onto one 1920×1080 white field, writes it as `C420` YUV4MPEG2 and drives Chromium's own `--use-file-for-fake-video-capture` — so the frame reaches `drawImage(video)` through I420 exactly as a camera's would — then decodes each frame twice, once off the video and once off the identical padded PNG. 105 frames (5 VINs × 7 symbologies × 3 tiers, same seeds): **camera 67/105, canvas 69/105, 0 false accepts either way**, and the 2 lost frames are the same 2 on every run. The cause is colour range, not optics: a `C420` stream with no `XCOLORRANGE` is expanded as studio-swing, which clips and requantises. The modelled `yuv` path in the bench reproduces the *size* of this (4 frames of 630 move, in both directions) but not the *sign*. Left open rather than fixed: the whole corpus through the camera is a 12.4 GB y4m and about three hours of playback, and padding every frame to one resolution is a degradation §13.4 does not define. §7 item 4 still owns the real thing. | `bun run bench/camera-probe.ts --count 5 --fps 4` | WONTFIX | open | — |
 | B3 | S3 | bench | §13.4, §13.6 | `qr_code` severe measures 0/200. The glare band is sized as a fraction of the image **diagonal**, so it covers a far larger share of a square 2D symbol than of a wide 1D one, erasing more than ECC-M can recover. Physically arguable — a real highlight of fixed size does cover more of a smaller code — but it makes the severe threshold unreachable for 2D by construction. Compounded by B2. | `bun run bench`; sample images under the scratch dir | NEEDS-ZACH | obsolete | 38fdd31 |
 | B4 | — | scanner | §13.6 crit. 4 | **SUPERSEDED — this is no longer true, and the row is kept because the reason matters.** It read "zero false accepts across 3,000 attempts, every symbology and tier". The tracked `bench/report.md` now records **1 false accept in 3,000**: `code_128` severe, `EH8U2YHX60HU8VGWD` read as `EH8U2YHX60HU7VAWD` (R4-F, open with Zach). Z5's tier change did not cause it — it **revealed** it: under the old severe tier the same VIN at the same seed decoded to `null`, destroyed and therefore invisible. A tier at 0% was not merely uninformative; it was hiding the one number §13.6 exists to protect. Original text follows: no wrong VIN was ever confirmed. All 573 misses were `no_decode`; not one was a case where the decoder read a symbol and `extractVin` mishandled it. This is the §13.6 criterion the loop exists to protect and it holds. | `bun run bench --count 200` | — | pass | — |
 
@@ -453,6 +454,52 @@ R4-B is the finding that matters most for everything above it. Every rate in thi
 **`mutate` should stay per round, not per fixer commit.** Measured: typecheck ~5 s, lint ~10 s, test ~15 s, coverage ~15 s, **mutate 20 min 58 s** — a 60–80× tax on every commit. §13.5 currently says "every round, and every fixer commit"; the first is affordable, the second would stall the loop.
 
 The cost is concentrated and should not be optimised away: **506 static mutants, 18% of the total, consume 87% of the runtime**, because each forces a module reload. `ignoreStatic: true` would cut the run to ~3 minutes and is exactly the wrong economy — the static mutants **are** the §4 constants. `wmi.ts` and `symbologies.ts` at 100%, `modelYear.ts` at 96.61% and `fields.ts` at 99.5% are scored almost entirely on them, and that is the strongest evidence in this report that the §4.11 fixtures do their job.
+
+
+## Round 5 (bench): the instrument, and what it was worth (B2)
+
+`bun run bench` now decodes **in Chromium, through the app's own reader**. `bench/browser-entry.ts` is bundled from the working tree on every run and evaluated in a page: `new BrowserMultiFormatReader(buildScanHints())` — the §4.6 function `readScanResult` builds its reader from, imported and not copied — and `decodeFromCanvas`, which is the exact call `BrowserCodeReader.prototype.scan` makes on every frame. `bench/browser-decode.ts` drives one browser with a four-page pool and batches frames over CDP; a page per frame would have been hours, one page for 4,200 frames is minutes. The node `RGBLuminanceSource` path is kept and renamed `rgb`, as the control.
+
+Every frame is degraded **once** and offered to each instrument, so the delta is measured on identical pixels rather than on two runs that merely shared a seed.
+
+### The delta, which is the headline
+
+Full corpus, 200 VINs, seed `0x5eed1a7c`, 4,200 frames per path, 12,600 attempts, **5 min 06 s** wall on four cores.
+
+| | correct of 4,200 | read only by this path | frames whose decoded text differed |
+|---|---:|---:|---:|
+| `canvas` (the app) | 2,839 | — | — |
+| `rgb` (the old instrument) | 2,839 | 0 | **0** |
+| `yuv` (`canvas` + a modelled I420 round trip) | 2,838 | 15 (and 15 lost) | 44 |
+
+**Against `rgb` the delta is exactly zero, in every one of the 21 cells, on every one of the 4,200 frames** — not merely the same rate, the same bytes out of the decoder. So B2's premise does not reproduce at scale, and the honest reading is that the bench was measuring the right program for the wrong reason. The mechanism: this corpus renders grey, and on a grey frame the two luminance sources are the same function — `(r + 2g + b) / 4` and `(306r + 601g + 117b + 512) >> 10` are both exactly `v` at `r = g = b = v`. What is left between them cannot bite here either: `isRotateSupported()` is true only on the canvas source, which earns `OneDReader` a 90°-rotated retry under `TRY_HARDER`, and rotating an already-horizontal symbol into a vertical one helps nothing; and `decodeWithState` versus `decode(bitmap, hints)` rebuild the same readers from the same hints. The `yuv` column is what says the delta table can see a difference at all — it moves 44 frames, in both directions, and it is the only reason an all-zero `rgb` column can be read as a result instead of as a harness that forgot to switch instruments.
+
+The one anecdote B2 rested on — a §4.9 payload QR the harness missed and the browser read — is therefore **not** a luminance-source effect. The likeliest explanation is the one the bench cannot reproduce by construction: the app gets a new frame every ~100 ms and needs two agreeing reads, while the bench gets exactly one attempt per image. A single-shot rate is a floor on a multi-frame scanner, not an estimate of it.
+
+### R4-F survives the instrument change
+
+The false accept is not an artifact of the node path. `code_128` severe, `EH8U2YHX60HU8VGWD` → `EH8U2YHX60HU7VAWD`, seed `0xc5d3691c`, reproduces identically on **all three** paths, including the app's. §13.6 criterion 4 is still 1, and R4-F's decision is still Zach's.
+
+### What is still not a camera (B2a)
+
+`bench/camera-probe.ts` answers the part of B2 that was never about the luminance source. It pads a subset onto one 1920×1080 white field, stamps a frame index into the corner so a decode is attributable, writes `C420` YUV4MPEG2 in the same shape `make-fake-camera.py` does, and hands it to Chromium's `--use-file-for-fake-video-capture` — so the frame reaches `drawImage(video)` through I420 exactly as a camera's would. Each frame is then decoded twice: off the video, and off the identical padded PNG.
+
+105 frames (5 VINs × 7 symbologies × 3 tiers, the same seeds as above), video track reported 1920×1080 so nothing was rescaled:
+
+| source | correct of 105 | false accepts |
+|---|---:|---:|
+| camera (fake device → `<video>` → canvas) | **67** | 0 |
+| canvas (the padded PNG → canvas) | **69** | 0 |
+
+Two frames, both `code_39_i`, the same two on every run. The camera reads **worse**, not better, and deterministically so: a `C420` stream with no `XCOLORRANGE` is expanded as studio swing, which clips at both ends and requantises. That is the direction that matters — it means the bench's canvas numbers are a *ceiling* on the capture path, by about 2 points on this subset, not a floor.
+
+It is a probe and not the bench because the whole corpus through the camera is a 12.4 GB y4m and roughly three hours of playback at a frame rate slow enough for every frame to be decoded before the camera moves on, and because padding every frame to one resolution is a degradation §13.4 does not define. `getUserMedia` also needs a secure context, so the probe serves its blank page from `http://127.0.0.1` on an **ephemeral port** (`listen(0)`) rather than picking one that could collide with a preview server or another agent's Playwright run.
+
+### What the report now says about itself
+
+The run header names the decode path and the binary; the rates, miss reasons and false accepts are the app path's unless a row says otherwise; the off-path false accepts are listed rather than dropped; and the count of reads carrying a §4.6 AIM identifier is printed, which on this corpus is 0 — no rendered row carries a *leading* FNC1, so the `]C1` strip is inert here and no rate depends on it.
+
+**Time-to-confirm is still not measured.** §13.4 asks for it beside the decode rates; confirmation is two agreeing reads inside §6.3's window, which is run (b)'s job, and run (b) is the Playwright fake-camera suite rather than this bench. The report now says so in the timing section instead of leaving the omission to be noticed.
 
 
 ## Compatibility: what "works on every phone" actually resolves to

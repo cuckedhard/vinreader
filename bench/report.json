@@ -22,7 +22,21 @@
       "data_matrix",
       "qr_code"
     ],
+    "paths": [
+      "canvas",
+      "yuv",
+      "rgb"
+    ],
+    "appPath": "canvas",
+    "pathNotes": {
+      "canvas": "the app's path — Chromium, `BrowserMultiFormatReader.decodeFromCanvas`, `HTMLCanvasElementLuminanceSource`, `decodeWithState`",
+      "yuv": "`canvas`, with the frame first put through a **modelled** BT.601 studio-swing I420 round trip — the colour half of a camera capture, not a camera",
+      "rgb": "node, `RGBLuminanceSource` + `MultiFormatReader.decode` — the control, not the app"
+    },
+    "browserPages": 4,
+    "chromium": "/opt/pw-browsers/chromium-1194/chrome-linux/chrome",
     "concurrency": 8,
+    "chunk": 96,
     "hints": {
       "possibleFormats": [
         "CODE_39",
@@ -30,7 +44,10 @@
         "DATA_MATRIX",
         "QR_CODE"
       ],
-      "tryHarder": true
+      "hints": [
+        "TRY_HARDER",
+        "ASSUME_GS1"
+      ]
     },
     "suppressedZxingWarnings": 7934
   },
@@ -43,14 +60,17 @@
     "falseAccepts": 0
   },
   "totals": {
-    "attempts": 4200,
+    "attempts": 12600,
+    "appPathAttempts": 4200,
     "hits": 2839,
     "misses": 1360,
     "falseAccepts": 1,
-    "errors": 0
+    "errors": 0,
+    "aimIdentifiersStripped": 0
   },
   "cells": [
     {
+      "path": "canvas",
       "symbology": "code_39",
       "tier": "clean",
       "attempts": 200,
@@ -68,6 +88,7 @@
       }
     },
     {
+      "path": "canvas",
       "symbology": "code_39",
       "tier": "moderate",
       "attempts": 200,
@@ -85,6 +106,7 @@
       }
     },
     {
+      "path": "canvas",
       "symbology": "code_39",
       "tier": "severe",
       "attempts": 200,
@@ -102,6 +124,7 @@
       }
     },
     {
+      "path": "canvas",
       "symbology": "code_39_i",
       "tier": "clean",
       "attempts": 200,
@@ -119,6 +142,7 @@
       }
     },
     {
+      "path": "canvas",
       "symbology": "code_39_i",
       "tier": "moderate",
       "attempts": 200,
@@ -136,6 +160,7 @@
       }
     },
     {
+      "path": "canvas",
       "symbology": "code_39_i",
       "tier": "severe",
       "attempts": 200,
@@ -153,6 +178,7 @@
       }
     },
     {
+      "path": "canvas",
       "symbology": "code_39_check",
       "tier": "clean",
       "attempts": 200,
@@ -170,6 +196,7 @@
       }
     },
     {
+      "path": "canvas",
       "symbology": "code_39_check",
       "tier": "moderate",
       "attempts": 200,
@@ -187,6 +214,7 @@
       }
     },
     {
+      "path": "canvas",
       "symbology": "code_39_check",
       "tier": "severe",
       "attempts": 200,
@@ -204,6 +232,7 @@
       }
     },
     {
+      "path": "canvas",
       "symbology": "code_128",
       "tier": "clean",
       "attempts": 200,
@@ -221,6 +250,7 @@
       }
     },
     {
+      "path": "canvas",
       "symbology": "code_128",
       "tier": "moderate",
       "attempts": 200,
@@ -238,6 +268,7 @@
       }
     },
     {
+      "path": "canvas",
       "symbology": "code_128",
       "tier": "severe",
       "attempts": 200,
@@ -255,6 +286,7 @@
       }
     },
     {
+      "path": "canvas",
       "symbology": "code_128_fnc1",
       "tier": "clean",
       "attempts": 200,
@@ -272,6 +304,7 @@
       }
     },
     {
+      "path": "canvas",
       "symbology": "code_128_fnc1",
       "tier": "moderate",
       "attempts": 200,
@@ -289,6 +322,7 @@
       }
     },
     {
+      "path": "canvas",
       "symbology": "code_128_fnc1",
       "tier": "severe",
       "attempts": 200,
@@ -306,6 +340,7 @@
       }
     },
     {
+      "path": "canvas",
       "symbology": "data_matrix",
       "tier": "clean",
       "attempts": 200,
@@ -323,6 +358,7 @@
       }
     },
     {
+      "path": "canvas",
       "symbology": "data_matrix",
       "tier": "moderate",
       "attempts": 200,
@@ -340,6 +376,7 @@
       }
     },
     {
+      "path": "canvas",
       "symbology": "data_matrix",
       "tier": "severe",
       "attempts": 200,
@@ -357,6 +394,7 @@
       }
     },
     {
+      "path": "canvas",
       "symbology": "qr_code",
       "tier": "clean",
       "attempts": 200,
@@ -374,6 +412,7 @@
       }
     },
     {
+      "path": "canvas",
       "symbology": "qr_code",
       "tier": "moderate",
       "attempts": 200,
@@ -391,6 +430,763 @@
       }
     },
     {
+      "path": "canvas",
+      "symbology": "qr_code",
+      "tier": "severe",
+      "attempts": 200,
+      "hits": 87,
+      "misses": 113,
+      "falseAccepts": 0,
+      "errors": 0,
+      "decodeRate": 0.435,
+      "threshold": 0.7,
+      "pass": false,
+      "missReasons": {
+        "no_decode": 113,
+        "no_vin": 0,
+        "carrier": 0
+      }
+    },
+    {
+      "path": "yuv",
+      "symbology": "code_39",
+      "tier": "clean",
+      "attempts": 200,
+      "hits": 200,
+      "misses": 0,
+      "falseAccepts": 0,
+      "errors": 0,
+      "decodeRate": 1,
+      "threshold": 0.99,
+      "pass": true,
+      "missReasons": {
+        "no_decode": 0,
+        "no_vin": 0,
+        "carrier": 0
+      }
+    },
+    {
+      "path": "yuv",
+      "symbology": "code_39",
+      "tier": "moderate",
+      "attempts": 200,
+      "hits": 155,
+      "misses": 45,
+      "falseAccepts": 0,
+      "errors": 0,
+      "decodeRate": 0.775,
+      "threshold": 0.9,
+      "pass": false,
+      "missReasons": {
+        "no_decode": 45,
+        "no_vin": 0,
+        "carrier": 0
+      }
+    },
+    {
+      "path": "yuv",
+      "symbology": "code_39",
+      "tier": "severe",
+      "attempts": 200,
+      "hits": 101,
+      "misses": 99,
+      "falseAccepts": 0,
+      "errors": 0,
+      "decodeRate": 0.505,
+      "threshold": 0.7,
+      "pass": false,
+      "missReasons": {
+        "no_decode": 94,
+        "no_vin": 5,
+        "carrier": 0
+      }
+    },
+    {
+      "path": "yuv",
+      "symbology": "code_39_i",
+      "tier": "clean",
+      "attempts": 200,
+      "hits": 200,
+      "misses": 0,
+      "falseAccepts": 0,
+      "errors": 0,
+      "decodeRate": 1,
+      "threshold": 0.99,
+      "pass": true,
+      "missReasons": {
+        "no_decode": 0,
+        "no_vin": 0,
+        "carrier": 0
+      }
+    },
+    {
+      "path": "yuv",
+      "symbology": "code_39_i",
+      "tier": "moderate",
+      "attempts": 200,
+      "hits": 158,
+      "misses": 42,
+      "falseAccepts": 0,
+      "errors": 0,
+      "decodeRate": 0.79,
+      "threshold": 0.9,
+      "pass": false,
+      "missReasons": {
+        "no_decode": 41,
+        "no_vin": 1,
+        "carrier": 0
+      }
+    },
+    {
+      "path": "yuv",
+      "symbology": "code_39_i",
+      "tier": "severe",
+      "attempts": 200,
+      "hits": 92,
+      "misses": 108,
+      "falseAccepts": 0,
+      "errors": 0,
+      "decodeRate": 0.46,
+      "threshold": 0.7,
+      "pass": false,
+      "missReasons": {
+        "no_decode": 103,
+        "no_vin": 5,
+        "carrier": 0
+      }
+    },
+    {
+      "path": "yuv",
+      "symbology": "code_39_check",
+      "tier": "clean",
+      "attempts": 200,
+      "hits": 48,
+      "misses": 152,
+      "falseAccepts": 0,
+      "errors": 0,
+      "decodeRate": 0.24,
+      "threshold": 0.99,
+      "pass": false,
+      "missReasons": {
+        "no_decode": 0,
+        "no_vin": 152,
+        "carrier": 0
+      }
+    },
+    {
+      "path": "yuv",
+      "symbology": "code_39_check",
+      "tier": "moderate",
+      "attempts": 200,
+      "hits": 37,
+      "misses": 163,
+      "falseAccepts": 0,
+      "errors": 0,
+      "decodeRate": 0.185,
+      "threshold": 0.9,
+      "pass": false,
+      "missReasons": {
+        "no_decode": 49,
+        "no_vin": 114,
+        "carrier": 0
+      }
+    },
+    {
+      "path": "yuv",
+      "symbology": "code_39_check",
+      "tier": "severe",
+      "attempts": 200,
+      "hits": 24,
+      "misses": 176,
+      "falseAccepts": 0,
+      "errors": 0,
+      "decodeRate": 0.12,
+      "threshold": 0.7,
+      "pass": false,
+      "missReasons": {
+        "no_decode": 94,
+        "no_vin": 82,
+        "carrier": 0
+      }
+    },
+    {
+      "path": "yuv",
+      "symbology": "code_128",
+      "tier": "clean",
+      "attempts": 200,
+      "hits": 200,
+      "misses": 0,
+      "falseAccepts": 0,
+      "errors": 0,
+      "decodeRate": 1,
+      "threshold": 0.99,
+      "pass": true,
+      "missReasons": {
+        "no_decode": 0,
+        "no_vin": 0,
+        "carrier": 0
+      }
+    },
+    {
+      "path": "yuv",
+      "symbology": "code_128",
+      "tier": "moderate",
+      "attempts": 200,
+      "hits": 162,
+      "misses": 38,
+      "falseAccepts": 0,
+      "errors": 0,
+      "decodeRate": 0.81,
+      "threshold": 0.9,
+      "pass": false,
+      "missReasons": {
+        "no_decode": 38,
+        "no_vin": 0,
+        "carrier": 0
+      }
+    },
+    {
+      "path": "yuv",
+      "symbology": "code_128",
+      "tier": "severe",
+      "attempts": 200,
+      "hits": 115,
+      "misses": 84,
+      "falseAccepts": 1,
+      "errors": 0,
+      "decodeRate": 0.575,
+      "threshold": 0.7,
+      "pass": false,
+      "missReasons": {
+        "no_decode": 83,
+        "no_vin": 1,
+        "carrier": 0
+      }
+    },
+    {
+      "path": "yuv",
+      "symbology": "code_128_fnc1",
+      "tier": "clean",
+      "attempts": 200,
+      "hits": 200,
+      "misses": 0,
+      "falseAccepts": 0,
+      "errors": 0,
+      "decodeRate": 1,
+      "threshold": 0.99,
+      "pass": true,
+      "missReasons": {
+        "no_decode": 0,
+        "no_vin": 0,
+        "carrier": 0
+      }
+    },
+    {
+      "path": "yuv",
+      "symbology": "code_128_fnc1",
+      "tier": "moderate",
+      "attempts": 200,
+      "hits": 155,
+      "misses": 45,
+      "falseAccepts": 0,
+      "errors": 0,
+      "decodeRate": 0.775,
+      "threshold": 0.9,
+      "pass": false,
+      "missReasons": {
+        "no_decode": 45,
+        "no_vin": 0,
+        "carrier": 0
+      }
+    },
+    {
+      "path": "yuv",
+      "symbology": "code_128_fnc1",
+      "tier": "severe",
+      "attempts": 200,
+      "hits": 1,
+      "misses": 199,
+      "falseAccepts": 0,
+      "errors": 0,
+      "decodeRate": 0.005,
+      "threshold": 0.7,
+      "pass": false,
+      "missReasons": {
+        "no_decode": 198,
+        "no_vin": 1,
+        "carrier": 0
+      }
+    },
+    {
+      "path": "yuv",
+      "symbology": "data_matrix",
+      "tier": "clean",
+      "attempts": 200,
+      "hits": 200,
+      "misses": 0,
+      "falseAccepts": 0,
+      "errors": 0,
+      "decodeRate": 1,
+      "threshold": 0.99,
+      "pass": true,
+      "missReasons": {
+        "no_decode": 0,
+        "no_vin": 0,
+        "carrier": 0
+      }
+    },
+    {
+      "path": "yuv",
+      "symbology": "data_matrix",
+      "tier": "moderate",
+      "attempts": 200,
+      "hits": 198,
+      "misses": 2,
+      "falseAccepts": 0,
+      "errors": 0,
+      "decodeRate": 0.99,
+      "threshold": 0.9,
+      "pass": true,
+      "missReasons": {
+        "no_decode": 2,
+        "no_vin": 0,
+        "carrier": 0
+      }
+    },
+    {
+      "path": "yuv",
+      "symbology": "data_matrix",
+      "tier": "severe",
+      "attempts": 200,
+      "hits": 111,
+      "misses": 89,
+      "falseAccepts": 0,
+      "errors": 0,
+      "decodeRate": 0.555,
+      "threshold": 0.7,
+      "pass": false,
+      "missReasons": {
+        "no_decode": 89,
+        "no_vin": 0,
+        "carrier": 0
+      }
+    },
+    {
+      "path": "yuv",
+      "symbology": "qr_code",
+      "tier": "clean",
+      "attempts": 200,
+      "hits": 197,
+      "misses": 3,
+      "falseAccepts": 0,
+      "errors": 0,
+      "decodeRate": 0.985,
+      "threshold": 0.99,
+      "pass": false,
+      "missReasons": {
+        "no_decode": 3,
+        "no_vin": 0,
+        "carrier": 0
+      }
+    },
+    {
+      "path": "yuv",
+      "symbology": "qr_code",
+      "tier": "moderate",
+      "attempts": 200,
+      "hits": 196,
+      "misses": 4,
+      "falseAccepts": 0,
+      "errors": 0,
+      "decodeRate": 0.98,
+      "threshold": 0.9,
+      "pass": true,
+      "missReasons": {
+        "no_decode": 4,
+        "no_vin": 0,
+        "carrier": 0
+      }
+    },
+    {
+      "path": "yuv",
+      "symbology": "qr_code",
+      "tier": "severe",
+      "attempts": 200,
+      "hits": 88,
+      "misses": 112,
+      "falseAccepts": 0,
+      "errors": 0,
+      "decodeRate": 0.44,
+      "threshold": 0.7,
+      "pass": false,
+      "missReasons": {
+        "no_decode": 112,
+        "no_vin": 0,
+        "carrier": 0
+      }
+    },
+    {
+      "path": "rgb",
+      "symbology": "code_39",
+      "tier": "clean",
+      "attempts": 200,
+      "hits": 200,
+      "misses": 0,
+      "falseAccepts": 0,
+      "errors": 0,
+      "decodeRate": 1,
+      "threshold": 0.99,
+      "pass": true,
+      "missReasons": {
+        "no_decode": 0,
+        "no_vin": 0,
+        "carrier": 0
+      }
+    },
+    {
+      "path": "rgb",
+      "symbology": "code_39",
+      "tier": "moderate",
+      "attempts": 200,
+      "hits": 155,
+      "misses": 45,
+      "falseAccepts": 0,
+      "errors": 0,
+      "decodeRate": 0.775,
+      "threshold": 0.9,
+      "pass": false,
+      "missReasons": {
+        "no_decode": 45,
+        "no_vin": 0,
+        "carrier": 0
+      }
+    },
+    {
+      "path": "rgb",
+      "symbology": "code_39",
+      "tier": "severe",
+      "attempts": 200,
+      "hits": 102,
+      "misses": 98,
+      "falseAccepts": 0,
+      "errors": 0,
+      "decodeRate": 0.51,
+      "threshold": 0.7,
+      "pass": false,
+      "missReasons": {
+        "no_decode": 94,
+        "no_vin": 4,
+        "carrier": 0
+      }
+    },
+    {
+      "path": "rgb",
+      "symbology": "code_39_i",
+      "tier": "clean",
+      "attempts": 200,
+      "hits": 200,
+      "misses": 0,
+      "falseAccepts": 0,
+      "errors": 0,
+      "decodeRate": 1,
+      "threshold": 0.99,
+      "pass": true,
+      "missReasons": {
+        "no_decode": 0,
+        "no_vin": 0,
+        "carrier": 0
+      }
+    },
+    {
+      "path": "rgb",
+      "symbology": "code_39_i",
+      "tier": "moderate",
+      "attempts": 200,
+      "hits": 158,
+      "misses": 42,
+      "falseAccepts": 0,
+      "errors": 0,
+      "decodeRate": 0.79,
+      "threshold": 0.9,
+      "pass": false,
+      "missReasons": {
+        "no_decode": 42,
+        "no_vin": 0,
+        "carrier": 0
+      }
+    },
+    {
+      "path": "rgb",
+      "symbology": "code_39_i",
+      "tier": "severe",
+      "attempts": 200,
+      "hits": 91,
+      "misses": 109,
+      "falseAccepts": 0,
+      "errors": 0,
+      "decodeRate": 0.455,
+      "threshold": 0.7,
+      "pass": false,
+      "missReasons": {
+        "no_decode": 103,
+        "no_vin": 6,
+        "carrier": 0
+      }
+    },
+    {
+      "path": "rgb",
+      "symbology": "code_39_check",
+      "tier": "clean",
+      "attempts": 200,
+      "hits": 48,
+      "misses": 152,
+      "falseAccepts": 0,
+      "errors": 0,
+      "decodeRate": 0.24,
+      "threshold": 0.99,
+      "pass": false,
+      "missReasons": {
+        "no_decode": 0,
+        "no_vin": 152,
+        "carrier": 0
+      }
+    },
+    {
+      "path": "rgb",
+      "symbology": "code_39_check",
+      "tier": "moderate",
+      "attempts": 200,
+      "hits": 37,
+      "misses": 163,
+      "falseAccepts": 0,
+      "errors": 0,
+      "decodeRate": 0.185,
+      "threshold": 0.9,
+      "pass": false,
+      "missReasons": {
+        "no_decode": 49,
+        "no_vin": 114,
+        "carrier": 0
+      }
+    },
+    {
+      "path": "rgb",
+      "symbology": "code_39_check",
+      "tier": "severe",
+      "attempts": 200,
+      "hits": 25,
+      "misses": 175,
+      "falseAccepts": 0,
+      "errors": 0,
+      "decodeRate": 0.125,
+      "threshold": 0.7,
+      "pass": false,
+      "missReasons": {
+        "no_decode": 92,
+        "no_vin": 83,
+        "carrier": 0
+      }
+    },
+    {
+      "path": "rgb",
+      "symbology": "code_128",
+      "tier": "clean",
+      "attempts": 200,
+      "hits": 200,
+      "misses": 0,
+      "falseAccepts": 0,
+      "errors": 0,
+      "decodeRate": 1,
+      "threshold": 0.99,
+      "pass": true,
+      "missReasons": {
+        "no_decode": 0,
+        "no_vin": 0,
+        "carrier": 0
+      }
+    },
+    {
+      "path": "rgb",
+      "symbology": "code_128",
+      "tier": "moderate",
+      "attempts": 200,
+      "hits": 162,
+      "misses": 38,
+      "falseAccepts": 0,
+      "errors": 0,
+      "decodeRate": 0.81,
+      "threshold": 0.9,
+      "pass": false,
+      "missReasons": {
+        "no_decode": 38,
+        "no_vin": 0,
+        "carrier": 0
+      }
+    },
+    {
+      "path": "rgb",
+      "symbology": "code_128",
+      "tier": "severe",
+      "attempts": 200,
+      "hits": 118,
+      "misses": 81,
+      "falseAccepts": 1,
+      "errors": 0,
+      "decodeRate": 0.59,
+      "threshold": 0.7,
+      "pass": false,
+      "missReasons": {
+        "no_decode": 80,
+        "no_vin": 1,
+        "carrier": 0
+      }
+    },
+    {
+      "path": "rgb",
+      "symbology": "code_128_fnc1",
+      "tier": "clean",
+      "attempts": 200,
+      "hits": 200,
+      "misses": 0,
+      "falseAccepts": 0,
+      "errors": 0,
+      "decodeRate": 1,
+      "threshold": 0.99,
+      "pass": true,
+      "missReasons": {
+        "no_decode": 0,
+        "no_vin": 0,
+        "carrier": 0
+      }
+    },
+    {
+      "path": "rgb",
+      "symbology": "code_128_fnc1",
+      "tier": "moderate",
+      "attempts": 200,
+      "hits": 155,
+      "misses": 45,
+      "falseAccepts": 0,
+      "errors": 0,
+      "decodeRate": 0.775,
+      "threshold": 0.9,
+      "pass": false,
+      "missReasons": {
+        "no_decode": 45,
+        "no_vin": 0,
+        "carrier": 0
+      }
+    },
+    {
+      "path": "rgb",
+      "symbology": "code_128_fnc1",
+      "tier": "severe",
+      "attempts": 200,
+      "hits": 1,
+      "misses": 199,
+      "falseAccepts": 0,
+      "errors": 0,
+      "decodeRate": 0.005,
+      "threshold": 0.7,
+      "pass": false,
+      "missReasons": {
+        "no_decode": 199,
+        "no_vin": 0,
+        "carrier": 0
+      }
+    },
+    {
+      "path": "rgb",
+      "symbology": "data_matrix",
+      "tier": "clean",
+      "attempts": 200,
+      "hits": 200,
+      "misses": 0,
+      "falseAccepts": 0,
+      "errors": 0,
+      "decodeRate": 1,
+      "threshold": 0.99,
+      "pass": true,
+      "missReasons": {
+        "no_decode": 0,
+        "no_vin": 0,
+        "carrier": 0
+      }
+    },
+    {
+      "path": "rgb",
+      "symbology": "data_matrix",
+      "tier": "moderate",
+      "attempts": 200,
+      "hits": 198,
+      "misses": 2,
+      "falseAccepts": 0,
+      "errors": 0,
+      "decodeRate": 0.99,
+      "threshold": 0.9,
+      "pass": true,
+      "missReasons": {
+        "no_decode": 2,
+        "no_vin": 0,
+        "carrier": 0
+      }
+    },
+    {
+      "path": "rgb",
+      "symbology": "data_matrix",
+      "tier": "severe",
+      "attempts": 200,
+      "hits": 110,
+      "misses": 90,
+      "falseAccepts": 0,
+      "errors": 0,
+      "decodeRate": 0.55,
+      "threshold": 0.7,
+      "pass": false,
+      "missReasons": {
+        "no_decode": 90,
+        "no_vin": 0,
+        "carrier": 0
+      }
+    },
+    {
+      "path": "rgb",
+      "symbology": "qr_code",
+      "tier": "clean",
+      "attempts": 200,
+      "hits": 197,
+      "misses": 3,
+      "falseAccepts": 0,
+      "errors": 0,
+      "decodeRate": 0.985,
+      "threshold": 0.99,
+      "pass": false,
+      "missReasons": {
+        "no_decode": 3,
+        "no_vin": 0,
+        "carrier": 0
+      }
+    },
+    {
+      "path": "rgb",
+      "symbology": "qr_code",
+      "tier": "moderate",
+      "attempts": 200,
+      "hits": 195,
+      "misses": 5,
+      "falseAccepts": 0,
+      "errors": 0,
+      "decodeRate": 0.975,
+      "threshold": 0.9,
+      "pass": true,
+      "missReasons": {
+        "no_decode": 5,
+        "no_vin": 0,
+        "carrier": 0
+      }
+    },
+    {
+      "path": "rgb",
       "symbology": "qr_code",
       "tier": "severe",
       "attempts": 200,
@@ -410,28 +1206,1190 @@
   ],
   "timings": [
     {
-      "scope": "all",
+      "scope": "canvas: all",
       "decodes": 4200,
-      "meanMs": 18.78603255285699,
-      "p95Ms": 87.12934699998004
+      "meanMs": 21.376166666664094,
+      "p95Ms": 87.90000000037253
     },
     {
-      "scope": "clean",
+      "scope": "canvas: clean",
       "decodes": 1400,
-      "meanMs": 5.56383345285706,
-      "p95Ms": 11.6550909999969
+      "meanMs": 7.6930000000127725,
+      "p95Ms": 11.700000001117587
     },
     {
-      "scope": "moderate",
+      "scope": "canvas: moderate",
       "decodes": 1400,
-      "meanMs": 19.521614243571097,
-      "p95Ms": 103.31222399999388
+      "meanMs": 21.513928571409945,
+      "p95Ms": 107.40000000037253
     },
     {
-      "scope": "severe",
+      "scope": "canvas: severe",
       "decodes": 1400,
-      "meanMs": 31.27264996214281,
-      "p95Ms": 70.15847999999824
+      "meanMs": 34.921571428569564,
+      "p95Ms": 76.09999999962747
+    },
+    {
+      "scope": "yuv: all",
+      "decodes": 4200,
+      "meanMs": 20.979047619049837,
+      "p95Ms": 87.59999999962747
+    },
+    {
+      "scope": "yuv: clean",
+      "decodes": 1400,
+      "meanMs": 7.096071428558124,
+      "p95Ms": 10.600000001490116
+    },
+    {
+      "scope": "yuv: moderate",
+      "decodes": 1400,
+      "meanMs": 21.062142857134873,
+      "p95Ms": 109.19999999925494
+    },
+    {
+      "scope": "yuv: severe",
+      "decodes": 1400,
+      "meanMs": 34.77892857145651,
+      "p95Ms": 73.69999999925494
+    },
+    {
+      "scope": "rgb: all",
+      "decodes": 4200,
+      "meanMs": 16.202708960714354,
+      "p95Ms": 80.71577400001115
+    },
+    {
+      "scope": "rgb: clean",
+      "decodes": 1400,
+      "meanMs": 4.042099977142992,
+      "p95Ms": 4.908216999989236
+    },
+    {
+      "scope": "rgb: moderate",
+      "decodes": 1400,
+      "meanMs": 17.338037539999668,
+      "p95Ms": 93.93970600000466
+    },
+    {
+      "scope": "rgb: severe",
+      "decodes": 1400,
+      "meanMs": 27.22798936500041,
+      "p95Ms": 58.99059899999702
+    }
+  ],
+  "delta": [
+    {
+      "path": "yuv",
+      "symbology": "code_39",
+      "tier": "clean",
+      "appRate": 1,
+      "otherRate": 1,
+      "appOnly": 0,
+      "otherOnly": 0,
+      "both": 200,
+      "neither": 0
+    },
+    {
+      "path": "yuv",
+      "symbology": "code_39",
+      "tier": "moderate",
+      "appRate": 0.775,
+      "otherRate": 0.775,
+      "appOnly": 0,
+      "otherOnly": 0,
+      "both": 155,
+      "neither": 45
+    },
+    {
+      "path": "yuv",
+      "symbology": "code_39",
+      "tier": "severe",
+      "appRate": 0.51,
+      "otherRate": 0.505,
+      "appOnly": 5,
+      "otherOnly": 4,
+      "both": 97,
+      "neither": 94
+    },
+    {
+      "path": "yuv",
+      "symbology": "code_39_i",
+      "tier": "clean",
+      "appRate": 1,
+      "otherRate": 1,
+      "appOnly": 0,
+      "otherOnly": 0,
+      "both": 200,
+      "neither": 0
+    },
+    {
+      "path": "yuv",
+      "symbology": "code_39_i",
+      "tier": "moderate",
+      "appRate": 0.79,
+      "otherRate": 0.79,
+      "appOnly": 0,
+      "otherOnly": 0,
+      "both": 158,
+      "neither": 42
+    },
+    {
+      "path": "yuv",
+      "symbology": "code_39_i",
+      "tier": "severe",
+      "appRate": 0.455,
+      "otherRate": 0.46,
+      "appOnly": 3,
+      "otherOnly": 4,
+      "both": 88,
+      "neither": 105
+    },
+    {
+      "path": "yuv",
+      "symbology": "code_39_check",
+      "tier": "clean",
+      "appRate": 0.24,
+      "otherRate": 0.24,
+      "appOnly": 0,
+      "otherOnly": 0,
+      "both": 48,
+      "neither": 152
+    },
+    {
+      "path": "yuv",
+      "symbology": "code_39_check",
+      "tier": "moderate",
+      "appRate": 0.185,
+      "otherRate": 0.185,
+      "appOnly": 0,
+      "otherOnly": 0,
+      "both": 37,
+      "neither": 163
+    },
+    {
+      "path": "yuv",
+      "symbology": "code_39_check",
+      "tier": "severe",
+      "appRate": 0.125,
+      "otherRate": 0.12,
+      "appOnly": 2,
+      "otherOnly": 1,
+      "both": 23,
+      "neither": 174
+    },
+    {
+      "path": "yuv",
+      "symbology": "code_128",
+      "tier": "clean",
+      "appRate": 1,
+      "otherRate": 1,
+      "appOnly": 0,
+      "otherOnly": 0,
+      "both": 200,
+      "neither": 0
+    },
+    {
+      "path": "yuv",
+      "symbology": "code_128",
+      "tier": "moderate",
+      "appRate": 0.81,
+      "otherRate": 0.81,
+      "appOnly": 0,
+      "otherOnly": 0,
+      "both": 162,
+      "neither": 38
+    },
+    {
+      "path": "yuv",
+      "symbology": "code_128",
+      "tier": "severe",
+      "appRate": 0.59,
+      "otherRate": 0.575,
+      "appOnly": 3,
+      "otherOnly": 0,
+      "both": 115,
+      "neither": 82
+    },
+    {
+      "path": "yuv",
+      "symbology": "code_128_fnc1",
+      "tier": "clean",
+      "appRate": 1,
+      "otherRate": 1,
+      "appOnly": 0,
+      "otherOnly": 0,
+      "both": 200,
+      "neither": 0
+    },
+    {
+      "path": "yuv",
+      "symbology": "code_128_fnc1",
+      "tier": "moderate",
+      "appRate": 0.775,
+      "otherRate": 0.775,
+      "appOnly": 1,
+      "otherOnly": 1,
+      "both": 154,
+      "neither": 44
+    },
+    {
+      "path": "yuv",
+      "symbology": "code_128_fnc1",
+      "tier": "severe",
+      "appRate": 0.005,
+      "otherRate": 0.005,
+      "appOnly": 0,
+      "otherOnly": 0,
+      "both": 1,
+      "neither": 199
+    },
+    {
+      "path": "yuv",
+      "symbology": "data_matrix",
+      "tier": "clean",
+      "appRate": 1,
+      "otherRate": 1,
+      "appOnly": 0,
+      "otherOnly": 0,
+      "both": 200,
+      "neither": 0
+    },
+    {
+      "path": "yuv",
+      "symbology": "data_matrix",
+      "tier": "moderate",
+      "appRate": 0.99,
+      "otherRate": 0.99,
+      "appOnly": 0,
+      "otherOnly": 0,
+      "both": 198,
+      "neither": 2
+    },
+    {
+      "path": "yuv",
+      "symbology": "data_matrix",
+      "tier": "severe",
+      "appRate": 0.55,
+      "otherRate": 0.555,
+      "appOnly": 0,
+      "otherOnly": 1,
+      "both": 110,
+      "neither": 89
+    },
+    {
+      "path": "yuv",
+      "symbology": "qr_code",
+      "tier": "clean",
+      "appRate": 0.985,
+      "otherRate": 0.985,
+      "appOnly": 0,
+      "otherOnly": 0,
+      "both": 197,
+      "neither": 3
+    },
+    {
+      "path": "yuv",
+      "symbology": "qr_code",
+      "tier": "moderate",
+      "appRate": 0.975,
+      "otherRate": 0.98,
+      "appOnly": 0,
+      "otherOnly": 1,
+      "both": 195,
+      "neither": 4
+    },
+    {
+      "path": "yuv",
+      "symbology": "qr_code",
+      "tier": "severe",
+      "appRate": 0.435,
+      "otherRate": 0.44,
+      "appOnly": 1,
+      "otherOnly": 2,
+      "both": 86,
+      "neither": 111
+    },
+    {
+      "path": "rgb",
+      "symbology": "code_39",
+      "tier": "clean",
+      "appRate": 1,
+      "otherRate": 1,
+      "appOnly": 0,
+      "otherOnly": 0,
+      "both": 200,
+      "neither": 0
+    },
+    {
+      "path": "rgb",
+      "symbology": "code_39",
+      "tier": "moderate",
+      "appRate": 0.775,
+      "otherRate": 0.775,
+      "appOnly": 0,
+      "otherOnly": 0,
+      "both": 155,
+      "neither": 45
+    },
+    {
+      "path": "rgb",
+      "symbology": "code_39",
+      "tier": "severe",
+      "appRate": 0.51,
+      "otherRate": 0.51,
+      "appOnly": 0,
+      "otherOnly": 0,
+      "both": 102,
+      "neither": 98
+    },
+    {
+      "path": "rgb",
+      "symbology": "code_39_i",
+      "tier": "clean",
+      "appRate": 1,
+      "otherRate": 1,
+      "appOnly": 0,
+      "otherOnly": 0,
+      "both": 200,
+      "neither": 0
+    },
+    {
+      "path": "rgb",
+      "symbology": "code_39_i",
+      "tier": "moderate",
+      "appRate": 0.79,
+      "otherRate": 0.79,
+      "appOnly": 0,
+      "otherOnly": 0,
+      "both": 158,
+      "neither": 42
+    },
+    {
+      "path": "rgb",
+      "symbology": "code_39_i",
+      "tier": "severe",
+      "appRate": 0.455,
+      "otherRate": 0.455,
+      "appOnly": 0,
+      "otherOnly": 0,
+      "both": 91,
+      "neither": 109
+    },
+    {
+      "path": "rgb",
+      "symbology": "code_39_check",
+      "tier": "clean",
+      "appRate": 0.24,
+      "otherRate": 0.24,
+      "appOnly": 0,
+      "otherOnly": 0,
+      "both": 48,
+      "neither": 152
+    },
+    {
+      "path": "rgb",
+      "symbology": "code_39_check",
+      "tier": "moderate",
+      "appRate": 0.185,
+      "otherRate": 0.185,
+      "appOnly": 0,
+      "otherOnly": 0,
+      "both": 37,
+      "neither": 163
+    },
+    {
+      "path": "rgb",
+      "symbology": "code_39_check",
+      "tier": "severe",
+      "appRate": 0.125,
+      "otherRate": 0.125,
+      "appOnly": 0,
+      "otherOnly": 0,
+      "both": 25,
+      "neither": 175
+    },
+    {
+      "path": "rgb",
+      "symbology": "code_128",
+      "tier": "clean",
+      "appRate": 1,
+      "otherRate": 1,
+      "appOnly": 0,
+      "otherOnly": 0,
+      "both": 200,
+      "neither": 0
+    },
+    {
+      "path": "rgb",
+      "symbology": "code_128",
+      "tier": "moderate",
+      "appRate": 0.81,
+      "otherRate": 0.81,
+      "appOnly": 0,
+      "otherOnly": 0,
+      "both": 162,
+      "neither": 38
+    },
+    {
+      "path": "rgb",
+      "symbology": "code_128",
+      "tier": "severe",
+      "appRate": 0.59,
+      "otherRate": 0.59,
+      "appOnly": 0,
+      "otherOnly": 0,
+      "both": 118,
+      "neither": 82
+    },
+    {
+      "path": "rgb",
+      "symbology": "code_128_fnc1",
+      "tier": "clean",
+      "appRate": 1,
+      "otherRate": 1,
+      "appOnly": 0,
+      "otherOnly": 0,
+      "both": 200,
+      "neither": 0
+    },
+    {
+      "path": "rgb",
+      "symbology": "code_128_fnc1",
+      "tier": "moderate",
+      "appRate": 0.775,
+      "otherRate": 0.775,
+      "appOnly": 0,
+      "otherOnly": 0,
+      "both": 155,
+      "neither": 45
+    },
+    {
+      "path": "rgb",
+      "symbology": "code_128_fnc1",
+      "tier": "severe",
+      "appRate": 0.005,
+      "otherRate": 0.005,
+      "appOnly": 0,
+      "otherOnly": 0,
+      "both": 1,
+      "neither": 199
+    },
+    {
+      "path": "rgb",
+      "symbology": "data_matrix",
+      "tier": "clean",
+      "appRate": 1,
+      "otherRate": 1,
+      "appOnly": 0,
+      "otherOnly": 0,
+      "both": 200,
+      "neither": 0
+    },
+    {
+      "path": "rgb",
+      "symbology": "data_matrix",
+      "tier": "moderate",
+      "appRate": 0.99,
+      "otherRate": 0.99,
+      "appOnly": 0,
+      "otherOnly": 0,
+      "both": 198,
+      "neither": 2
+    },
+    {
+      "path": "rgb",
+      "symbology": "data_matrix",
+      "tier": "severe",
+      "appRate": 0.55,
+      "otherRate": 0.55,
+      "appOnly": 0,
+      "otherOnly": 0,
+      "both": 110,
+      "neither": 90
+    },
+    {
+      "path": "rgb",
+      "symbology": "qr_code",
+      "tier": "clean",
+      "appRate": 0.985,
+      "otherRate": 0.985,
+      "appOnly": 0,
+      "otherOnly": 0,
+      "both": 197,
+      "neither": 3
+    },
+    {
+      "path": "rgb",
+      "symbology": "qr_code",
+      "tier": "moderate",
+      "appRate": 0.975,
+      "otherRate": 0.975,
+      "appOnly": 0,
+      "otherOnly": 0,
+      "both": 195,
+      "neither": 5
+    },
+    {
+      "path": "rgb",
+      "symbology": "qr_code",
+      "tier": "severe",
+      "appRate": 0.435,
+      "otherRate": 0.435,
+      "appOnly": 0,
+      "otherOnly": 0,
+      "both": 87,
+      "neither": 113
+    }
+  ],
+  "disagreements": [
+    {
+      "path": "yuv",
+      "vin": "S9VUY70G2REGA0ABB",
+      "symbology": "code_39",
+      "tier": "severe",
+      "seed": 102226051,
+      "severeExtras": [
+        "glare",
+        "low_light"
+      ],
+      "appVerdict": "miss",
+      "appText": null,
+      "otherVerdict": "hit",
+      "otherText": "S9VUY70G2REGA0ABB"
+    },
+    {
+      "path": "yuv",
+      "vin": "RB8A3PC47V2V34HR7",
+      "symbology": "code_39",
+      "tier": "severe",
+      "seed": 91460543,
+      "severeExtras": [
+        "glare",
+        "low_light"
+      ],
+      "appVerdict": "miss",
+      "appText": null,
+      "otherVerdict": "miss",
+      "otherText": "RB8A3PC47$2V34HR7"
+    },
+    {
+      "path": "yuv",
+      "vin": "YEKPKTE13B04VXLL9",
+      "symbology": "code_39",
+      "tier": "severe",
+      "seed": 1209542977,
+      "severeExtras": [
+        "warp",
+        "glare"
+      ],
+      "appVerdict": "miss",
+      "appText": "YEKPKTE1%04VXLL9",
+      "otherVerdict": "miss",
+      "otherText": null
+    },
+    {
+      "path": "yuv",
+      "vin": "L58SMKD8437CUANSG",
+      "symbology": "code_39",
+      "tier": "severe",
+      "seed": 448925444,
+      "severeExtras": [
+        "warp",
+        "low_light"
+      ],
+      "appVerdict": "miss",
+      "appText": null,
+      "otherVerdict": "hit",
+      "otherText": "L58SMKD8437CUANSG"
+    },
+    {
+      "path": "yuv",
+      "vin": "4AUKWDWM27PBS1U8P",
+      "symbology": "code_39",
+      "tier": "severe",
+      "seed": 1195350235,
+      "severeExtras": [
+        "warp",
+        "glare"
+      ],
+      "appVerdict": "hit",
+      "appText": "4AUKWDWM27PBS1U8P",
+      "otherVerdict": "miss",
+      "otherText": null
+    },
+    {
+      "path": "yuv",
+      "vin": "2HP17JK7X7PJTFMBM",
+      "symbology": "code_39",
+      "tier": "severe",
+      "seed": 1234127570,
+      "severeExtras": [
+        "warp",
+        "glare"
+      ],
+      "appVerdict": "miss",
+      "appText": null,
+      "otherVerdict": "hit",
+      "otherText": "2HP17JK7X7PJTFMBM"
+    },
+    {
+      "path": "yuv",
+      "vin": "510FT7G86F0D7V641",
+      "symbology": "code_39",
+      "tier": "severe",
+      "seed": 2202036643,
+      "severeExtras": [
+        "warp",
+        "glare"
+      ],
+      "appVerdict": "hit",
+      "appText": "510FT7G86F0D7V641",
+      "otherVerdict": "miss",
+      "otherText": null
+    },
+    {
+      "path": "yuv",
+      "vin": "Z7T9GZZD0VMFK9M65",
+      "symbology": "code_39",
+      "tier": "severe",
+      "seed": 2222029611,
+      "severeExtras": [
+        "glare",
+        "low_light"
+      ],
+      "appVerdict": "hit",
+      "appText": "Z7T9GZZD0VMFK9M65",
+      "otherVerdict": "miss",
+      "otherText": "Z7T9GZ+D0VMFK9M65"
+    },
+    {
+      "path": "yuv",
+      "vin": "12F074JV0ULJR8CE7",
+      "symbology": "code_39",
+      "tier": "severe",
+      "seed": 1832319781,
+      "severeExtras": [
+        "glare",
+        "low_light"
+      ],
+      "appVerdict": "miss",
+      "appText": null,
+      "otherVerdict": "hit",
+      "otherText": "12F074JV0ULJR8CE7"
+    },
+    {
+      "path": "yuv",
+      "vin": "N86ZEF3D4K4WDWJM5",
+      "symbology": "code_39",
+      "tier": "severe",
+      "seed": 1226403084,
+      "severeExtras": [
+        "warp",
+        "glare"
+      ],
+      "appVerdict": "miss",
+      "appText": "N86Z+F3D4K4WDWJM5",
+      "otherVerdict": "miss",
+      "otherText": "N86+EF3D4K4WDWJM5"
+    },
+    {
+      "path": "yuv",
+      "vin": "MCM48HWY79NC3T20M",
+      "symbology": "code_39",
+      "tier": "severe",
+      "seed": 1688248017,
+      "severeExtras": [
+        "warp",
+        "jpeg"
+      ],
+      "appVerdict": "hit",
+      "appText": "MCM48HWY79NC3T20M",
+      "otherVerdict": "miss",
+      "otherText": null
+    },
+    {
+      "path": "yuv",
+      "vin": "FZLZRF8C53G2BYUB0",
+      "symbology": "code_39",
+      "tier": "severe",
+      "seed": 3635765107,
+      "severeExtras": [
+        "glare",
+        "low_light"
+      ],
+      "appVerdict": "hit",
+      "appText": "FZLZRF8C53G2BYUB0",
+      "otherVerdict": "miss",
+      "otherText": null
+    },
+    {
+      "path": "yuv",
+      "vin": "HYEXFVXD1HUY41KYU",
+      "symbology": "code_39_i",
+      "tier": "moderate",
+      "seed": 2370310877,
+      "severeExtras": null,
+      "appVerdict": "miss",
+      "appText": null,
+      "otherVerdict": "miss",
+      "otherText": "EXFVXD1HUY41KYU"
+    },
+    {
+      "path": "yuv",
+      "vin": "1HGCM82633A004352",
+      "symbology": "code_39_i",
+      "tier": "severe",
+      "seed": 3356709448,
+      "severeExtras": [
+        "warp",
+        "low_light"
+      ],
+      "appVerdict": "miss",
+      "appText": null,
+      "otherVerdict": "hit",
+      "otherText": "I1HGCM82633A004352"
+    },
+    {
+      "path": "yuv",
+      "vin": "MUUW9H4N0DSL1S1KV",
+      "symbology": "code_39_i",
+      "tier": "severe",
+      "seed": 1291676883,
+      "severeExtras": [
+        "warp",
+        "low_light"
+      ],
+      "appVerdict": "hit",
+      "appText": "IMUUW9H4N0DSL1S1KV",
+      "otherVerdict": "miss",
+      "otherText": null
+    },
+    {
+      "path": "yuv",
+      "vin": "DNUDA92B2W9V0SN9G",
+      "symbology": "code_39_i",
+      "tier": "severe",
+      "seed": 1326642413,
+      "severeExtras": [
+        "warp",
+        "low_light"
+      ],
+      "appVerdict": "hit",
+      "appText": "IDNUDA92B2W9V0SN9G",
+      "otherVerdict": "miss",
+      "otherText": null
+    },
+    {
+      "path": "yuv",
+      "vin": "UY0UL1LJ04EVH6KYG",
+      "symbology": "code_39_i",
+      "tier": "severe",
+      "seed": 3226989701,
+      "severeExtras": [
+        "warp",
+        "low_light"
+      ],
+      "appVerdict": "miss",
+      "appText": null,
+      "otherVerdict": "hit",
+      "otherText": "IUY0UL1LJ04EVH6KYG"
+    },
+    {
+      "path": "yuv",
+      "vin": "YDKU00AD5JDBRYVNR",
+      "symbology": "code_39_i",
+      "tier": "severe",
+      "seed": 2570421465,
+      "severeExtras": [
+        "low_light",
+        "jpeg"
+      ],
+      "appVerdict": "miss",
+      "appText": null,
+      "otherVerdict": "hit",
+      "otherText": "IYDKU00AD5JDBRYVNR"
+    },
+    {
+      "path": "yuv",
+      "vin": "EE37XVLL3E7XTYSNH",
+      "symbology": "code_39_i",
+      "tier": "severe",
+      "seed": 3791700356,
+      "severeExtras": [
+        "glare",
+        "low_light"
+      ],
+      "appVerdict": "miss",
+      "appText": "IEE37XVLL%7XTYSNH",
+      "otherVerdict": "hit",
+      "otherText": "IEE37XVLL3E7XTYSNH"
+    },
+    {
+      "path": "yuv",
+      "vin": "M4C0PA4H68976FS0B",
+      "symbology": "code_39_i",
+      "tier": "severe",
+      "seed": 708631685,
+      "severeExtras": [
+        "low_light",
+        "jpeg"
+      ],
+      "appVerdict": "hit",
+      "appText": "IM4C0PA4H68976FS0B",
+      "otherVerdict": "miss",
+      "otherText": null
+    },
+    {
+      "path": "yuv",
+      "vin": "4ZSFK20F3LP75VH94",
+      "symbology": "code_39_check",
+      "tier": "severe",
+      "seed": 137894064,
+      "severeExtras": [
+        "warp",
+        "low_light"
+      ],
+      "appVerdict": "miss",
+      "appText": null,
+      "otherVerdict": "hit",
+      "otherText": "4ZSFK20F3LP75VH94Q"
+    },
+    {
+      "path": "yuv",
+      "vin": "HYEXFVXD1HUY41KYU",
+      "symbology": "code_39_check",
+      "tier": "severe",
+      "seed": 2293578813,
+      "severeExtras": [
+        "glare",
+        "low_light"
+      ],
+      "appVerdict": "miss",
+      "appText": null,
+      "otherVerdict": "miss",
+      "otherText": "HYEXFVXD1HUY41KYUH"
+    },
+    {
+      "path": "yuv",
+      "vin": "71D4V49ZXRSV6G30V",
+      "symbology": "code_39_check",
+      "tier": "severe",
+      "seed": 1229063854,
+      "severeExtras": [
+        "glare",
+        "jpeg"
+      ],
+      "appVerdict": "miss",
+      "appText": "71D4V49ZXRSV6G30VL",
+      "otherVerdict": "miss",
+      "otherText": null
+    },
+    {
+      "path": "yuv",
+      "vin": "RDFAJ4D7828ZT57TE",
+      "symbology": "code_39_check",
+      "tier": "severe",
+      "seed": 1166774855,
+      "severeExtras": [
+        "glare",
+        "low_light"
+      ],
+      "appVerdict": "miss",
+      "appText": "RDF86 9",
+      "otherVerdict": "miss",
+      "otherText": null
+    },
+    {
+      "path": "yuv",
+      "vin": "RVUY5MSX3BS5U0DW3",
+      "symbology": "code_39_check",
+      "tier": "severe",
+      "seed": 1878256319,
+      "severeExtras": [
+        "warp",
+        "low_light"
+      ],
+      "appVerdict": "miss",
+      "appText": "RVUY5MSX3BS5U0DW3Y",
+      "otherVerdict": "miss",
+      "otherText": null
+    },
+    {
+      "path": "yuv",
+      "vin": "FXH4TLYD7GCJXWW02",
+      "symbology": "code_39_check",
+      "tier": "severe",
+      "seed": 396955874,
+      "severeExtras": [
+        "glare",
+        "jpeg"
+      ],
+      "appVerdict": "hit",
+      "appText": "FXH4TLYD7GCJXWW02I",
+      "otherVerdict": "miss",
+      "otherText": "FXH4T%D7GCJXWW02I"
+    },
+    {
+      "path": "yuv",
+      "vin": "JLW3HZMC7JRVF4ED0",
+      "symbology": "code_39_check",
+      "tier": "severe",
+      "seed": 4005464686,
+      "severeExtras": [
+        "glare",
+        "low_light"
+      ],
+      "appVerdict": "miss",
+      "appText": null,
+      "otherVerdict": "miss",
+      "otherText": "JLW3HZMC7JRVF4ED0X"
+    },
+    {
+      "path": "yuv",
+      "vin": "T86L0H3EXWXE343EZ",
+      "symbology": "code_39_check",
+      "tier": "severe",
+      "seed": 3961500291,
+      "severeExtras": [
+        "glare",
+        "jpeg"
+      ],
+      "appVerdict": "miss",
+      "appText": null,
+      "otherVerdict": "miss",
+      "otherText": "T86L0H3EXWXE343EZB"
+    },
+    {
+      "path": "yuv",
+      "vin": "2HP17JK7X7PJTFMBM",
+      "symbology": "code_39_check",
+      "tier": "severe",
+      "seed": 4146462691,
+      "severeExtras": [
+        "glare",
+        "low_light"
+      ],
+      "appVerdict": "miss",
+      "appText": "2HP17JK7X7PJTFMBMN",
+      "otherVerdict": "miss",
+      "otherText": null
+    },
+    {
+      "path": "yuv",
+      "vin": "A5CNPWYB5YYL0F6WK",
+      "symbology": "code_39_check",
+      "tier": "severe",
+      "seed": 2441376930,
+      "severeExtras": [
+        "warp",
+        "glare"
+      ],
+      "appVerdict": "hit",
+      "appText": "A5CNPWYB5YYL0F6WKI",
+      "otherVerdict": "miss",
+      "otherText": null
+    },
+    {
+      "path": "yuv",
+      "vin": "12F074JV0ULJR8CE7",
+      "symbology": "code_39_check",
+      "tier": "severe",
+      "seed": 4107412628,
+      "severeExtras": [
+        "warp",
+        "jpeg"
+      ],
+      "appVerdict": "miss",
+      "appText": null,
+      "otherVerdict": "miss",
+      "otherText": "12F074JV0ULJR8CE72"
+    },
+    {
+      "path": "yuv",
+      "vin": "ZNCNNV4N0XSW7LSGF",
+      "symbology": "code_39_check",
+      "tier": "severe",
+      "seed": 2444208116,
+      "severeExtras": [
+        "warp",
+        "glare"
+      ],
+      "appVerdict": "miss",
+      "appText": "ZNCNNV4N0XSW7LSGFA",
+      "otherVerdict": "miss",
+      "otherText": null
+    },
+    {
+      "path": "yuv",
+      "vin": "WZWED08H49E64D77G",
+      "symbology": "code_39_check",
+      "tier": "severe",
+      "seed": 881138690,
+      "severeExtras": [
+        "warp",
+        "glare"
+      ],
+      "appVerdict": "miss",
+      "appText": "WZWED08H49E64D77GG",
+      "otherVerdict": "miss",
+      "otherText": null
+    },
+    {
+      "path": "yuv",
+      "vin": "11111111111111111",
+      "symbology": "code_128",
+      "tier": "severe",
+      "seed": 377246677,
+      "severeExtras": [
+        "glare",
+        "low_light"
+      ],
+      "appVerdict": "hit",
+      "appText": "11111111111111111",
+      "otherVerdict": "miss",
+      "otherText": null
+    },
+    {
+      "path": "yuv",
+      "vin": "ZNCNNV4N0XSW7LSGF",
+      "symbology": "code_128",
+      "tier": "severe",
+      "seed": 2901804116,
+      "severeExtras": [
+        "glare",
+        "low_light"
+      ],
+      "appVerdict": "hit",
+      "appText": "ZNCNNV4N0XSW7LSGF",
+      "otherVerdict": "miss",
+      "otherText": null
+    },
+    {
+      "path": "yuv",
+      "vin": "MDM8MX585CNH40H0K",
+      "symbology": "code_128",
+      "tier": "severe",
+      "seed": 2415052589,
+      "severeExtras": [
+        "glare",
+        "jpeg"
+      ],
+      "appVerdict": "hit",
+      "appText": "MDM8MX585CNH40H0K",
+      "otherVerdict": "miss",
+      "otherText": null
+    },
+    {
+      "path": "yuv",
+      "vin": "LC840NMDXKCCRK2AB",
+      "symbology": "code_128_fnc1",
+      "tier": "moderate",
+      "seed": 4075532041,
+      "severeExtras": null,
+      "appVerdict": "miss",
+      "appText": null,
+      "otherVerdict": "hit",
+      "otherText": "LC840NMDXKCCRK2AB\u001d1P84203911"
+    },
+    {
+      "path": "yuv",
+      "vin": "D6KSELNA6P1C8YUTM",
+      "symbology": "code_128_fnc1",
+      "tier": "moderate",
+      "seed": 4016719793,
+      "severeExtras": null,
+      "appVerdict": "hit",
+      "appText": "D6KSELNA6P1C8YUTM\u001d1P84203911",
+      "otherVerdict": "miss",
+      "otherText": null
+    },
+    {
+      "path": "yuv",
+      "vin": "MCM48HWY79NC3T20M",
+      "symbology": "code_128_fnc1",
+      "tier": "severe",
+      "seed": 2543734243,
+      "severeExtras": [
+        "warp",
+        "low_light"
+      ],
+      "appVerdict": "miss",
+      "appText": null,
+      "otherVerdict": "miss",
+      "otherText": ",CM-8BW>79Nb320M\u001d.P84203911"
+    },
+    {
+      "path": "yuv",
+      "vin": "1HTMMAAL67H412345",
+      "symbology": "data_matrix",
+      "tier": "severe",
+      "seed": 1951292358,
+      "severeExtras": [
+        "glare",
+        "low_light"
+      ],
+      "appVerdict": "miss",
+      "appText": null,
+      "otherVerdict": "hit",
+      "otherText": "1HTMMAAL67H412345"
+    },
+    {
+      "path": "yuv",
+      "vin": "3BLLLVM13K7XWTPC3",
+      "symbology": "qr_code",
+      "tier": "moderate",
+      "seed": 2104131502,
+      "severeExtras": null,
+      "appVerdict": "miss",
+      "appText": null,
+      "otherVerdict": "hit",
+      "otherText": "3BLLLVM13K7XWTPC3"
+    },
+    {
+      "path": "yuv",
+      "vin": "WHKALVRL2BVEZWXNS",
+      "symbology": "qr_code",
+      "tier": "severe",
+      "seed": 3915760174,
+      "severeExtras": [
+        "glare",
+        "low_light"
+      ],
+      "appVerdict": "hit",
+      "appText": "WHKALVRL2BVEZWXNS",
+      "otherVerdict": "miss",
+      "otherText": null
+    },
+    {
+      "path": "yuv",
+      "vin": "3630DJTT1TNXE9UEX",
+      "symbology": "qr_code",
+      "tier": "severe",
+      "seed": 1189117921,
+      "severeExtras": [
+        "glare",
+        "low_light"
+      ],
+      "appVerdict": "miss",
+      "appText": null,
+      "otherVerdict": "hit",
+      "otherText": "3630DJTT1TNXE9UEX"
+    },
+    {
+      "path": "yuv",
+      "vin": "9S4DYWKH87VTLYL0W",
+      "symbology": "qr_code",
+      "tier": "severe",
+      "seed": 1113892490,
+      "severeExtras": [
+        "glare",
+        "low_light"
+      ],
+      "appVerdict": "miss",
+      "appText": null,
+      "otherVerdict": "hit",
+      "otherText": "9S4DYWKH87VTLYL0W"
     }
   ],
   "falseAccepts": [
@@ -444,11 +2402,53 @@
         "low_light",
         "jpeg"
       ],
+      "path": "canvas",
       "decoded": "EH8U2YHX60HU7VAWD",
+      "aimStripped": false,
       "format": "CODE_128",
       "extracted": "EH8U2YHX60HU7VAWD",
       "checkDigitValid": false,
-      "ms": 2.9589149999956135,
+      "ms": 3.900000000372529,
+      "error": null,
+      "verdict": "false_accept",
+      "missReason": null
+    },
+    {
+      "vin": "EH8U2YHX60HU8VGWD",
+      "symbology": "code_128",
+      "tier": "severe",
+      "seed": 3318966556,
+      "severeExtras": [
+        "low_light",
+        "jpeg"
+      ],
+      "path": "yuv",
+      "decoded": "EH8U2YHX60HU7VAWD",
+      "aimStripped": false,
+      "format": "CODE_128",
+      "extracted": "EH8U2YHX60HU7VAWD",
+      "checkDigitValid": false,
+      "ms": 3.300000000745058,
+      "error": null,
+      "verdict": "false_accept",
+      "missReason": null
+    },
+    {
+      "vin": "EH8U2YHX60HU8VGWD",
+      "symbology": "code_128",
+      "tier": "severe",
+      "seed": 3318966556,
+      "severeExtras": [
+        "low_light",
+        "jpeg"
+      ],
+      "path": "rgb",
+      "decoded": "EH8U2YHX60HU7VAWD",
+      "aimStripped": false,
+      "format": "CODE_128",
+      "extracted": "EH8U2YHX60HU7VAWD",
+      "checkDigitValid": false,
+      "ms": 2.4984870000043884,
       "error": null,
       "verdict": "false_accept",
       "missReason": null
@@ -458,6 +2458,7 @@
   "pass": false,
   "failures": [
     "false accepts: 1 (§13.6 requires 0) — code_128/severe EH8U2YHX60HU8VGWD -> EH8U2YHX60HU7VAWD",
+    "false accepts off the app's path: 2 — yuv code_128/severe EH8U2YHX60HU8VGWD -> EH8U2YHX60HU7VAWD; rgb code_128/severe EH8U2YHX60HU8VGWD -> EH8U2YHX60HU7VAWD",
     "code_39 moderate: 77.5% < 90.0% (155/200 correct, -12.5 pp)",
     "code_39 severe: 51.0% < 70.0% (102/200 correct, -19.0 pp)",
     "code_39_i moderate: 79.0% < 90.0% (158/200 correct, -11.0 pp)",

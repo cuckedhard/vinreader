@@ -1,6 +1,6 @@
 # §13.4 scan-robustness bench
 
-**FAIL** — 15 §13.6 thresholds missed.
+**FAIL** — 16 §13.6 thresholds missed.
 
 ## Run
 
@@ -10,16 +10,24 @@
 | VINs | 200 (full) |
 | Symbologies | code_39, code_39_i, code_39_check, code_128, code_128_fnc1, data_matrix, qr_code |
 | Tiers | clean, moderate, severe |
-| Attempts | 4200 |
+| Attempts | 12600 (4200 per path) |
+| **Decode path (verdict)** | `canvas` — the app's path — Chromium, `BrowserMultiFormatReader.decodeFromCanvas`, `HTMLCanvasElementLuminanceSource`, `decodeWithState` |
+| Also measured | `yuv` — `canvas`, with the frame first put through a **modelled** BT.601 studio-swing I420 round trip — the colour half of a camera capture, not a camera |
+| Also measured | `rgb` — node, `RGBLuminanceSource` + `MultiFormatReader.decode` — the control, not the app |
+| Browser pages | 4 |
+| Chromium | /opt/pw-browsers/chromium-1194/chrome-linux/chrome |
 | Decoder hints (§4.6) | CODE_39, CODE_128, DATA_MATRIX, QR_CODE; TRY_HARDER, ASSUME_GS1 |
 | Severe extras (Z5) | 2 of warp, glare, low_light, jpeg, drawn per frame from the seed |
-| ZXing per-reader warnings swallowed | 7934 |
+| ZXing per-reader warnings swallowed (`rgb` only) | 7934 |
+| Reads carrying the §4.6 AIM identifier | 0 |
 
-Every degradation seed is `runSeed ^ fnv1a("vin|symbology|tier")`, so this run reproduces exactly, and any single row below reproduces on its own.
+Every degradation seed is `runSeed ^ fnv1a("vin|symbology|tier")` — the decode path is deliberately not in the key, so every instrument reads the same pixels. This run reproduces exactly, and any single row below reproduces on its own.
+
+Every rate, miss reason and false accept below is `canvas`'s unless it says otherwise. The instrument delta is its own section.
 
 ## Headline: false accepts (§13.6 requires 0)
 
-**1 FALSE ACCEPT** in 4200 attempts (threshold 0). A wrong VIN accepted is an S1 blocker (§13.3).
+**1 FALSE ACCEPT** in 4200 attempts on `canvas` (threshold 0). A wrong VIN accepted is an S1 blocker (§13.3).
 
 | Expected VIN | Returned VIN | Symbology | Tier | Drawn extras | ZXing format | Check digit | Decoded text | Seed |
 |---|---|---|---|---|---|---|---|---|
@@ -30,6 +38,13 @@ Reproduce:
 ```ts
 degrade(await renderBarcode("EH8U2YHX60HU8VGWD", "code_128"), "severe", 0xc5d3691c)
 ```
+
+Off the app's path, 2 further false accepts — a wrong VIN a *different* ZXing plumbing produced from the same frames. Not counted against §13.6, which is about the program that ships, and listed here because a bench that hid one would be the B2 defect again:
+
+| Path | Expected VIN | Returned VIN | Symbology | Tier | Decoded text | Seed |
+|---|---|---|---|---|---|---|
+| yuv | `EH8U2YHX60HU8VGWD` | `EH8U2YHX60HU7VAWD` | code_128 | severe | `EH8U2YHX60HU7VAWD` | `0xc5d3691c` |
+| rgb | `EH8U2YHX60HU8VGWD` | `EH8U2YHX60HU7VAWD` | code_128 | severe | `EH8U2YHX60HU7VAWD` | `0xc5d3691c` |
 
 ## Decode rate per symbology × tier
 
@@ -87,6 +102,97 @@ through ZXing and §4.2 `extractVin`, not the fraction that merely decoded.
 
 §13.4 lists six degradations for `severe`; two of them — 50% scale and heavier grain — are harder settings of degradations `moderate` already applies, so they are on for every frame and the tier stays a strict superset of `moderate` whatever is drawn. The other four are drawn 2 at a time (Z5): all four at once is not one bad photo, it is every bad photo, and it left no cell above 57%.
 
+## Instrument delta (finding B2)
+
+Same corpus, same seed, **same degraded pixels** — the frame is warped once and offered to each instrument. `canvas` is the app's decode path; the columns beside it are what the other instruments made of the identical frames. A positive Δ means the app reads more than the other instrument did.
+
+**Why a column can come out identical, and how to tell that is a result rather than a harness fault.** On a grey frame the two luminance sources reduce to the same bytes: `RGBLuminanceSource` takes the green-favouring average `(r + 2g + b) / 4` and `HTMLCanvasElementLuminanceSource` takes `(306r + 601g + 117b + 512) >> 10`, and at `r = g = b = v` both are exactly `v`. This corpus renders grey. What is left between them is `isRotateSupported()` — true only on the canvas source, so `OneDReader` gets a 90°-rotated retry under `TRY_HARDER`, which cannot help a symbol that is already horizontal — and `decodeWithState` against `decode(bitmap, hints)`, which rebuild the same readers from the same hints. The `yuv` column is the control: it is the one path that moves frames, so a delta table that shows it moving is a table that can see a difference when there is one.
+
+### `canvas` vs `yuv`
+
+`yuv`: `canvas`, with the frame first put through a **modelled** BT.601 studio-swing I420 round trip — the colour half of a camera capture, not a camera.
+
+| Symbology | Tier | canvas | yuv | Δ pp | canvas only | yuv only | both | neither |
+|---|---|---:|---:|---:|---:|---:|---:|---:|
+| code_39 | clean | 100.0% | 100.0% | +0.0 | 0 | 0 | 200 | 0 |
+| code_39 | moderate | 77.5% | 77.5% | +0.0 | 0 | 0 | 155 | 45 |
+| code_39 | severe | 51.0% | 50.5% | +0.5 | 5 | 4 | 97 | 94 |
+| code_39_i | clean | 100.0% | 100.0% | +0.0 | 0 | 0 | 200 | 0 |
+| code_39_i | moderate | 79.0% | 79.0% | +0.0 | 0 | 0 | 158 | 42 |
+| code_39_i | severe | 45.5% | 46.0% | -0.5 | 3 | 4 | 88 | 105 |
+| code_39_check | clean | 24.0% | 24.0% | +0.0 | 0 | 0 | 48 | 152 |
+| code_39_check | moderate | 18.5% | 18.5% | +0.0 | 0 | 0 | 37 | 163 |
+| code_39_check | severe | 12.5% | 12.0% | +0.5 | 2 | 1 | 23 | 174 |
+| code_128 | clean | 100.0% | 100.0% | +0.0 | 0 | 0 | 200 | 0 |
+| code_128 | moderate | 81.0% | 81.0% | +0.0 | 0 | 0 | 162 | 38 |
+| code_128 | severe | 59.0% | 57.5% | +1.5 | 3 | 0 | 115 | 82 |
+| code_128_fnc1 | clean | 100.0% | 100.0% | +0.0 | 0 | 0 | 200 | 0 |
+| code_128_fnc1 | moderate | 77.5% | 77.5% | +0.0 | 1 | 1 | 154 | 44 |
+| code_128_fnc1 | severe | 0.5% | 0.5% | +0.0 | 0 | 0 | 1 | 199 |
+| data_matrix | clean | 100.0% | 100.0% | +0.0 | 0 | 0 | 200 | 0 |
+| data_matrix | moderate | 99.0% | 99.0% | +0.0 | 0 | 0 | 198 | 2 |
+| data_matrix | severe | 55.0% | 55.5% | -0.5 | 0 | 1 | 110 | 89 |
+| qr_code | clean | 98.5% | 98.5% | +0.0 | 0 | 0 | 197 | 3 |
+| qr_code | moderate | 97.5% | 98.0% | -0.5 | 0 | 1 | 195 | 4 |
+| qr_code | severe | 43.5% | 44.0% | -0.5 | 1 | 2 | 86 | 111 |
+
+Over 4200 frames: `canvas` 2839 correct, `yuv` 2838 correct — 15 read only by `canvas`, 14 read only by `yuv`.
+
+### `canvas` vs `rgb`
+
+`rgb`: node, `RGBLuminanceSource` + `MultiFormatReader.decode` — the control, not the app.
+
+| Symbology | Tier | canvas | rgb | Δ pp | canvas only | rgb only | both | neither |
+|---|---|---:|---:|---:|---:|---:|---:|---:|
+| code_39 | clean | 100.0% | 100.0% | +0.0 | 0 | 0 | 200 | 0 |
+| code_39 | moderate | 77.5% | 77.5% | +0.0 | 0 | 0 | 155 | 45 |
+| code_39 | severe | 51.0% | 51.0% | +0.0 | 0 | 0 | 102 | 98 |
+| code_39_i | clean | 100.0% | 100.0% | +0.0 | 0 | 0 | 200 | 0 |
+| code_39_i | moderate | 79.0% | 79.0% | +0.0 | 0 | 0 | 158 | 42 |
+| code_39_i | severe | 45.5% | 45.5% | +0.0 | 0 | 0 | 91 | 109 |
+| code_39_check | clean | 24.0% | 24.0% | +0.0 | 0 | 0 | 48 | 152 |
+| code_39_check | moderate | 18.5% | 18.5% | +0.0 | 0 | 0 | 37 | 163 |
+| code_39_check | severe | 12.5% | 12.5% | +0.0 | 0 | 0 | 25 | 175 |
+| code_128 | clean | 100.0% | 100.0% | +0.0 | 0 | 0 | 200 | 0 |
+| code_128 | moderate | 81.0% | 81.0% | +0.0 | 0 | 0 | 162 | 38 |
+| code_128 | severe | 59.0% | 59.0% | +0.0 | 0 | 0 | 118 | 82 |
+| code_128_fnc1 | clean | 100.0% | 100.0% | +0.0 | 0 | 0 | 200 | 0 |
+| code_128_fnc1 | moderate | 77.5% | 77.5% | +0.0 | 0 | 0 | 155 | 45 |
+| code_128_fnc1 | severe | 0.5% | 0.5% | +0.0 | 0 | 0 | 1 | 199 |
+| data_matrix | clean | 100.0% | 100.0% | +0.0 | 0 | 0 | 200 | 0 |
+| data_matrix | moderate | 99.0% | 99.0% | +0.0 | 0 | 0 | 198 | 2 |
+| data_matrix | severe | 55.0% | 55.0% | +0.0 | 0 | 0 | 110 | 90 |
+| qr_code | clean | 98.5% | 98.5% | +0.0 | 0 | 0 | 197 | 3 |
+| qr_code | moderate | 97.5% | 97.5% | +0.0 | 0 | 0 | 195 | 5 |
+| qr_code | severe | 43.5% | 43.5% | +0.0 | 0 | 0 | 87 | 113 |
+
+Over 4200 frames: `canvas` 2839 correct, `rgb` 2839 correct — 0 read only by `canvas`, 0 read only by `rgb`.
+
+### The 44 frames that read differently (first 20)
+
+| Path | VIN | Symbology | Tier | Drawn extras | app | other | Seed |
+|---|---|---|---|---|---|---|---|
+| yuv | `S9VUY70G2REGA0ABB` | code_39 | severe | glare + low_light | miss (no decode) | hit `S9VUY70G2REGA0ABB` | `0x617d883` |
+| yuv | `RB8A3PC47V2V34HR7` | code_39 | severe | glare + low_light | miss (no decode) | miss `RB8A3PC47$2V34HR7` | `0x57393bf` |
+| yuv | `YEKPKTE13B04VXLL9` | code_39 | severe | warp + glare | miss `YEKPKTE1%04VXLL9` | miss (no decode) | `0x48182941` |
+| yuv | `L58SMKD8437CUANSG` | code_39 | severe | warp + low_light | miss (no decode) | hit `L58SMKD8437CUANSG` | `0x1ac20f04` |
+| yuv | `4AUKWDWM27PBS1U8P` | code_39 | severe | warp + glare | hit `4AUKWDWM27PBS1U8P` | miss (no decode) | `0x473f98db` |
+| yuv | `2HP17JK7X7PJTFMBM` | code_39 | severe | warp + glare | miss (no decode) | hit `2HP17JK7X7PJTFMBM` | `0x498f4ad2` |
+| yuv | `510FT7G86F0D7V641` | code_39 | severe | warp + glare | hit `510FT7G86F0D7V641` | miss (no decode) | `0x834069a3` |
+| yuv | `Z7T9GZZD0VMFK9M65` | code_39 | severe | glare + low_light | hit `Z7T9GZZD0VMFK9M65` | miss `Z7T9GZ+D0VMFK9M65` | `0x84717b2b` |
+| yuv | `12F074JV0ULJR8CE7` | code_39 | severe | glare + low_light | miss (no decode) | hit `12F074JV0ULJR8CE7` | `0x6d36fb25` |
+| yuv | `N86ZEF3D4K4WDWJM5` | code_39 | severe | warp + glare | miss `N86Z+F3D4K4WDWJM5` | miss `N86+EF3D4K4WDWJM5` | `0x49196d0c` |
+| yuv | `MCM48HWY79NC3T20M` | code_39 | severe | warp + jpeg | hit `MCM48HWY79NC3T20M` | miss (no decode) | `0x64a09ed1` |
+| yuv | `FZLZRF8C53G2BYUB0` | code_39 | severe | glare + low_light | hit `FZLZRF8C53G2BYUB0` | miss (no decode) | `0xd8b55f73` |
+| yuv | `HYEXFVXD1HUY41KYU` | code_39_i | moderate | - | miss (no decode) | miss `EXFVXD1HUY41KYU` | `0x8d4812dd` |
+| yuv | `1HGCM82633A004352` | code_39_i | severe | warp + low_light | miss (no decode) | hit `I1HGCM82633A004352` | `0xc8135248` |
+| yuv | `MUUW9H4N0DSL1S1KV` | code_39_i | severe | warp + low_light | hit `IMUUW9H4N0DSL1S1KV` | miss (no decode) | `0x4cfd6cd3` |
+| yuv | `DNUDA92B2W9V0SN9G` | code_39_i | severe | warp + low_light | hit `IDNUDA92B2W9V0SN9G` | miss (no decode) | `0x4f12f4ed` |
+| yuv | `UY0UL1LJ04EVH6KYG` | code_39_i | severe | warp + low_light | miss (no decode) | hit `IUY0UL1LJ04EVH6KYG` | `0xc057f485` |
+| yuv | `YDKU00AD5JDBRYVNR` | code_39_i | severe | low_light + jpeg | miss (no decode) | hit `IYDKU00AD5JDBRYVNR` | `0x993584d9` |
+| yuv | `EE37XVLL3E7XTYSNH` | code_39_i | severe | glare + low_light | miss `IEE37XVLL%7XTYSNH` | hit `IEE37XVLL3E7XTYSNH` | `0xe200c184` |
+| yuv | `M4C0PA4H68976FS0B` | code_39_i | severe | low_light + jpeg | hit `IM4C0PA4H68976FS0B` | miss (no decode) | `0x2a3cdc85` |
+
 ### Why the misses missed
 
 | Symbology | Tier | no_decode | no_vin | carrier |
@@ -119,16 +225,25 @@ through ZXing and §4.2 `extractVin`, not the fraction that merely decoded.
 
 | Scope | Decodes | Mean ms | p95 ms |
 |---|---:|---:|---:|
-| all | 4200 | 18.8 | 87.1 |
-| clean | 1400 | 5.6 | 11.7 |
-| moderate | 1400 | 19.5 | 103.3 |
-| severe | 1400 | 31.3 | 70.2 |
+| canvas: all | 4200 | 21.4 | 87.9 |
+| canvas: clean | 1400 | 7.7 | 11.7 |
+| canvas: moderate | 1400 | 21.5 | 107.4 |
+| canvas: severe | 1400 | 34.9 | 76.1 |
+| yuv: all | 4200 | 21.0 | 87.6 |
+| yuv: clean | 1400 | 7.1 | 10.6 |
+| yuv: moderate | 1400 | 21.1 | 109.2 |
+| yuv: severe | 1400 | 34.8 | 73.7 |
+| rgb: all | 4200 | 16.2 | 80.7 |
+| rgb: clean | 1400 | 4.0 | 4.9 |
+| rgb: moderate | 1400 | 17.3 | 93.9 |
+| rgb: severe | 1400 | 27.2 | 59.0 |
 
-Times cover the ZXing pipeline only — luminance packing, binarisation and the read — because the app hands ZXing canvas pixels and never parses a PNG. Timings are the one part of this report that is not bit-reproducible; no threshold rides on them.
+Times cover the ZXing read only — binarisation and the decode — and exclude getting the frame onto the canvas, because the app never parses a PNG either: it draws a video frame it already has. Timings are the one part of this report that is not bit-reproducible; no threshold rides on them. §13.4's mean **time-to-confirm** is not here: confirmation is two agreeing reads inside §6.3's window, which run (b) — the Playwright fake-camera pass — is what exercises. This run measures one frame at a time.
 
 ## §13.6 verdict
 
 - false accepts: 1 (§13.6 requires 0) — code_128/severe EH8U2YHX60HU8VGWD -> EH8U2YHX60HU7VAWD
+- false accepts off the app's path: 2 — yuv code_128/severe EH8U2YHX60HU8VGWD -> EH8U2YHX60HU7VAWD; rgb code_128/severe EH8U2YHX60HU8VGWD -> EH8U2YHX60HU7VAWD
 - code_39 moderate: 77.5% < 90.0% (155/200 correct, -12.5 pp)
 - code_39 severe: 51.0% < 70.0% (102/200 correct, -19.0 pp)
 - code_39_i moderate: 79.0% < 90.0% (158/200 correct, -11.0 pp)
@@ -143,5 +258,7 @@ Times cover the ZXing pipeline only — luminance packing, binarisation and the 
 - data_matrix severe: 55.0% < 70.0% (110/200 correct, -15.0 pp)
 - qr_code clean: 98.5% < 99.0% (197/200 correct, -0.5 pp)
 - qr_code severe: 43.5% < 70.0% (87/200 correct, -26.5 pp)
+
+These numbers came out of `canvas` — the app's path — Chromium, `BrowserMultiFormatReader.decodeFromCanvas`, `HTMLCanvasElementLuminanceSource`, `decodeWithState`. That is the app's decoder in the app's engine, which the bench's node path was not (B2). What it still is not is a **camera frame**: the app draws a `<video>` element whose pixels came off a sensor through an ISP and YUV 4:2:0; this draws a PNG. `bench/camera-probe.ts` measures that last step on a subset — the same frames through Chromium's own fake capture device and a real `<video>` — and finds the camera reads slightly *worse*, deterministically, so these rates are a ceiling on the capture path and not a floor. Nothing here models a lens, and nothing here is a label.
 
 Synthetic is not real (§13.4, §13.7). This bench tunes hints, ROI cropping and confirmation logic; real door-jamb labels on real trucks stay §7 item 4, and stay human.

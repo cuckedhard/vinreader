@@ -1,11 +1,18 @@
 /**
  * §13.4 scan-robustness bench — runner. `bun run bench`.
  *
- * Builds the §13.4 corpus, degrades every image at every tier, decodes each one with the
- * app's §4.6 ZXing configuration, and pushes the decoded text through the app's own §4.2
- * `extractVin`. The measurement is therefore of the pipeline the product ships, not of a
- * decoder in isolation: a frame that decodes to text §4.2 then throws away is a miss, and a
- * frame that decodes to text §4.2 turns into the *wrong* VIN is a false accept.
+ * Builds the §13.4 corpus, degrades every image at every tier, decodes each one **in
+ * Chromium through the app's own `BrowserMultiFormatReader`**, and pushes the decoded text
+ * through the app's own §4.2 `extractVin`. The measurement is therefore of the pipeline the
+ * product ships, not of a decoder in isolation: a frame that decodes to text §4.2 then throws
+ * away is a miss, and a frame that decodes to text §4.2 turns into the *wrong* VIN is a false
+ * accept.
+ *
+ * Every frame is degraded once and offered to each selected decode path (§13.4 / B2), so the
+ * report's delta table compares instruments on identical pixels rather than on two runs that
+ * merely used the same seed. `canvas` is the app's; `rgb` is the node `RGBLuminanceSource`
+ * control this bench used to report as if it were the app; `yuv` bounds what a real camera
+ * frame's colour conversion would cost.
  *
  * False accepts are the headline. §13.6 requires zero across the whole corpus and §13.3
  * grades a wrong VIN accepted as an S1 blocker, so every one is printed with everything
@@ -31,7 +38,17 @@ import { isPayloadCarrier } from "../src/lib/payload/carrier";
 import { extractVin } from "../src/lib/vin/extractVin";
 import { BENCH_SYMBOLOGIES, buildCorpus } from "./corpus";
 import type { BenchSymbology, CorpusItem } from "./corpus";
-import { BENCH_FORMAT_NAMES, BENCH_HINT_NAMES, decodeImage, suppressedWarnings } from "./decode";
+import { openBrowserDecoder } from "./browser-decode";
+import type { BrowserDecoder } from "./browser-decode";
+import {
+  BENCH_FORMAT_NAMES,
+  BENCH_HINT_NAMES,
+  DECODE_PATHS,
+  DECODE_PATH_NOTES,
+  decodeImage,
+  suppressedWarnings,
+} from "./decode";
+import type { DecodeOutcome, DecodePath } from "./decode";
 import { SEVERE_EXTRAS, SEVERE_EXTRAS_DRAWN, TIERS, degrade, severeExtrasFor } from "./degrade";
 import type { SevereExtra, Tier } from "./degrade";
 
@@ -61,6 +78,44 @@ const FALSE_ACCEPT_THRESHOLD = 0;
 /** Bounded so a full 3000-attempt run does not hold thousands of degraded frames at once. */
 const CONCURRENCY = 8;
 
+/**
+ * Frames degraded and held at once. The chunk is degraded, then handed to every selected
+ * path in turn, then dropped — so a frame is warped exactly once however many instruments
+ * read it, and memory stays flat at roughly `CHUNK` PNGs rather than the whole corpus.
+ */
+const CHUNK = 96;
+
+/**
+ * Pages in the browser pool. ZXing decodes synchronously on a page's only thread, so extra
+ * pages are the only way to use a second core; past two the gain flattens, because sharp's
+ * degradation threads want the same cores. Measured on 420 frames, `canvas` alone, on a
+ * four-core machine that was also running `bun run mutate`: 1 page 38 s, 2 pages 29 s,
+ * 4 pages 28 s end to end. Four is kept because it costs nothing and an idle machine has
+ * more headroom than the one this was measured on. It cannot change a decode — only when
+ * one happens.
+ */
+const DEFAULT_BROWSER_PAGES = 4;
+
+/**
+ * Paths a run measures unless `--paths` says otherwise. The first is the report's verdict.
+ *
+ * All three by default, and the cost is deliberate. `rgb` is the instrument every round
+ * before this one reported as if it were the app (B2), so the delta against it is the only
+ * thing that says how large that error was. `yuv` is the control that proves the delta table
+ * can see a difference at all: it is the one path that reliably moves a handful of severe
+ * frames, so an all-zero `rgb` column can be read as a result rather than as a harness that
+ * forgot to switch instruments. A full three-path run is about nine minutes.
+ */
+const DEFAULT_PATHS: readonly DecodePath[] = ["canvas", "yuv", "rgb"];
+
+/** The one path that is the app. A report whose verdict came from anything else is a diagnostic. */
+const APP_PATH: DecodePath = "canvas";
+
+/** Which paths need Chromium. `rgb` is the only one that does not. */
+function isBrowserPath(path: DecodePath): boolean {
+  return path !== "rgb";
+}
+
 const REPORT_PATH = fileURLToPath(new URL("report.md", import.meta.url));
 /**
  * A --quick run writes here instead. bench/report.md is the §13.6 criterion-4 evidence over
@@ -89,6 +144,8 @@ interface Attempt {
   vin: string;
   symbology: BenchSymbology;
   tier: Tier;
+  /** Which instrument read this frame. Every path sees the same pixels (B2). */
+  path: DecodePath;
   /** The exact seed handed to `degrade`, so a single row can be reproduced on its own. */
   seed: number;
   /** Z5: which severe extras this frame drew, `SEVERE_EXTRAS` order. `null` off the tier. */
@@ -97,6 +154,8 @@ interface Attempt {
   missReason: MissReason | null;
   /** Raw decoder output, or null when nothing decoded. */
   decoded: string | null;
+  /** Whether the §4.6 AIM identifier was stripped from this read — see `DecodeOutcome`. */
+  aimStripped: boolean;
   /** ZXing's format name — `code_39_i` decodes as `CODE_39`. */
   format: string | null;
   /** What §4.2 returned, when it returned anything. */
@@ -106,71 +165,61 @@ interface Attempt {
   error: string | null;
 }
 
+/** Everything about an attempt that is fixed before a decoder sees it. */
+interface FrameIdentity {
+  vin: string;
+  symbology: BenchSymbology;
+  tier: Tier;
+  seed: number;
+  severeExtras: readonly SevereExtra[] | null;
+}
+
 /**
- * One image: degrade, decode, extract, classify.
+ * One decode, classified.
  *
  * `code_39_i` encodes `I` + VIN (the ANSI MH10.8.2 data identifier). Ground truth stays the
  * bare VIN, and §4.2 treats the `I` as a separator because `I` is not in the §4.1 alphabet,
  * so a correct read of that row lands on `hit` with no special case here — which is exactly
  * the §4.2 behaviour this row exists to prove.
+ *
+ * The order of the tests is `readScanResult`'s own: the §4.6 AIM strip (in the decode path),
+ * then the §4.9 carrier — a handoff payload is routed away from `extractVin` entirely —
+ * then §4.2. A bench that tested them in another order would be scoring a program the app
+ * is not.
+ *
+ * One step of `readScanResult` is not reproduced: it drops a read whose format
+ * `toSymbology` does not name. That cannot fire here — `POSSIBLE_FORMATS` is the §4.6 four
+ * and every one of them maps — and the app's own branch is covered by its unit tests, so
+ * the bench does not carry a copy of a branch it can never exercise. The function itself
+ * cannot be imported: it lives beside a React hook, and the `rgb` path runs in node.
  */
-async function runAttempt(
-  png: Buffer,
-  vin: string,
-  symbology: BenchSymbology,
-  tier: Tier,
-  seed: number,
-  forcedExtras: readonly SevereExtra[] | null,
-): Promise<Attempt> {
-  // Resolved here rather than inside `degrade` so the report can say what each frame drew.
-  const severeExtras = tier === "severe" ? (forcedExtras ?? severeExtrasFor(seed)) : null;
-  const base: Omit<Attempt, "verdict" | "missReason"> = {
-    vin,
-    symbology,
-    tier,
-    seed,
-    severeExtras,
-    decoded: null,
-    format: null,
+function classify(frame: FrameIdentity, path: DecodePath, outcome: DecodeOutcome): Attempt {
+  const base = {
+    ...frame,
+    path,
+    decoded: outcome.text,
+    aimStripped: outcome.aimStripped,
+    format: outcome.format,
     extracted: null,
     checkDigitValid: null,
-    ms: 0,
-    error: null,
+    ms: outcome.ms,
+    error: outcome.fault,
   };
 
-  let decoded;
-  try {
-    decoded = await decodeImage(await degrade(png, tier, seed, severeExtras ?? undefined));
-  } catch (error) {
-    // A fault is neither a hit nor an honest miss: it means the bench could not measure this
-    // frame at all. It is surfaced rather than folded into the miss count.
-    return {
-      ...base,
-      verdict: "error",
-      missReason: null,
-      error: error instanceof Error ? `${error.name}: ${error.message}` : String(error),
-    };
-  }
-
-  const withTiming = { ...base, ms: decoded.ms, decoded: decoded.text, format: decoded.format };
-
-  if (decoded.text === null) {
-    return { ...withTiming, verdict: "miss", missReason: "no_decode" };
-  }
+  // A fault is neither a hit nor an honest miss: it means the bench could not measure this
+  // frame at all. It is surfaced rather than folded into the miss count.
+  if (outcome.fault !== null) return { ...base, verdict: "error", missReason: null };
+  if (outcome.text === null) return { ...base, verdict: "miss", missReason: "no_decode" };
   // §6.3 tests the §4.9 carrier first and never extracts one. Nothing in this corpus is a
   // carrier, so this branch firing at all would itself be a finding.
-  if (isPayloadCarrier(decoded.text)) {
-    return { ...withTiming, verdict: "miss", missReason: "carrier" };
-  }
+  if (isPayloadCarrier(outcome.text)) return { ...base, verdict: "miss", missReason: "carrier" };
 
-  const extracted = extractVin(decoded.text);
-  if (extracted === null) {
-    return { ...withTiming, verdict: "miss", missReason: "no_vin" };
-  }
+  const extracted = extractVin(outcome.text);
+  if (extracted === null) return { ...base, verdict: "miss", missReason: "no_vin" };
 
   return {
-    ...withTiming,
-    verdict: extracted.vin === vin ? "hit" : "false_accept",
+    ...base,
+    verdict: extracted.vin === frame.vin ? "hit" : "false_accept",
     missReason: null,
     extracted: extracted.vin,
     checkDigitValid: extracted.checkDigitValid,
@@ -178,9 +227,12 @@ async function runAttempt(
 }
 
 /**
- * Per-attempt degradation seed. Keyed by the attempt's identity so that every image in the
+ * Per-attempt degradation seed. Keyed by the frame's identity so that every image in the
  * corpus gets its own rotation, warp, glare and grain — one shared seed would measure a
  * single pose 1000 times — while staying a pure function of the run seed.
+ *
+ * The decode path is deliberately *not* in the key: the whole point of the delta table is
+ * that two instruments read the same pixels.
  */
 function attemptSeed(runSeed: number, vin: string, symbology: BenchSymbology, tier: Tier): number {
   return (runSeed ^ fnv1a(`${vin}|${symbology}|${tier}`)) >>> 0;
@@ -200,16 +252,21 @@ interface Job {
   tier: Tier;
 }
 
-/** Fixed-size worker pool. Results land at their job index, so output order is stable. */
-async function runAll(
+/** A degraded frame, or the reason it could not be produced. */
+interface Frame {
+  identity: FrameIdentity;
+  png: Buffer | null;
+  error: string | null;
+}
+
+/** Degrade one chunk of jobs, with bounded concurrency. Results land at their job index. */
+async function degradeChunk(
   jobs: readonly Job[],
   runSeed: number,
   forcedExtras: readonly SevereExtra[] | null,
-): Promise<Attempt[]> {
-  const attempts = new Array<Attempt>(jobs.length);
+): Promise<Frame[]> {
+  const frames = new Array<Frame>(jobs.length);
   let next = 0;
-  let done = 0;
-  const step = Math.max(1, Math.floor(jobs.length / 20));
 
   const worker = async (): Promise<void> => {
     for (;;) {
@@ -218,22 +275,112 @@ async function runAll(
       if (index >= jobs.length) return;
       const { item, tier } = jobs[index];
       const seed = attemptSeed(runSeed, item.vin, item.symbology, tier);
-      attempts[index] = await runAttempt(
-        item.png,
-        item.vin,
-        item.symbology,
+      // Resolved here rather than inside `degrade` so the report can say what each frame drew.
+      const severeExtras = tier === "severe" ? (forcedExtras ?? severeExtrasFor(seed)) : null;
+      const identity: FrameIdentity = {
+        vin: item.vin,
+        symbology: item.symbology,
         tier,
         seed,
-        forcedExtras,
-      );
-      done += 1;
-      if (done % step === 0 || done === jobs.length) {
-        process.stderr.write(`bench: decoded ${done}/${jobs.length}\n`);
+        severeExtras,
+      };
+      try {
+        const png = await degrade(item.png, tier, seed, severeExtras ?? undefined);
+        frames[index] = { identity, png, error: null };
+      } catch (error) {
+        frames[index] = {
+          identity,
+          png: null,
+          error: error instanceof Error ? `degrade ${error.name}: ${error.message}` : String(error),
+        };
       }
     }
   };
 
   await Promise.all(Array.from({ length: Math.min(CONCURRENCY, jobs.length) }, () => worker()));
+  return frames;
+}
+
+/** A frame that never got made is an error on every path, not a miss on any of them. */
+const DEGRADE_FAILED = (error: string): DecodeOutcome => ({
+  text: null,
+  aimStripped: false,
+  format: null,
+  ms: 0,
+  fault: error,
+});
+
+/**
+ * Decode a chunk with one instrument. `rgb` runs in this process; `canvas` and `yuv` go to
+ * the browser pool. Either way the result array lines up with `frames` index for index.
+ */
+async function decodeChunk(
+  frames: readonly Frame[],
+  path: DecodePath,
+  browser: BrowserDecoder | null,
+): Promise<DecodeOutcome[]> {
+  const outcomes = new Array<DecodeOutcome>(frames.length);
+  const live: number[] = [];
+  for (let i = 0; i < frames.length; i += 1) {
+    const frame = frames[i];
+    if (frame.png === null) outcomes[i] = DEGRADE_FAILED(frame.error ?? "degrade failed");
+    else live.push(i);
+  }
+
+  if (path === "rgb") {
+    // Sequential on purpose: `MultiFormatReader.decode` is synchronous, so a pool would only
+    // interleave the timings without decoding anything sooner.
+    for (const index of live) {
+      outcomes[index] = await decodeImage(frames[index].png as Buffer);
+    }
+    return outcomes;
+  }
+
+  if (browser === null) throw new Error(`bench: ${path} needs a browser and none was opened`);
+  const decoded = await browser.decode(
+    live.map((index) => frames[index].png as Buffer),
+    path,
+  );
+  for (let i = 0; i < live.length; i += 1) outcomes[live[i]] = decoded[i];
+  return outcomes;
+}
+
+/**
+ * The whole run: degrade a chunk, offer it to every instrument, keep the classifications.
+ *
+ * Attempt order is chunk-major then path-major then job-major — a pure function of the job
+ * list, so the report is scheduling-independent even though the degradation pool and the
+ * browser pool both finish out of order internally.
+ */
+async function runAll(
+  jobs: readonly Job[],
+  runSeed: number,
+  forcedExtras: readonly SevereExtra[] | null,
+  paths: readonly DecodePath[],
+  browser: BrowserDecoder | null,
+): Promise<Attempt[]> {
+  const attempts: Attempt[] = [];
+  const total = jobs.length * paths.length;
+  const step = Math.max(1, Math.floor(total / 20));
+  let done = 0;
+  let sinceReport = 0;
+
+  for (let start = 0; start < jobs.length; start += CHUNK) {
+    const chunk = jobs.slice(start, start + CHUNK);
+    const frames = await degradeChunk(chunk, runSeed, forcedExtras);
+    for (const path of paths) {
+      const outcomes = await decodeChunk(frames, path, browser);
+      for (let i = 0; i < frames.length; i += 1) {
+        attempts.push(classify(frames[i].identity, path, outcomes[i]));
+      }
+      done += frames.length;
+      sinceReport += frames.length;
+      if (sinceReport >= step || done === total) {
+        process.stderr.write(`bench: decoded ${done}/${total}\n`);
+        sinceReport = 0;
+      }
+    }
+  }
   return attempts;
 }
 
@@ -242,6 +389,7 @@ async function runAll(
 // ---------------------------------------------------------------------------
 
 interface Cell {
+  path: DecodePath;
   symbology: BenchSymbology;
   tier: Tier;
   attempts: number;
@@ -267,11 +415,13 @@ function summarise(
   attempts: readonly Attempt[],
   symbologies: readonly BenchSymbology[],
   tiers: readonly Tier[],
+  path: DecodePath,
 ): Cell[] {
   const cells: Cell[] = [];
+  const scoped = attempts.filter((a) => a.path === path);
   for (const symbology of symbologies) {
     for (const tier of tiers) {
-      const rows = attempts.filter((a) => a.symbology === symbology && a.tier === tier);
+      const rows = scoped.filter((a) => a.symbology === symbology && a.tier === tier);
       const hits = rows.filter((a) => a.verdict === "hit").length;
       const misses = rows.filter((a) => a.verdict === "miss");
       const falseAccepts = rows.filter((a) => a.verdict === "false_accept").length;
@@ -279,6 +429,7 @@ function summarise(
       const decodeRate = rows.length === 0 ? 0 : hits / rows.length;
       const threshold = THRESHOLDS[tier];
       cells.push({
+        path,
         symbology,
         tier,
         attempts: rows.length,
@@ -318,10 +469,25 @@ function timing(scope: string, attempts: readonly Attempt[]): Timing {
 // Options
 // ---------------------------------------------------------------------------
 
+/** Facts about the run that are not options and not measurements. */
+interface Provenance {
+  /** The Chromium that decoded, or `null` when no browser path ran. */
+  executable: string | null;
+}
+
 interface Options {
   count: number;
   tiers: Tier[];
   symbologies: BenchSymbology[];
+  /**
+   * Instruments, in canonical order. `paths[0]` is the one the §13.6 verdict comes from, and
+   * a tracked report is only written when that is `canvas` — the app's path (B2).
+   */
+  paths: DecodePath[];
+  /** Pages in the browser pool. Wall clock only; it cannot change a decode. */
+  browserPages: number;
+  /** Chromium binary, or `null` to let Playwright resolve one. */
+  chromiumPath: string | null;
   json: string | null;
   quick: boolean;
   seed: number;
@@ -340,6 +506,11 @@ const USAGE = `bun run bench [options]
   --tiers a,b          subset of ${TIERS.join(",")}
   --symbologies a,b    subset of ${BENCH_SYMBOLOGIES.join(",")}
   --seed N             run seed (default 0x${DEFAULT_SEED.toString(16)})
+  --paths a,b          decode paths, subset of ${DECODE_PATHS.join(",")} (default
+                       ${DEFAULT_PATHS.join(",")}). The first is the report's verdict;
+                       only a run led by "${APP_PATH}" writes the tracked report
+  --browser-pages N    pages decoding in parallel (default ${DEFAULT_BROWSER_PAGES})
+  --chromium PATH      Chromium binary (default: whatever Playwright resolves)
   --severe-extras a,b  force the severe draw to exactly these (diagnostic; never writes
                        the tracked report). Default: ${SEVERE_EXTRAS_DRAWN} of
                        ${SEVERE_EXTRAS.join(",")} per frame, from the seed
@@ -390,6 +561,9 @@ function parseArgs(argv: readonly string[]): Options | null {
   let count: number | null = null;
   let tiers: Tier[] = [...TIERS];
   let symbologies: BenchSymbology[] = [...BENCH_SYMBOLOGIES];
+  let paths: DecodePath[] = [...DEFAULT_PATHS];
+  let browserPages = DEFAULT_BROWSER_PAGES;
+  let chromiumPath: string | null = null;
   let json: string | null = null;
   let quick = false;
   let seed = DEFAULT_SEED;
@@ -426,6 +600,15 @@ function parseArgs(argv: readonly string[]): Options | null {
       case "--seed":
         seed = parseSeed(value());
         break;
+      case "--paths":
+        paths = parseList(value(), DECODE_PATHS, "--paths");
+        break;
+      case "--browser-pages":
+        browserPages = parseCount(value(), "--browser-pages");
+        break;
+      case "--chromium":
+        chromiumPath = value();
+        break;
       case "--severe-extras":
         severeExtras = parseList(value(), SEVERE_EXTRAS, "--severe-extras");
         break;
@@ -442,6 +625,9 @@ function parseArgs(argv: readonly string[]): Options | null {
     count: count ?? (quick ? QUICK_COUNT : DEFAULT_COUNT),
     tiers,
     symbologies,
+    paths,
+    browserPages,
+    chromiumPath,
     json,
     quick,
     seed,
@@ -483,7 +669,12 @@ function reproduce(attempt: Attempt): string {
  * thresholds fail a run is §13.6's list, not the bench's to extend, and on a small --quick
  * cell two tiers that genuinely differ by 20 points can still cross by sampling noise.
  */
-function orderingViolations(cells: readonly Cell[], tiers: readonly Tier[]): string[] {
+function orderingViolations(
+  allCells: readonly Cell[],
+  tiers: readonly Tier[],
+  path: DecodePath,
+): string[] {
+  const cells = allCells.filter((c) => c.path === path);
   const violations: string[] = [];
   for (let i = 1; i < tiers.length; i += 1) {
     const [easier, harder] = [tiers[i - 1], tiers[i]];
@@ -520,8 +711,11 @@ function severeDraw(options: Options): string {
 function severeSubsetTable(
   attempts: readonly Attempt[],
   symbologies: readonly BenchSymbology[],
+  path: DecodePath,
 ): string[] {
-  const severe = attempts.filter((a) => a.tier === "severe" && a.severeExtras !== null);
+  const severe = attempts.filter(
+    (a) => a.path === path && a.tier === "severe" && a.severeExtras !== null,
+  );
   if (severe.length === 0) return [];
 
   const keys = [...new Set(severe.map((a) => (a.severeExtras ?? []).join(" + ")))].sort();
@@ -552,16 +746,247 @@ function severeSubsetTable(
   return out;
 }
 
+// ---------------------------------------------------------------------------
+// The instrument delta (B2)
+// ---------------------------------------------------------------------------
+
+/** One symbology × tier, as the app's path read it and as another instrument read it. */
+interface Delta {
+  path: DecodePath;
+  symbology: BenchSymbology;
+  tier: Tier;
+  appRate: number;
+  otherRate: number;
+  /** Frames only one of the two got right, and the two agreements. */
+  appOnly: number;
+  otherOnly: number;
+  both: number;
+  neither: number;
+}
+
+/** A single frame the two instruments read differently, with everything needed to repeat it. */
+interface Disagreement {
+  path: DecodePath;
+  vin: string;
+  symbology: BenchSymbology;
+  tier: Tier;
+  seed: number;
+  severeExtras: readonly SevereExtra[] | null;
+  appVerdict: Verdict;
+  appText: string | null;
+  otherVerdict: Verdict;
+  otherText: string | null;
+}
+
+function frameKey(attempt: Attempt): string {
+  return `${attempt.vin}|${attempt.symbology}|${attempt.tier}`;
+}
+
+function byFrame(attempts: readonly Attempt[], path: DecodePath): Map<string, Attempt> {
+  const map = new Map<string, Attempt>();
+  for (const attempt of attempts) {
+    if (attempt.path === path) map.set(frameKey(attempt), attempt);
+  }
+  return map;
+}
+
+/**
+ * The headline of finding B2: not the new numbers, the difference between the old instrument
+ * and the new one on identical frames. Every previous round's bench numbers carried this
+ * difference as an unmeasured error.
+ */
+function deltas(
+  attempts: readonly Attempt[],
+  symbologies: readonly BenchSymbology[],
+  tiers: readonly Tier[],
+  app: DecodePath,
+  others: readonly DecodePath[],
+): { cells: Delta[]; disagreements: Disagreement[] } {
+  const appFrames = byFrame(attempts, app);
+  const cells: Delta[] = [];
+  const disagreements: Disagreement[] = [];
+
+  for (const path of others) {
+    const otherFrames = byFrame(attempts, path);
+    for (const symbology of symbologies) {
+      for (const tier of tiers) {
+        let appOnly = 0;
+        let otherOnly = 0;
+        let both = 0;
+        let neither = 0;
+        let total = 0;
+        for (const [key, appAttempt] of appFrames) {
+          if (appAttempt.symbology !== symbology || appAttempt.tier !== tier) continue;
+          const otherAttempt = otherFrames.get(key);
+          if (otherAttempt === undefined) continue;
+          total += 1;
+          const a = appAttempt.verdict === "hit";
+          const b = otherAttempt.verdict === "hit";
+          if (a && b) both += 1;
+          else if (a) appOnly += 1;
+          else if (b) otherOnly += 1;
+          else neither += 1;
+          if (
+            appAttempt.verdict !== otherAttempt.verdict ||
+            appAttempt.decoded !== otherAttempt.decoded
+          ) {
+            disagreements.push({
+              path,
+              vin: appAttempt.vin,
+              symbology,
+              tier,
+              seed: appAttempt.seed,
+              severeExtras: appAttempt.severeExtras,
+              appVerdict: appAttempt.verdict,
+              appText: appAttempt.decoded,
+              otherVerdict: otherAttempt.verdict,
+              otherText: otherAttempt.decoded,
+            });
+          }
+        }
+        if (total === 0) continue;
+        cells.push({
+          path,
+          symbology,
+          tier,
+          appRate: (both + appOnly) / total,
+          otherRate: (both + otherOnly) / total,
+          appOnly,
+          otherOnly,
+          both,
+          neither,
+        });
+      }
+    }
+  }
+  return { cells, disagreements };
+}
+
+/** How many disagreeing frames the markdown lists in full before it starts counting. */
+const DISAGREEMENT_SAMPLE = 20;
+
+function deltaSection(
+  options: Options,
+  app: DecodePath,
+  others: readonly DecodePath[],
+  delta: { cells: Delta[]; disagreements: Disagreement[] },
+): string[] {
+  const out: string[] = [];
+  out.push("## Instrument delta (finding B2)");
+  out.push("");
+  if (others.length === 0) {
+    out.push(
+      `Only \`${app}\` ran, so there is nothing to compare. Run \`--paths ${app},rgb\` for the ` +
+        "difference between the app's decoder and the node control this bench used to report as " +
+        "if it were the app.",
+    );
+    out.push("");
+    return out;
+  }
+
+  out.push(
+    "Same corpus, same seed, **same degraded pixels** — the frame is warped once and offered " +
+      `to each instrument. \`${app}\` is the app's decode path; the columns beside it are what ` +
+      "the other instruments made of the identical frames. A positive Δ means the app reads " +
+      "more than the other instrument did.",
+  );
+  out.push("");
+  out.push(
+    "**Why a column can come out identical, and how to tell that is a result rather than a " +
+      "harness fault.** On a grey frame the two luminance sources reduce to the same bytes: " +
+      "`RGBLuminanceSource` takes the green-favouring average `(r + 2g + b) / 4` and " +
+      "`HTMLCanvasElementLuminanceSource` takes `(306r + 601g + 117b + 512) >> 10`, and at " +
+      "`r = g = b = v` both are exactly `v`. This corpus renders grey. What is left between " +
+      "them is `isRotateSupported()` — true only on the canvas source, so `OneDReader` gets a " +
+      "90°-rotated retry under `TRY_HARDER`, which cannot help a symbol that is already " +
+      "horizontal — and `decodeWithState` against `decode(bitmap, hints)`, which rebuild the " +
+      "same readers from the same hints. The `yuv` column is the control: it is the one path " +
+      "that moves frames, so a delta table that shows it moving is a table that can see a " +
+      "difference when there is one.",
+  );
+  out.push("");
+  for (const path of others) {
+    const rows = delta.cells.filter((c) => c.path === path);
+    if (rows.length === 0) continue;
+    out.push(`### \`${app}\` vs \`${path}\``);
+    out.push("");
+    out.push(`\`${path}\`: ${DECODE_PATH_NOTES[path]}.`);
+    out.push("");
+    out.push(
+      `| Symbology | Tier | ${app} | ${path} | Δ pp | ${app} only | ${path} only | both | neither |`,
+    );
+    out.push("|---|---|---:|---:|---:|---:|---:|---:|---:|");
+    for (const row of rows) {
+      const d = (row.appRate - row.otherRate) * 100;
+      out.push(
+        `| ${row.symbology} | ${row.tier} | ${pct(row.appRate)} | ${pct(row.otherRate)} | ` +
+          `${d >= 0 ? "+" : ""}${d.toFixed(1)} | ${row.appOnly} | ${row.otherOnly} | ` +
+          `${row.both} | ${row.neither} |`,
+      );
+    }
+    out.push("");
+    const totalApp = rows.reduce((sum, r) => sum + r.both + r.appOnly, 0);
+    const totalOther = rows.reduce((sum, r) => sum + r.both + r.otherOnly, 0);
+    const frames = rows.reduce((sum, r) => sum + r.both + r.appOnly + r.otherOnly + r.neither, 0);
+    const appOnly = rows.reduce((sum, r) => sum + r.appOnly, 0);
+    const otherOnly = rows.reduce((sum, r) => sum + r.otherOnly, 0);
+    out.push(
+      `Over ${frames} frames: \`${app}\` ${totalApp} correct, \`${path}\` ${totalOther} ` +
+        `correct — ${appOnly} read only by \`${app}\`, ${otherOnly} read only by \`${path}\`.`,
+    );
+    out.push("");
+  }
+
+  const shown = delta.disagreements.slice(0, DISAGREEMENT_SAMPLE);
+  if (delta.disagreements.length === 0) {
+    out.push(
+      "**No frame decoded differently on any path.** Every disagreement the two instruments " +
+        "could have had, they did not have: the decoded text matched byte for byte on all " +
+        `${options.symbologies.length * options.tiers.length} cells.`,
+    );
+    out.push("");
+    return out;
+  }
+  out.push(
+    `### The ${delta.disagreements.length} frame` +
+      `${delta.disagreements.length === 1 ? "" : "s"} that read differently` +
+      `${delta.disagreements.length > shown.length ? ` (first ${shown.length})` : ""}`,
+  );
+  out.push("");
+  out.push("| Path | VIN | Symbology | Tier | Drawn extras | app | other | Seed |");
+  out.push("|---|---|---|---|---|---|---|---|");
+  for (const row of shown) {
+    out.push(
+      `| ${row.path} | \`${row.vin}\` | ${row.symbology} | ${row.tier} | ` +
+        `${row.severeExtras === null ? "-" : row.severeExtras.join(" + ")} | ` +
+        `${row.appVerdict} ${row.appText === null ? "(no decode)" : `\`${row.appText.replace(/\|/g, "\\|")}\``} | ` +
+        `${row.otherVerdict} ${row.otherText === null ? "(no decode)" : `\`${row.otherText.replace(/\|/g, "\\|")}\``} | ` +
+        `\`0x${row.seed.toString(16)}\` |`,
+    );
+  }
+  out.push("");
+  return out;
+}
+
 function markdownReport(
   options: Options,
-  cells: readonly Cell[],
+  provenance: Provenance,
+  allCells: readonly Cell[],
   timings: readonly Timing[],
   attempts: readonly Attempt[],
   vinCount: number,
   failures: readonly string[],
 ): string {
-  const falseAccepts = attempts.filter((a) => a.verdict === "false_accept");
+  const app = options.paths[0];
+  const others = options.paths.slice(1);
+  const cells = allCells.filter((c) => c.path === app);
+  const scoped = attempts.filter((a) => a.path === app);
+  const falseAccepts = scoped.filter((a) => a.verdict === "false_accept");
+  const offPathFalseAccepts = attempts.filter(
+    (a) => a.path !== app && a.verdict === "false_accept",
+  );
   const errors = attempts.filter((a) => a.verdict === "error");
+  const stripped = attempts.filter((a) => a.aimStripped).length;
   const out: string[] = [];
 
   out.push("# §13.4 scan-robustness bench");
@@ -580,16 +1005,29 @@ function markdownReport(
   out.push(`| VINs | ${vinCount} (${options.quick ? "--quick" : "full"}) |`);
   out.push(`| Symbologies | ${options.symbologies.join(", ")} |`);
   out.push(`| Tiers | ${options.tiers.join(", ")} |`);
-  out.push(`| Attempts | ${attempts.length} |`);
+  out.push(`| Attempts | ${attempts.length} (${scoped.length} per path) |`);
+  out.push(`| **Decode path (verdict)** | \`${app}\` — ${DECODE_PATH_NOTES[app]} |`);
+  for (const path of others) {
+    out.push(`| Also measured | \`${path}\` — ${DECODE_PATH_NOTES[path]} |`);
+  }
+  out.push(`| Browser pages | ${options.paths.some(isBrowserPath) ? options.browserPages : "-"} |`);
+  out.push(`| Chromium | ${provenance.executable ?? "-"} |`);
   out.push(
     `| Decoder hints (§4.6) | ${BENCH_FORMAT_NAMES.join(", ")}; ${BENCH_HINT_NAMES.join(", ")} |`,
   );
   out.push(`| Severe extras (Z5) | ${severeDraw(options)} |`);
-  out.push(`| ZXing per-reader warnings swallowed | ${suppressedWarnings()} |`);
+  out.push(`| ZXing per-reader warnings swallowed (\`rgb\` only) | ${suppressedWarnings()} |`);
+  out.push(`| Reads carrying the §4.6 AIM identifier | ${stripped} |`);
   out.push("");
   out.push(
-    'Every degradation seed is `runSeed ^ fnv1a("vin|symbology|tier")`, so this run ' +
+    'Every degradation seed is `runSeed ^ fnv1a("vin|symbology|tier")` — the decode path is ' +
+      "deliberately not in the key, so every instrument reads the same pixels. This run " +
       "reproduces exactly, and any single row below reproduces on its own.",
+  );
+  out.push("");
+  out.push(
+    `Every rate, miss reason and false accept below is \`${app}\`'s unless it says otherwise. ` +
+      "The instrument delta is its own section.",
   );
   out.push("");
 
@@ -597,12 +1035,13 @@ function markdownReport(
   out.push("");
   if (falseAccepts.length === 0) {
     out.push(
-      `**0 false accepts** in ${attempts.length} attempts. Threshold ${FALSE_ACCEPT_THRESHOLD}.`,
+      `**0 false accepts** in ${scoped.length} attempts on \`${app}\`. ` +
+        `Threshold ${FALSE_ACCEPT_THRESHOLD}.`,
     );
   } else {
     out.push(
       `**${falseAccepts.length} FALSE ACCEPT${falseAccepts.length === 1 ? "" : "S"}** ` +
-        `in ${attempts.length} attempts ` +
+        `in ${scoped.length} attempts on \`${app}\` ` +
         `(threshold ${FALSE_ACCEPT_THRESHOLD}). A wrong VIN accepted is an S1 blocker (§13.3).`,
     );
     out.push("");
@@ -626,6 +1065,25 @@ function markdownReport(
     out.push("```");
   }
   out.push("");
+  if (offPathFalseAccepts.length > 0) {
+    out.push(
+      `Off the app's path, ${offPathFalseAccepts.length} further false accept` +
+        `${offPathFalseAccepts.length === 1 ? "" : "s"} — a wrong VIN a *different* ZXing ` +
+        "plumbing produced from the same frames. Not counted against §13.6, which is about " +
+        "the program that ships, and listed here because a bench that hid one would be the " +
+        "B2 defect again:",
+    );
+    out.push("");
+    out.push("| Path | Expected VIN | Returned VIN | Symbology | Tier | Decoded text | Seed |");
+    out.push("|---|---|---|---|---|---|---|");
+    for (const a of offPathFalseAccepts) {
+      out.push(
+        `| ${a.path} | \`${a.vin}\` | \`${a.extracted ?? ""}\` | ${a.symbology} | ${a.tier} | ` +
+          `\`${(a.decoded ?? "").replace(/\|/g, "\\|")}\` | \`0x${a.seed.toString(16)}\` |`,
+      );
+    }
+    out.push("");
+  }
 
   out.push("## Decode rate per symbology × tier");
   out.push("");
@@ -635,7 +1093,9 @@ function markdownReport(
   out.push(`|---|${options.tiers.map(() => "---").join("|")}|`);
   for (const symbology of options.symbologies) {
     const row = options.tiers.map((tier) => {
-      const cell = cells.find((c) => c.symbology === symbology && c.tier === tier);
+      const cell = cells.find(
+        (c) => c.path === app && c.symbology === symbology && c.tier === tier,
+      );
       if (cell === undefined) return "-";
       return `${pct(cell.decodeRate)} ${cell.pass ? "PASS" : "FAIL"}`;
     });
@@ -645,7 +1105,7 @@ function markdownReport(
   out.push("Decode rate is end to end: the fraction of frames that produced the **correct** VIN");
   out.push("through ZXing and §4.2 `extractVin`, not the fraction that merely decoded.");
   out.push("");
-  const ordering = orderingViolations(cells, options.tiers);
+  const ordering = orderingViolations(allCells, options.tiers, app);
   out.push(
     ordering.length === 0
       ? `**Tier ordering holds** (§13.4): ${options.tiers.join(" >= ")} in every cell.`
@@ -669,7 +1129,16 @@ function markdownReport(
   }
   out.push("");
 
-  out.push(...severeSubsetTable(attempts, options.symbologies));
+  out.push(...severeSubsetTable(attempts, options.symbologies, app));
+
+  out.push(
+    ...deltaSection(
+      options,
+      app,
+      others,
+      deltas(attempts, options.symbologies, options.tiers, app, others),
+    ),
+  );
 
   out.push("### Why the misses missed");
   out.push("");
@@ -698,20 +1167,23 @@ function markdownReport(
   }
   out.push("");
   out.push(
-    "Times cover the ZXing pipeline only — luminance packing, binarisation and the read — " +
-      "because the app hands ZXing canvas pixels and never parses a PNG. Timings are the one " +
-      "part of this report that is not bit-reproducible; no threshold rides on them.",
+    "Times cover the ZXing read only — binarisation and the decode — and exclude getting the " +
+      "frame onto the canvas, because the app never parses a PNG either: it draws a video " +
+      "frame it already has. Timings are the one part of this report that is not " +
+      "bit-reproducible; no threshold rides on them. §13.4's mean **time-to-confirm** is not " +
+      "here: confirmation is two agreeing reads inside §6.3's window, which run (b) — the " +
+      "Playwright fake-camera pass — is what exercises. This run measures one frame at a time.",
   );
   out.push("");
 
   if (errors.length > 0) {
     out.push("## Decoder faults");
     out.push("");
-    out.push("| VIN | Symbology | Tier | Seed | Error |");
-    out.push("|---|---|---|---|---|");
+    out.push("| Path | VIN | Symbology | Tier | Seed | Error |");
+    out.push("|---|---|---|---|---|---|");
     for (const a of errors) {
       out.push(
-        `| \`${a.vin}\` | ${a.symbology} | ${a.tier} | \`0x${a.seed.toString(16)}\` | ` +
+        `| ${a.path} | \`${a.vin}\` | ${a.symbology} | ${a.tier} | \`0x${a.seed.toString(16)}\` | ` +
           `${(a.error ?? "").replace(/\|/g, "\\|")} |`,
       );
     }
@@ -727,6 +1199,17 @@ function markdownReport(
   }
   out.push("");
   out.push(
+    `These numbers came out of \`${app}\` — ${DECODE_PATH_NOTES[app]}. That is the app's ` +
+      "decoder in the app's engine, which the bench's node path was not (B2). What it still " +
+      "is not is a **camera frame**: the app draws a `<video>` element whose pixels came off " +
+      "a sensor through an ISP and YUV 4:2:0; this draws a PNG. `bench/camera-probe.ts` " +
+      "measures that last step on a subset — the same frames through Chromium's own fake " +
+      "capture device and a real `<video>` — and finds the camera reads slightly *worse*, " +
+      "deterministically, so these rates are a ceiling on the capture path and not a floor. " +
+      "Nothing here models a lens, and nothing here is a label.",
+  );
+  out.push("");
+  out.push(
     "Synthetic is not real (§13.4, §13.7). This bench tunes hints, ROI cropping and " +
       "confirmation logic; real door-jamb labels on real trucks stay §7 item 4, and stay human.",
   );
@@ -736,14 +1219,19 @@ function markdownReport(
 
 function jsonReport(
   options: Options,
+  provenance: Provenance,
   cells: readonly Cell[],
   timings: readonly Timing[],
   attempts: readonly Attempt[],
   vinCount: number,
   failures: readonly string[],
 ): string {
+  const app = options.paths[0];
+  const others = options.paths.slice(1);
+  const scoped = attempts.filter((a) => a.path === app);
   const falseAccepts = attempts.filter((a) => a.verdict === "false_accept");
   const errors = attempts.filter((a) => a.verdict === "error");
+  const delta = deltas(attempts, options.symbologies, options.tiers, app, others);
   return `${JSON.stringify(
     {
       spec: "§13.4 scan-robustness bench",
@@ -757,20 +1245,30 @@ function jsonReport(
         severeExtrasDrawn: SEVERE_EXTRAS_DRAWN,
         tiers: options.tiers,
         symbologies: options.symbologies,
+        paths: options.paths,
+        appPath: app,
+        pathNotes: DECODE_PATH_NOTES,
+        browserPages: options.paths.some(isBrowserPath) ? options.browserPages : 0,
+        chromium: provenance.executable,
         concurrency: CONCURRENCY,
-        hints: { possibleFormats: BENCH_FORMAT_NAMES, tryHarder: true },
+        chunk: CHUNK,
+        hints: { possibleFormats: BENCH_FORMAT_NAMES, hints: BENCH_HINT_NAMES },
         suppressedZxingWarnings: suppressedWarnings(),
       },
       thresholds: { decodeRate: THRESHOLDS, falseAccepts: FALSE_ACCEPT_THRESHOLD },
       totals: {
         attempts: attempts.length,
-        hits: attempts.filter((a) => a.verdict === "hit").length,
-        misses: attempts.filter((a) => a.verdict === "miss").length,
-        falseAccepts: falseAccepts.length,
-        errors: errors.length,
+        appPathAttempts: scoped.length,
+        hits: scoped.filter((a) => a.verdict === "hit").length,
+        misses: scoped.filter((a) => a.verdict === "miss").length,
+        falseAccepts: scoped.filter((a) => a.verdict === "false_accept").length,
+        errors: scoped.filter((a) => a.verdict === "error").length,
+        aimIdentifiersStripped: attempts.filter((a) => a.aimStripped).length,
       },
       cells,
       timings,
+      delta: delta.cells,
+      disagreements: delta.disagreements,
       falseAccepts,
       errors,
       pass: failures.length === 0,
@@ -785,14 +1283,36 @@ function jsonReport(
 // Main
 // ---------------------------------------------------------------------------
 
-function checkThresholds(cells: readonly Cell[], attempts: readonly Attempt[]): string[] {
+/**
+ * §13.6, judged on the app's path and nothing else — a threshold met by a decoder the
+ * product does not ship is not met (B2). Faults and off-path false accepts still fail the
+ * run, the first because an unmeasured frame is not a measured one, the second because a
+ * wrong VIN out of any ZXing configuration on these frames is worth stopping for.
+ */
+function checkThresholds(
+  allCells: readonly Cell[],
+  attempts: readonly Attempt[],
+  app: DecodePath,
+): string[] {
   const failures: string[] = [];
+  const cells = allCells.filter((c) => c.path === app);
+  const scoped = attempts.filter((a) => a.path === app);
 
-  const falseAccepts = attempts.filter((a) => a.verdict === "false_accept");
+  const falseAccepts = scoped.filter((a) => a.verdict === "false_accept");
   if (falseAccepts.length > FALSE_ACCEPT_THRESHOLD) {
     failures.push(
       `false accepts: ${falseAccepts.length} (§13.6 requires ${FALSE_ACCEPT_THRESHOLD}) — ` +
         falseAccepts.map((a) => `${a.symbology}/${a.tier} ${a.vin} -> ${a.extracted}`).join("; "),
+    );
+  }
+
+  const offPath = attempts.filter((a) => a.path !== app && a.verdict === "false_accept");
+  if (offPath.length > 0) {
+    failures.push(
+      `false accepts off the app's path: ${offPath.length} — ` +
+        offPath
+          .map((a) => `${a.path} ${a.symbology}/${a.tier} ${a.vin} -> ${a.extracted}`)
+          .join("; "),
     );
   }
 
@@ -828,10 +1348,12 @@ async function main(): Promise<number> {
     return 0;
   }
 
+  const app = options.paths[0];
   process.stderr.write(
     `bench: seed 0x${options.seed.toString(16)}, ${options.count} VINs, ` +
       `${options.symbologies.length} symbologies, ${options.tiers.length} tiers\n` +
-      `bench: severe extras — ${severeDraw(options)}\n`,
+      `bench: severe extras — ${severeDraw(options)}\n` +
+      `bench: decode paths — ${options.paths.join(", ")} (verdict from ${app})\n`,
   );
 
   const corpus = await buildCorpus(options.count);
@@ -847,29 +1369,58 @@ async function main(): Promise<number> {
     return 2;
   }
 
-  const attempts = await runAll(jobs, options.seed, options.severeExtras);
-  const cells = summarise(attempts, options.symbologies, options.tiers);
-  const timings: Timing[] = [
-    timing("all", attempts),
-    ...options.tiers.map((tier) =>
-      timing(
-        tier,
-        attempts.filter((a) => a.tier === tier),
+  const needsBrowser = options.paths.some(isBrowserPath);
+  let browser: BrowserDecoder | null = null;
+  if (needsBrowser) {
+    process.stderr.write(`bench: launching Chromium, ${options.browserPages} page(s)\n`);
+    browser = await openBrowserDecoder({
+      pages: options.browserPages,
+      chromiumPath: options.chromiumPath,
+    });
+  }
+
+  const executable = browser?.executable ?? null;
+  let attempts: Attempt[];
+  let pageErrors: readonly string[];
+  try {
+    attempts = await runAll(jobs, options.seed, options.severeExtras, options.paths, browser);
+    // Read before `close()` disposes the pages that recorded them.
+    pageErrors = browser?.pageErrors() ?? [];
+  } finally {
+    await browser?.close();
+  }
+
+  const cells = options.paths.flatMap((path) =>
+    summarise(attempts, options.symbologies, options.tiers, path),
+  );
+  const timings: Timing[] = options.paths.flatMap((path) => {
+    const scoped = attempts.filter((a) => a.path === path);
+    return [
+      timing(`${path}: all`, scoped),
+      ...options.tiers.map((tier) =>
+        timing(
+          `${path}: ${tier}`,
+          scoped.filter((a) => a.tier === tier),
+        ),
       ),
-    ),
-  ];
-  const failures = checkThresholds(cells, attempts);
+    ];
+  });
+  const failures = checkThresholds(cells, attempts, app);
+  // An uncaught error in the page means the bundle, not the barcode, decided the outcome.
+  for (const message of pageErrors) failures.push(`browser page error: ${message}`);
 
   // A --quick run never writes the tracked full-corpus artifacts: the `bench` script
   // hardcodes --json, so without this an 8-VIN loop overwrites the §13.6 criterion-4
   // evidence through the flag instead of through the report path. --severe-extras is on
   // the same footing for the same reason: it forces the tier to be something §13.4 does
   // not define, so its numbers are a diagnostic and must not land in the tracked report.
-  const nonCanonical = options.quick || options.severeExtras !== null;
+  // The decode path joins them (B2): a report whose verdict came from an instrument other
+  // than the app's is a diagnostic, and the tracked artifact must never be one.
+  const nonCanonical = options.quick || options.severeExtras !== null || app !== APP_PATH;
 
   await writeFile(
     nonCanonical ? QUICK_REPORT_PATH : REPORT_PATH,
-    markdownReport(options, cells, timings, attempts, vinCount, failures),
+    markdownReport(options, { executable }, cells, timings, attempts, vinCount, failures),
     "utf8",
   );
   const jsonPath =
@@ -882,7 +1433,7 @@ async function main(): Promise<number> {
   if (jsonPath !== null) {
     await writeFile(
       resolve(process.cwd(), jsonPath),
-      jsonReport(options, cells, timings, attempts, vinCount, failures),
+      jsonReport(options, { executable }, cells, timings, attempts, vinCount, failures),
       "utf8",
     );
   }
@@ -896,6 +1447,7 @@ async function main(): Promise<number> {
       `${options.symbologies.length} symbologies · ${options.tiers.length} tiers · ` +
       `${attempts.length} attempts`,
   );
+  lines.push(`  decode path: ${app} (${options.paths.join(" + ")} measured)`);
   lines.push("");
   const width = Math.max(...options.symbologies.map((s) => s.length));
   lines.push(
@@ -904,7 +1456,9 @@ async function main(): Promise<number> {
   );
   for (const symbology of options.symbologies) {
     const row = options.tiers.map((tier) => {
-      const cell = cells.find((c) => c.symbology === symbology && c.tier === tier);
+      const cell = cells.find(
+        (c) => c.path === app && c.symbology === symbology && c.tier === tier,
+      );
       if (cell === undefined) return "-".padEnd(22);
       return `${pct(cell.decodeRate)} ${cell.pass ? "PASS" : "FAIL"} ${margin(cell)}`.padEnd(22);
     });
@@ -913,16 +1467,28 @@ async function main(): Promise<number> {
   lines.push("");
   const falseAccepts = attempts.filter((a) => a.verdict === "false_accept");
   lines.push(
-    `  false accepts: ${falseAccepts.length} (threshold ${FALSE_ACCEPT_THRESHOLD}) ` +
+    `  false accepts: ${falseAccepts.filter((a) => a.path === app).length} on ${app} ` +
+      `(threshold ${FALSE_ACCEPT_THRESHOLD}) ` +
       `${falseAccepts.length === 0 ? "OK" : "BLOCKER (§13.3 S1)"}`,
   );
   for (const a of falseAccepts) {
-    lines.push(`    ${a.symbology}/${a.tier}: expected ${a.vin}, got ${a.extracted}`);
+    lines.push(`    [${a.path}] ${a.symbology}/${a.tier}: expected ${a.vin}, got ${a.extracted}`);
     lines.push(`      decoded ${JSON.stringify(a.decoded)} as ${a.format}`);
     lines.push(`      ${reproduce(a)}`);
   }
+  // What the instrument change was worth, in one line, on the same frames.
+  for (const path of options.paths.slice(1)) {
+    const appHits = attempts.filter((a) => a.path === app && a.verdict === "hit").length;
+    const otherHits = attempts.filter((a) => a.path === path && a.verdict === "hit").length;
+    const of = attempts.filter((a) => a.path === app).length;
+    lines.push(
+      `  delta vs ${path}: ${appHits} vs ${otherHits} correct of ${of} ` +
+        `(${appHits - otherHits >= 0 ? "+" : ""}${appHits - otherHits} frames, ` +
+        `${(((appHits - otherHits) / Math.max(1, of)) * 100).toFixed(2)} pp)`,
+    );
+  }
   const all = timings[0];
-  lines.push(`  decode time: mean ${ms(all.meanMs)} ms, p95 ${ms(all.p95Ms)} ms`);
+  lines.push(`  decode time (${all.scope}): mean ${ms(all.meanMs)} ms, p95 ${ms(all.p95Ms)} ms`);
   lines.push(`  report: ${nonCanonical ? QUICK_REPORT_PATH : REPORT_PATH}`);
   if (jsonPath !== null) lines.push(`  json:   ${resolve(process.cwd(), jsonPath)}`);
   lines.push("");
