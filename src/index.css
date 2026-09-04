@@ -27,7 +27,12 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--fg);
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-family:
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
   -webkit-text-size-adjust: 100%;
 }
 
@@ -37,7 +42,24 @@ a[role="button"] {
   -webkit-touch-callout: none;
 }
 
-:focus-visible {
-  outline: 3px solid var(--accent);
-  outline-offset: 2px;
+/* §6.6 wants a visible focus ring on everything keyboard-reachable, so this is the app-wide
+   default — but it must be a *default*, not a law.
+
+   It has to live in a layer (R3-U-b). Unlayered declarations outrank every layered one
+   whatever the specificity, `@import "tailwindcss"` puts all utilities in `@layer utilities`,
+   and this rule sat outside all of them — so it silently beat every `focus-visible:outline-*`
+   class in the repo and had done since Tailwind v4 landed. Nothing looked wrong because
+   `Button`'s BASE asks for the same 3px / solid / --accent / 2px this rule sets. The one
+   control that asked for something different got the difference thrown away: the scan
+   preview's tap target asked for `outline-offset: -3px` because its `overflow-hidden` parent
+   clips anything drawn outside it, was given +2px, and its ring was clipped out of existence
+   — no visible indicator at all (§6.6, WCAG 2.4.7). Measured in Chromium, before and after.
+
+   `base` is emitted before `utilities`, so a component that states its own ring now wins,
+   and anything that states nothing still gets one. */
+@layer base {
+  :focus-visible {
+    outline: 3px solid var(--accent);
+    outline-offset: 2px;
+  }
 }

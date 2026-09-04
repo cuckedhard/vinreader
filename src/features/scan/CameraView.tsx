@@ -99,17 +99,18 @@ const GUIDE_BOX =
  * washes out, the other reads. Black sits outermost (0–2 px) and white inside it (2–5 px),
  * because on the tap target it is the *inner* side that faces the scrimmed video.
  *
- * Drawn as an inset `box-shadow` rather than an `outline`, for two reasons that are not
- * stylistic:
+ * Drawn as an inset `box-shadow` rather than an `outline`, for a reason that is not
+ * stylistic: the preview is `overflow-hidden` and the tap target fills its padding box, so
+ * any ring drawn *outside* the target — which is what `outline-offset: 2px` does — is clipped
+ * away entirely. Inset is the only ring that survives on that control, and `box-shadow` is
+ * the only property that can draw one here.
  *
- *  1. `src/index.css` ends with an **unlayered** `:focus-visible { outline: 3px solid
- *     var(--accent); outline-offset: 2px }`. Tailwind's utilities live in `@layer utilities`,
- *     and unlayered declarations beat layered ones whatever their specificity — so every
- *     `focus-visible:outline-*` class in this repo is inert, including the one this ring
- *     replaces. `box-shadow` is a property that rule does not set, so it lands.
- *  2. The preview is `overflow-hidden` and the tap target fills its padding box, so any ring
- *     drawn *outside* the target — which is what `outline-offset: 2px` does — is clipped
- *     away entirely. Inset is the only ring that survives on that control.
+ * That is also how R3-U-b was found. `src/index.css` used to end with an **unlayered**
+ * `:focus-visible`, which outranks `@layer utilities` whatever the specificity, so this
+ * control's `outline-offset: -3px` was silently replaced by `+2px` and its ring was clipped
+ * out of existence — no visible indicator at all. That rule now lives in `@layer base`, so
+ * `focus-visible:outline-none` below takes effect and each control shows exactly one
+ * indicator (verified in Chromium: `outline-style: none`, `outline-width: 0px`).
  *
  * Measured as `GUIDE_BOX` was, sweeping all 256 video levels rather than three:
  *
@@ -121,10 +122,8 @@ const GUIDE_BOX =
  *
  * against the 2.50 (dark) / 1.00 (light, at video 180) the `--accent` ring measures over the
  * same scrim, and WCAG's 3:1 floor for a focus indicator. `focus-visible:outline-none` turns
- * off Tailwind's own outline via `--tw-outline-style`, which is order-independent; it cannot
- * turn off the unlayered global rule, so the torch still draws a faint accent halo outside
- * itself until that rule is scoped. Reported, not fixed here — `src/index.css` is not this
- * component's to edit.
+ * the app-wide ring off for these two controls only, via `--tw-outline-style`, which the
+ * width utility reads — so it wins over `Button`'s own outline regardless of rule order.
  */
 const FOCUS_RING =
   "focus-visible:outline-none focus-visible:shadow-[inset_0_0_0_2px_#000,inset_0_0_0_5px_#fff]";
@@ -276,6 +275,13 @@ export function CameraView({
             onClick={focus.refocus}
             className={"absolute inset-0 h-full w-full cursor-pointer bg-transparent " + FOCUS_RING}
           >
+            {/* Measured, and deliberately left alone. The pill's `--bg-elev` fill against the
+                scrimmed video runs 3.56 : 1.48 : 1.10 at video 255/128/40 in the dark theme,
+                worst 1.00 at video 63 — so on mid-dark video its *edge* disappears. That is
+                not a legibility failure and does not want fixing: the fill is opaque and the
+                label rides on it, not on the video, at 15.75:1 dark and 17.41:1 light, well
+                over §6.1's 7:1. What vanishes is the outline of a filled block, not the words.
+                (Light theme, for the record: 4.31 : 10.37 : 16.97, worst 4.31.) */}
             <span className="absolute bottom-3 left-3 inline-flex min-h-[var(--tap)] items-center rounded-[var(--radius)] border border-border bg-bg-elev px-4 text-base font-bold text-fg">
               {TAP_TO_FOCUS}
             </span>

@@ -391,11 +391,13 @@ describe("§6.6 — the focus ring on the two controls that sit over live video"
   /** The two tones, so whichever the background washes out, the other reads. */
   const RING_SHADOW = "focus-visible:shadow-[inset_0_0_0_2px_#000,inset_0_0_0_5px_#fff]";
   /**
-   * `outline` is unusable on these two: the global `:focus-visible` in `src/index.css` is
-   * unlayered, so it outranks every Tailwind outline utility whatever the specificity, and an
-   * outset ring is clipped away by the `overflow-hidden` preview. `outline-none` sets
-   * `--tw-outline-style`, which the width utility reads, so it disables Tailwind's outline
-   * regardless of rule order — including the one the `Button` primitive brings with it.
+   * An `outline` is unusable on these two whatever its colour: it is drawn outside the box,
+   * and the `overflow-hidden` preview clips anything outside the box away. So the indicator
+   * is a `box-shadow`, and the app-wide ring is turned off for these two controls only.
+   * `outline-none` sets `--tw-outline-style`, which the width utility reads, so it disables
+   * the outline regardless of rule order — including `Button`'s own. (Until R3-U-b it could
+   * not have worked at all: the `:focus-visible` in `src/index.css` was unlayered and
+   * outranked every Tailwind outline utility in the repo. It now lives in `@layer base`.)
    */
   const RING = [RING_SHADOW, "focus-visible:outline-none"];
 
