@@ -412,6 +412,49 @@ Four auditors in parallel against one working tree. Findings are consolidated un
 R4-B is the finding that matters most for everything above it. Every rate in this ledger produced by the house LCG — Z1's 2,000, Z6's in-suite 2,000 and 5,000, R2-F's, R3-M's 3,000 — was measured on a generator with a period of 10,466. The decisions those numbers supported still look right, and the corrected re-measurement is in flight, but the honest statement is that the samples were about a quarter of what was claimed. A floor assertion on distinct payloads is being added so this class of defect cannot silently return.
 
 
+
+## Round 5 — mutation testing, first run (A23)
+
+`bun run mutate` existed for the first time tonight. 2,879 mutants, 36 files, **20 min 58 s** on 4 CPUs.
+
+**§13.5 scope (`src/lib/*`): 85.01% — the 80% threshold passes.** For contrast the coverage half is 99.36% lines / 96.72% branches on 1,157 green tests, which is the point: coverage said the tests were thorough, and mutation says where they are not.
+
+| directory | score | survived | no-coverage | timeout |
+|---|---:|---:|---:|---:|
+| `src/lib/vpic` | 95.07 | 14 | 1 | 4 |
+| `src/lib/vin` | 94.49 | 15 | 0 | 2 |
+| `src/lib/storage` | 87.89 | 54 | 1 | 1 |
+| `src/lib/payload` | 86.55 | 53 | 0 | 2 |
+| `src/lib/auth` | 81.48 | 73 | 2 | 0 |
+| `src/lib/sync` | **78.13** | 183 | 11 | 4 |
+| **`src/lib/*`** | **85.01** | 389 | 15 | 13 |
+| `scanMachine.ts` (reported separately) | 98.77 | 2 | 0 | 0 |
+
+**The four files §13.5 gates at 100% coverage score 96.61, 90.00, 80.95 and — `codec.ts` — 76.83.** All four are at 100% lines and branches. That gap is the finding.
+
+| id | sev | area | spec ref | description | repro | bucket | status | commit |
+|---|---|---|---|---|---|---|---|---|
+| A23 | S3 | gate | §13.5 | `bun run mutate` did not exist and the mutation half of the gate had never run in five rounds. Stryker 10 + vitest-runner, scope mirroring `vitest.config.ts`, `break: 80` untuned. | full run, exit 0 | FIX | fixed | 900e541 |
+| A23-a | S2 | tests | §5.1 | **`db.test.ts` passes while testing nothing under a thread pool.** Five of its seven tests set `process.env.TZ` at runtime, which only moves the clock under vitest's `forks` pool; Stryker's runner hard-codes `threads` for vitest ≥ 4.1.0. The file exists precisely because the offset sign and minutes "were never exercised at all" — under threads it silently reverts to that state. | `bunx vitest run src/lib/storage/db.test.ts --pool=threads` → 5 failed | FIX | open | — |
+| A23-b | S3 | tests | §4.2 | `extractVin.adversary.test.ts`'s "degrading superlinearly" asserts **no timing**. The complexity claim is enforced only by vitest's ambient 5 s default, which varies with machine load. | instrumenting `checkDigit.ts` pushed it 635 ms → >5000 ms | FIX | open | — |
+| A23-c | S4 | gate | §13.5 | Stryker reports a mutant that crashes module evaluation as `Survived` (`testsCompleted: 0`) rather than killed. Five false survivors in `fields.ts` understate the score by 0.16 pt. | all five have `testsCompleted === 0`; all 211 genuinely-tested static mutants have > 0 | WONTFIX | open | — |
+| M1 | S2 | payload | §4.9, §6.4 | **`codec.ts` 76.83%, and 27 of 38 survivors are one habit**: the rejection tests assert `PayloadError.code` only, and three distinct guards all produce `"encoding"`. `TextDecoder({ fatal: true })` → `false` survives, so nothing pins the guard whose comment says it stops mojibake "being stored as a record". Every §6.4 message string mutates to `""` and survives. | `bun run mutate`; codec.ts:232, 242, 243 | FIX | open | — |
+| M2 | S2 | vin | §4.2, R4-A, N2 | **The only survivor in this report that maps to a wrong VIN accepted.** `valid.length === 1 → true` and `run.slice(...) → run` both survive: no test has a **second run** contributing another check-digit-valid window, so §4.2's ambiguity refusal is unpinned. Both mutants show one VIN as fact where the original refuses. | needs a payload with two runs — one a clean VIN, one longer and holding a different valid window | FIX | open | — |
+| M3 | S2 | storage | §5.5 | `decodeQueue.ts` — `isVisible()` has 10 survivors (body emptied, forced true, forced false, inverted, `||`→`&&`) and the interval kicker is entirely unpinned. `!isOnline() → false` survives on the decode pump. | `bun run mutate`; re-measure, the file moved during the run | FIX | open | — |
+| M4 | S2 | sync | §13.5 | `src/lib/sync` 78.13%, under the bar: `pull.ts` 63.89, `engine.ts` 74.29, and 11 mutants with no coverage at all. S4 code whose tests were being written during the run. | per-directory table | FIX | open | — |
+| M5 | S3 | storage | §4.12, D11 | `upsert.ts` — `firstScannedAt <` → `<=` and `lastScannedAt >` → `>=` survive (no equal-timestamp test), and `unit !== … \|\| notes !== …` → `&&` survives (no test changes exactly one field). | upsert.ts:93, 109, 111 | FIX | open | — |
+| M6 | S3 | storage | §13.2 | Corrupt-row guards survive **as a class** — `normalize.ts:24`, `outbox.ts:134`, `db.ts:66`. The tests assert the record comes back sane, never that *this guard* is what made it sane. The `db.ts` one also leaves §5.7's client-UUID crypto fallback never taken. | `bun run mutate` | FIX | open | — |
+| M7 | S3 | vpic | §4.7 | `client.ts` — `results.length === 0 → false` survives (§13.2's empty-`Results` case not distinguished); `finally { clearTimeout }` and `catch` bodies removable; `"Unknown error"` has no coverage. | client.ts:89, 104, 109, 134 | FIX | open | — |
+| M8 | S3 | payload | §4.9 | `carrier.ts` — the anchor drops off `/^VINRELAY\d+:/i` and survives, so `"junkVINRELAY1:BODY"` becomes a carrier and the body is sliced from the wrong offset. The doc says a mangled carrier "must never reach `extractVin`". | carrier.ts:34, 73 | FIX | open | — |
+| M9 | S3 | vin | §4.2 | `if (valid.length > 1) return null;` in `extractVin` is **redundant** — that condition implies `candidates.length >= 2`, so the fall-through returns `null` identically. 100% branch coverage covers a line nothing can distinguish. A source finding, not a test gap. | extractVin.ts:79 | FIX | open | — |
+| M10 | S3 | scan | §6.3 | `scanMachine.ts:184 hiddenAtMs === null → false` survives: a `visible` with no preceding `hidden` and a non-idle state is untested. The file's other survivor is provably equivalent, so it is really 161/162. | `bun run mutate` | FIX | open | — |
+| M11 | S2 | ui | §6.1, §6.4, N2, §13.5 | **26 production files have no unit test at all, so no mutation score.** `vitest.config.ts` is `environment: "node"` and there are zero `*.test.tsx` in the repo. That is the whole of §6.1's field-usable UI, §6.4's rendered error states, N2 at the render layer and the ZXing seam. Their only cover is Playwright, which mutation testing does not reach — so the `width > 150` guard that could never fail is exactly the class of defect this gate still cannot see. | `grep -c 'test.tsx'` → 0 | NEEDS-ZACH | open | — |
+
+**`mutate` should stay per round, not per fixer commit.** Measured: typecheck ~5 s, lint ~10 s, test ~15 s, coverage ~15 s, **mutate 20 min 58 s** — a 60–80× tax on every commit. §13.5 currently says "every round, and every fixer commit"; the first is affordable, the second would stall the loop.
+
+The cost is concentrated and should not be optimised away: **506 static mutants, 18% of the total, consume 87% of the runtime**, because each forces a module reload. `ignoreStatic: true` would cut the run to ~3 minutes and is exactly the wrong economy — the static mutants **are** the §4 constants. `wmi.ts` and `symbologies.ts` at 100%, `modelYear.ts` at 96.61% and `fields.ts` at 99.5% are scored almost entirely on them, and that is the strongest evidence in this report that the §4.11 fixtures do their job.
+
+
 ## Compatibility: what "works on every phone" actually resolves to
 
 Asked to make this work on every phone from the past fifteen years. It cannot, and the binding constraint is not application code — it is the stack §2 locks. Measured rather than recalled, on a worktree at `1e5205d`.
