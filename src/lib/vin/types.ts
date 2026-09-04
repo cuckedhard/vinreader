@@ -119,6 +119,57 @@ export interface OutboxRow {
   lastError: string | null;
 }
 
+/**
+ * §4.12 push payloads (S4). An outbox row stores exactly what its push call takes — a
+ * `scan_events` row, or the argument object of `upsert_vehicle_meta` / `delete_vehicle` —
+ * so the pusher reshapes nothing and §4.12's locked names live in one place. Every key
+ * below is quoted from that skeleton, which is authoritative for names.
+ *
+ * These are type aliases and not interfaces on purpose: an interface has no implicit
+ * index signature, so it would not satisfy `OutboxRow["payload"]`.
+ */
+
+/** §4.12 `scan_events`. `user_id` is the push engine's to add; it is the only column here
+ * this device cannot know. `raw` (§5.2) has no column and stays on the device (N3). */
+export type ScanEventPayload = {
+  /** §5.2's event id verbatim — §4.12 makes it the key that makes a push idempotent. */
+  id: string;
+  vin: string;
+  at: string;
+  symbology: Symbology;
+  check_digit_valid: boolean;
+  device_label: string | null;
+  /** `not null` in §4.12; §5.2's row does not carry it, so the write captures it here.
+   * `cloud` is excluded because the pull path writes no outbox rows (D12). */
+  origin: Exclude<VehicleOrigin, "cloud">;
+};
+
+/** §4.12 `upsert_vehicle_meta(p_vin, p_unit, p_notes, p_meta_updated_at, p_structural, p_decode)`. */
+export type VehicleMetaPayload = {
+  p_vin: string;
+  p_unit: string | null;
+  p_notes: string | null;
+  p_meta_updated_at: string;
+  p_structural: VinStructural;
+  p_decode: VehicleDecode;
+};
+
+/** §4.12 `delete_vehicle(p_vin)`. */
+export type VehicleDeletePayload = { p_vin: string };
+
+/** Which payload belongs to which §4.10 `OutboxKind`. */
+export type OutboxPayloadByKind = {
+  scan_event: ScanEventPayload;
+  vehicle_meta: VehicleMetaPayload;
+  vehicle_delete: VehicleDeletePayload;
+};
+
+/** An outbox row narrowed to one kind — what the push engine reads back. */
+export type OutboxRowOf<K extends OutboxKind> = OutboxRow & {
+  kind: K;
+  payload: OutboxPayloadByKind[K];
+};
+
 /** §5.8 (S4), a single row. */
 export interface SyncStateRecord {
   id: "cursor";

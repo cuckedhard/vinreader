@@ -2,9 +2,10 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { META_NEVER_EDITED } from "../vin/types";
 import type { VehicleRecord } from "../vin/types";
 import { db } from "./db";
-import { setVehicleMeta, upsertVehicle, type UpsertInput } from "./upsert";
+import { setVehicleMeta, softDeleteVehicle, upsertVehicle, type UpsertInput } from "./upsert";
 
 const VIN = "1HGCM82633A004352"; // §4.11 fixture: grammar ok, check digit valid.
+const OTHER_VIN = "1FUJGLDR49SAV1234"; // §4.11 heavy truck, also check-digit valid.
 const T1 = "2026-01-05T08:15:00.000-06:00";
 const T2 = "2026-02-11T09:30:00.000-06:00";
 const ISO_WITH_OFFSET = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}[+-]\d{2}:\d{2}$/;
@@ -262,5 +263,148 @@ describe("§5.1 fields a stored row got wrong", () => {
     const record = await upsertVehicle(scan({ at: T1 }));
     expect(record.firstScannedAt).toBe(T1);
     expect(record.lastScannedAt).toBe(T1);
+  });
+});
+
+/**
+ * §4.12: "Every local write in the S0–S3 paths (scan, manual, import, unit/notes edit,
+ * delete) also appends an outbox row." Those five paths are four functions and one screen
+ * apart, but they all reach storage through this file, so this is where the rule is kept
+ * and the only place it can be dropped. `outbox.test.ts` covers the queue itself and the
+ * transaction the rows share with the write; this covers what each write queues.
+ */
+describe("§4.12 what a local write queues", () => {
+  /**
+   * Sorted by kind, not by `createdAt`: two rows written by one transaction share a
+   * millisecond, and §5.7 has no sequence field to break the tie with, so their relative
+   * order is not defined and nothing in §4.12 depends on it (`outbox.ts`).
+   */
+  async function queued() {
+    return (await db.outbox.toArray())
+      .sort((a, b) => a.kind.localeCompare(b.kind))
+      .map((row) => ({ kind: row.kind, vin: row.vin, payload: row.payload }));
+  }
+
+  it("queues the scan event and the vehicle's own fields on a scan", async () => {
+    const record = await upsertVehicle(scan({ at: T1, deviceLabel: "Bay 3" }));
+    const event = (await db.scanEvents.toArray())[0]!;
+
+    expect(await queued()).toEqual([
+      {
+        kind: "scan_event",
+        vin: VIN,
+        payload: {
+          id: event.id,
+          vin: VIN,
+          at: T1,
+          symbology: "code_39",
+          check_digit_valid: true,
+          device_label: "Bay 3",
+          origin: "scan",
+        },
+      },
+      {
+        kind: "vehicle_meta",
+        vin: VIN,
+        payload: {
+          p_vin: VIN,
+          p_unit: null,
+          p_notes: null,
+          p_meta_updated_at: META_NEVER_EDITED,
+          p_structural: record.structural,
+          p_decode: record.decode,
+        },
+      },
+    ]);
+  });
+
+  it("names the origin the write carried, which §5.2's row does not hold", async () => {
+    await upsertVehicle(scan({ origin: "manual", symbology: "manual" }));
+    await upsertVehicle(scan({ origin: "import", symbology: "import", vin: OTHER_VIN }));
+
+    const origins = (await db.outbox.where("kind").equals("scan_event").toArray()).map(
+      (row) => row.payload.origin,
+    );
+    expect(origins.sort()).toEqual(["import", "manual"]);
+  });
+
+  it("queues the record as saved on a unit edit, not the patch", async () => {
+    await upsertVehicle(scan({ at: T1, notes: "spare key" }));
+    await db.outbox.clear();
+
+    const record = await setVehicleMeta(VIN, { unit: "TRK-118" });
+
+    // The patch says nothing about the notes, and §4.12 resolves the whole row by one
+    // clock: a payload built from the patch would push the edit with the other field
+    // blank and last-writer-wins would erase it on every device.
+    expect(await queued()).toEqual([
+      {
+        kind: "vehicle_meta",
+        vin: VIN,
+        payload: {
+          p_vin: VIN,
+          p_unit: "TRK-118",
+          p_notes: "spare key",
+          p_meta_updated_at: record.metaUpdatedAt,
+          p_structural: record.structural,
+          p_decode: record.decode,
+        },
+      },
+    ]);
+  });
+
+  it("queues nothing when the edit is rejected", async () => {
+    await expect(setVehicleMeta(VIN, { unit: "TRK-118" })).rejects.toThrow(VIN);
+    expect(await db.outbox.count()).toBe(0);
+  });
+});
+
+describe("§4.12 delete — a tombstone here, a delete_vehicle there", () => {
+  it("stamps deletedAt, keeps the log, and queues the delete", async () => {
+    await upsertVehicle(scan({ at: T1 }));
+    await db.outbox.clear();
+
+    const record = await softDeleteVehicle(VIN);
+
+    expect(record?.deletedAt).toMatch(ISO_WITH_OFFSET);
+    expect((await db.vehicles.get(VIN))?.deletedAt).toBe(record?.deletedAt);
+    // §5.2 is append-only: the scans that produced the row are still what happened.
+    expect(await db.scanEvents.count()).toBe(1);
+    expect(await db.outbox.toArray()).toMatchObject([
+      { kind: "vehicle_delete", vin: VIN, payload: { p_vin: VIN } },
+    ]);
+  });
+
+  it("does not queue a second delete for a record already deleted", async () => {
+    await upsertVehicle(scan({ at: T1 }));
+    const first = await softDeleteVehicle(VIN);
+    await db.outbox.clear();
+
+    expect(await softDeleteVehicle(VIN)).toEqual(first);
+    expect(await db.outbox.count()).toBe(0);
+  });
+
+  it("queues nothing for a VIN this device has never held", async () => {
+    // Nothing to hide locally, and a delete pushed for a row this device never saw could
+    // only act on another device's record.
+    expect(await softDeleteVehicle(VIN)).toBeNull();
+    expect(await db.outbox.count()).toBe(0);
+    expect(await db.vehicles.count()).toBe(0);
+  });
+
+  it("lets a later scan revive the record, and queues the event that revives it", async () => {
+    await upsertVehicle(scan({ at: T1 }));
+    await softDeleteVehicle(VIN);
+    await db.outbox.clear();
+
+    const record = await upsertVehicle(scan({ at: T2 }));
+
+    // §4.12: "any later scan event clears it" — the server does that from the event, so
+    // the queued event is the whole of the fix; nothing pushes `deleted_at = null`.
+    expect(record.deletedAt).toBeNull();
+    expect((await db.outbox.toArray()).map((row) => row.kind).sort()).toEqual([
+      "scan_event",
+      "vehicle_meta",
+    ]);
   });
 });

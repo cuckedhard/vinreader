@@ -4,11 +4,19 @@
  * Local writes only. `origin: "cloud"` is deliberately not accepted (D12): the S4 pull
  * path applies server rows through its own apply path, because routing them here would
  * inflate `scanCount` on every pull and fabricate scan events.
+ *
+ * S4: this is also where §4.12's "every local write also appends an outbox row" is kept.
+ * All five paths it names — scan, manual, import, unit/notes edit, delete — reach storage
+ * through the functions below, so the feed is one seam rather than a rule every screen has
+ * to remember; the append shares each write's transaction, and no screen changed to gain
+ * it. The one local write to a `vehicles` row that does not pass through here is §5.4's
+ * decode queue, which fills `decode` after the fact.
  */
 import { buildStructural } from "../vin/structural";
 import type { ScanEvent, Symbology, VehicleDecode, VehicleRecord } from "../vin/types";
 import { META_NEVER_EDITED } from "../vin/types";
-import { db, nowIso } from "./db";
+import { db, newId, nowIso } from "./db";
+import { appendOutbox, scanEventRow, vehicleDeleteRow, vehicleMetaRow } from "./outbox";
 
 export type UpsertInput = {
   vin: string;
@@ -66,38 +74,16 @@ function countedScans(existing: VehicleRecord | undefined): number {
   return typeof count === "number" && Number.isInteger(count) && count >= 0 ? count : 0;
 }
 
-/**
- * §5.2's id is a UUID. `crypto.randomUUID` is `[SecureContext]`, so over plain http it is
- * `undefined` — and that origin is one the app is built for: §6.3 routes an insecure
- * context to `error(insecure_context)`, and the keyboard §6.4 sends the user to writes
- * through here. `getRandomValues` carries no such gate, so the fallback is a v4 built from
- * it rather than a weaker id shape; `Math.random` is the last resort for a runtime with no
- * `crypto` at all. The shape is not cosmetic: §5.2 is append-only and S4 pushes these ids
- * as the primary key that makes a push idempotent (§4.12), so they must not collide.
- */
-function newEventId(): string {
-  const webCrypto: Crypto | undefined = globalThis.crypto;
-  if (typeof webCrypto?.randomUUID === "function") return webCrypto.randomUUID();
-
-  const bytes = new Uint8Array(16);
-  if (typeof webCrypto?.getRandomValues === "function") {
-    webCrypto.getRandomValues(bytes);
-  } else {
-    for (let i = 0; i < bytes.length; i += 1) bytes[i] = Math.floor(Math.random() * 256);
-  }
-  bytes[6] = (bytes[6] & 0x0f) | 0x40; // RFC 4122 version 4
-  bytes[8] = (bytes[8] & 0x3f) | 0x80; // RFC 4122 variant 10xx
-  const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
-}
-
 export async function upsertVehicle(input: UpsertInput): Promise<VehicleRecord> {
   const at = input.at ?? nowIso();
   const incomingUnit = meaningful(input.unit);
   const incomingNotes = meaningful(input.notes);
   const currentYear = new Date().getFullYear();
 
-  return db.transaction("rw", db.vehicles, db.scanEvents, async () => {
+  // §4.12: the outbox is in scope because the rows it takes are part of this write, not a
+  // follow-up to it. A scan that commits without its outbox rows is a scan that never
+  // syncs, with nothing left to notice the gap.
+  return db.transaction("rw", db.vehicles, db.scanEvents, db.outbox, async () => {
     const existing = await db.vehicles.get(input.vin);
     const unit = incomingUnit ?? existing?.unit ?? null;
     const notes = incomingNotes ?? existing?.notes ?? null;
@@ -132,7 +118,7 @@ export async function upsertVehicle(input: UpsertInput): Promise<VehicleRecord> 
     };
 
     const event: ScanEvent = {
-      id: newEventId(),
+      id: newId(),
       vin: input.vin,
       at,
       symbology: input.symbology,
@@ -143,6 +129,12 @@ export async function upsertVehicle(input: UpsertInput): Promise<VehicleRecord> 
 
     await db.vehicles.put(record);
     await db.scanEvents.add(event);
+    // §4.12's two halves of one scan: the event, which the server's trigger turns into the
+    // aggregates a client never pushes, and the meta row, which carries the structural
+    // decode, unit and notes no event has room for. Either order converges — the trigger
+    // and the RPC both create the row on conflict — so nothing depends on which lands
+    // first. D03 needs no check here: on a check-digit mismatch nothing calls this at all.
+    await appendOutbox([scanEventRow(event, input.origin), vehicleMetaRow(record)]);
     return record;
   });
 }
@@ -156,7 +148,7 @@ export async function setVehicleMeta(
   vin: string,
   patch: { unit?: string | null; notes?: string | null },
 ): Promise<VehicleRecord> {
-  return db.transaction("rw", db.vehicles, async () => {
+  return db.transaction("rw", db.vehicles, db.outbox, async () => {
     const existing = await db.vehicles.get(vin);
     if (!existing) throw new Error(`setVehicleMeta: no record for VIN ${vin}`);
     const next: VehicleRecord = {
@@ -166,6 +158,33 @@ export async function setVehicleMeta(
       metaUpdatedAt: nowIso(),
     };
     await db.vehicles.put(next);
+    // The clock this row carries is the one §4.12 resolves the edit by, so the queued row
+    // must be the record as saved — not the patch, which says nothing about the field the
+    // user left alone.
+    await appendOutbox([vehicleMetaRow(next)]);
+    return next;
+  });
+}
+
+/**
+ * §4.12's delete: a tombstone, not a removal. The local row stays so History and the Sheet
+ * can hide it while the §5.2 log — append-only — keeps the scans that produced it, and the
+ * queued `vehicle_delete` carries the intent to the account. A later scan of the same VIN
+ * clears `deletedAt` on both sides.
+ *
+ * A VIN this device does not hold is not an error and not a queued delete: there is
+ * nothing to hide locally, and pushing a delete for a row this device never saw could only
+ * act on another device's record.
+ */
+export async function softDeleteVehicle(vin: string): Promise<VehicleRecord | null> {
+  return db.transaction("rw", db.vehicles, db.outbox, async () => {
+    const existing = await db.vehicles.get(vin);
+    if (!existing) return null;
+    // Already a tombstone: re-queueing would push the same intent twice for no new fact.
+    if (existing.deletedAt !== null) return existing;
+    const next: VehicleRecord = { ...existing, deletedAt: nowIso() };
+    await db.vehicles.put(next);
+    await appendOutbox([vehicleDeleteRow(vin)]);
     return next;
   });
 }
