@@ -19,11 +19,11 @@ import { ChecksumException, FormatException, NotFoundException } from "@zxing/li
 import type { Result } from "@zxing/library";
 import { isPayloadCarrier } from "../../lib/payload/carrier";
 import { extractVin } from "../../lib/vin/extractVin";
-import { buildScanHints, toSymbology } from "../../lib/vin/symbologies";
+import { buildScanHints, stripAimIdentifier, toSymbology } from "../../lib/vin/symbologies";
 import type { ScanError } from "../../lib/vin/types";
 import { cooldownStore } from "./cooldownStore";
 import { CONFIRM_WINDOW_MS, scanReducer, startingScanMachine } from "./scanMachine";
-import type { ScanAction, ScanMachineState } from "./scanMachine";
+import type { ScanAction, ScanMachineState, ScanSighting } from "./scanMachine";
 
 export interface TorchApi {
   available: boolean;
@@ -158,6 +158,51 @@ function isNoRead(error: unknown): boolean {
   );
 }
 
+/**
+ * What one decoded frame turned out to be: one of the app's own §4.9 carriers, a §4.2
+ * sighting, or `null` for a frame this screen does nothing with.
+ */
+export type ScanRead =
+  { kind: "carrier"; text: string } | { kind: "sighting"; sighting: ScanSighting };
+
+/** The two `Result` accessors this reads, so a test can hand it a frame with no camera. */
+type DecodedFrame = Pick<Result, "getText" | "getBarcodeFormat">;
+
+/**
+ * Everything a decoded frame decides, with the clock passed in: pure, so §4.6's strip and
+ * the order of the two questions below it are testable without a camera, the way
+ * `pickFocusMode` and `armLapseTimer` already are. `handleResult` only routes what this
+ * returns.
+ *
+ * **The strip comes first, above both questions.** `]C1` is the AIM symbology identifier
+ * `@zxing/library` writes into its own result when §4.6's `ASSUME_GS1` meets a leading
+ * FNC1 (`stripAimIdentifier`) — decoder metadata, and no printer put it on the label. ZXing
+ * leaves no separator behind it, so `C1` fuses onto the front of the first field: it
+ * lengthens the run §4.2 reads, which is how a leading-FNC1 label carrying only the VIN
+ * became a 19-character run and was refused, and it also defeats §4.9's *anchored* text
+ * carrier prefix, which would send one of the app's own payloads to `extractVin` to mine a
+ * VIN out of its base64 body (D14, N2). Both are why nothing downstream may see it.
+ *
+ * §5.2's `raw` therefore records the label's bytes rather than ZXing's output, which is
+ * what that field was always for: `]C1` is not on the label, it changes with a decoder hint
+ * rather than with the vehicle, and the read's own configuration is already recorded in
+ * `symbology`. It also keeps the event self-consistent — `extractVin(raw)` still yields the
+ * `vin` the same row claims, which it would not if the three bytes stayed.
+ */
+export function readScanResult(frame: DecodedFrame, atMs: number): ScanRead | null {
+  const format = frame.getBarcodeFormat();
+  const text = stripAimIdentifier(frame.getText(), format);
+  // D14: a §4.9 carrier is one of the app's own handoff payloads, not a VIN, and it decodes
+  // identically every frame — so a VIN fabricated out of one would sail through the two-read
+  // rule. The carrier test stays ahead of extractVin; S3 routes the hit to Import.
+  if (isPayloadCarrier(text)) return { kind: "carrier", text };
+  const symbology = toSymbology(format);
+  if (symbology === null) return null;
+  const extraction = extractVin(text);
+  if (extraction === null) return null;
+  return { kind: "sighting", sighting: { ...extraction, symbology, atMs } };
+}
+
 function stopTracks(stream: MediaStream): void {
   for (const track of stream.getTracks()) track.stop();
 }
@@ -285,19 +330,13 @@ export function useScanner(options: {
       }
       return;
     }
-    const text = result.getText();
-    // D14: a §4.9 carrier is one of the app's own handoff payloads, not a VIN, and it decodes
-    // identically every frame — so a VIN fabricated out of one would sail through the two-read
-    // rule. The carrier test stays ahead of extractVin; S3 routes the hit to Import.
-    if (isPayloadCarrier(text)) {
-      onCarrierRef.current?.(text);
+    const read = readScanResult(result, Date.now());
+    if (read === null) return;
+    if (read.kind === "carrier") {
+      onCarrierRef.current?.(read.text);
       return;
     }
-    const symbology = toSymbology(result.getBarcodeFormat());
-    if (symbology === null) return;
-    const extraction = extractVin(text);
-    if (extraction === null) return;
-    dispatch({ type: "decoded", sighting: { ...extraction, symbology, atMs: Date.now() } });
+    dispatch({ type: "decoded", sighting: read.sighting });
   }, []);
 
   const kind = machine.state.kind;
