@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { toCanvas } from "qrcode";
 import { groupVin } from "../lib/vin/grammar";
 
@@ -41,10 +41,13 @@ function pixelRatio(): number {
   return Math.min(window.devicePixelRatio || 1, 3);
 }
 
-/** Full-screen QR sheet. Escape closes it, and so does the button under the code. */
+/**
+ * Full-screen QR sheet, modal over the record it came from. Escape closes it, and so does
+ * the button under the code; while it is up, the keyboard cannot leave it.
+ */
 export function QrView({ value, vin, note, onClose }: QrViewProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const closeRef = useRef<HTMLButtonElement>(null);
+  const dialogRef = useRef<HTMLDialogElement>(null);
   const [size, setSize] = useState(() => fitSize());
   const [failed, setFailed] = useState(false);
 
@@ -58,17 +61,39 @@ export function QrView({ value, vin, note, onClose }: QrViewProps) {
     };
   }, []);
 
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
+  /**
+   * §6.6 — Tab, Escape and the focus ring have to work here too, and this is the one screen
+   * in the app that covers another one.
+   *
+   * `showModal()` rather than a hand-rolled trap: the platform puts the overlay in the top
+   * layer, moves focus to the first focusable element inside it (the Close button — the only
+   * one, so the explicit `focus()` this replaces was saying the same thing twice), scopes Tab
+   * and Shift+Tab to the dialog, and makes everything behind it inert, which is what keeps a
+   * screen reader on the code the user is holding up rather than on a form they cannot see.
+   * Measured before this: Tab from Close reached the bottom nav, then the browser chrome, then
+   * wrapped into the sheet's own Refresh details and unit field; Shift+Tab reached Copy JSON.
+   *
+   * `<dialog>` sits below this project's floor — Vite's default build target here is iOS 16.4
+   * / Chrome 111, and `showModal()` shipped in iOS 15.4 / Chrome 37 — so there is no
+   * capability branch to take and no fallback to keep working.
+   *
+   * A layout effect, not a passive one: the element must be in the top layer before the frame
+   * that first paints it, or the overlay is briefly a normal box in the middle of the sheet.
+   */
+  useLayoutEffect(() => {
+    const node = dialogRef.current;
+    if (node === null) return;
+    // Where the keyboard was when this opened: the QR button on the sheet.
+    const opener = document.activeElement;
+    // StrictMode runs this twice; the cleanup closes, so the second call has a shut dialog.
+    if (!node.open) node.showModal();
+    return () => {
+      if (node.open) node.close();
+      // The parent unmounts this rather than closing it in place, so the platform's own
+      // focus restoration does not get to run — React pulls the element out of the top layer
+      // and focus falls to <body>. Put the keyboard back where the user left it.
+      if (opener instanceof HTMLElement && opener.isConnected) opener.focus();
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
-  // The overlay covers the sheet, so the keyboard's next Tab has to land inside it.
-  useEffect(() => {
-    closeRef.current?.focus();
   }, []);
 
   useEffect(() => {
@@ -95,11 +120,21 @@ export function QrView({ value, vin, note, onClose }: QrViewProps) {
   }, [value, size]);
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
+    // `role` and `aria-modal` are what `<dialog>` opened with `showModal()` already means;
+    // stating them again is how the two drift apart. The size utilities are not decoration:
+    // the UA sizes a dialog to its contents and caps it below the viewport, and this one is
+    // a light field for a camera to read, edge to edge.
+    <dialog
+      ref={dialogRef}
       aria-label={`QR code for VIN ${groupVin(vin)}`}
-      className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4 overflow-y-auto p-4"
+      onCancel={(event) => {
+        // Escape. The parent owns whether this is mounted — the same path the Close button
+        // takes — so let React take it down instead of letting the platform hide it behind
+        // React's back and leave a live overlay nobody can see.
+        event.preventDefault();
+        onClose();
+      }}
+      className="fixed inset-0 z-50 flex h-full max-h-none w-full max-w-none flex-col items-center justify-center gap-4 overflow-y-auto p-4"
       style={{ backgroundColor: PAPER, color: INK }}
     >
       <p className="max-w-[520px] text-center text-base leading-snug" style={{ color: INK }}>
@@ -137,7 +172,6 @@ export function QrView({ value, vin, note, onClose }: QrViewProps) {
 
       {/* §6.1: the way out is a 56 px target, not a gesture (N5). */}
       <button
-        ref={closeRef}
         type="button"
         onClick={onClose}
         className="min-h-[var(--tap-lg)] w-full max-w-[520px] rounded-[var(--radius)] border-2 px-6 text-lg font-bold active:opacity-80"
@@ -145,6 +179,6 @@ export function QrView({ value, vin, note, onClose }: QrViewProps) {
       >
         Close
       </button>
-    </div>
+    </dialog>
   );
 }
