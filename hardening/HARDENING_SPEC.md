@@ -24,6 +24,12 @@ Zach: "make sure this can read every vehicle not just heavy trucks." Three place
 | A07 | S2 | extraction | §4.2, §4.11 | Step 4(a) prefers, among check-valid windows, one spanning a whole run, then start-aligned, then end-aligned, then the first. | Closes O07. Verified: all fourteen fixture and stress cases match expectation, `1HGCM82633A0043531HGCM82633A004352` now returns the real VIN instead of `M82633A0043531HGC`, a VIN embedded in surrounding data is still found 72.5% of the time as before, and false extraction from a payload URL is unchanged at 44.2% (D14 keeps payloads away from `extractVin`). A broader fallback was tested first and rejected: it drove false extraction to 99.3%. |
 | A08 | S3 | WMI seed | §4.5 | Candidate list widened from 23 heavy-truck WMIs to five classes covering trucks, pickups, cars, imports, motorcycles and trailers. | §4.5 already drops unresolved candidates, so breadth costs one API call each. Without it a passenger car shows no manufacturer offline. |
 
+### Round 2 — Z1 resolved, 2026-09-04
+
+| id | sev | area | spec ref | change | evidence |
+|---|---|---|---|---|---|
+| A09 | S1 | extraction | §4.2, §4.11 | Step 4(a) now requires the winning VIN to be the only distinct one that passes the check digit; more than one is an ambiguous run and yields `NO_VIN`. The run-alignment precedence added in round 1 is removed — it only chose which wrong answer to show. | `harden S1` finding Z1: `UNIT B` above a VIN returned `TB1HGCM82633A0043` marked check-digit-valid, saved and shown as fact. 4 of 33 leading characters, 1–6% of multi-field payloads. After: 0 and 0. Chosen by Zach from three options as the conservative one. |
+
 ## Open — NEEDS-ZACH
 
 Verified, not applied. None blocks S0.
@@ -39,7 +45,7 @@ Verified, not applied. None blocks S0.
 | O08 | scope | grammar | §4.1 | Exactly 17 characters is required, so pre-1981 vehicles and equipment with shorter serials cannot be entered at all. A deliberate limit; widening it is a scope decision, not a defect fix. |
 | O09 | S3 | symbology | §4.6 | Four symbologies are enabled. Whether any label class in this fleet uses another is answerable only against real labels, in the S1 bench. |
 
-*Closed in round 1: O07, by A07.*
+*Closed in round 1: O07, by A07. Closed in round 2: the §4.2 hazard O07 recorded, by A09 — the precedence rule it introduced is gone.*
 
 ## Environment note
 

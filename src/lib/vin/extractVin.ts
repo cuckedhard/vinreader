@@ -9,13 +9,6 @@ import type { ExtractResult } from "./types";
 /** §4.2 step 1. `*` is the Code 39 start/stop pair, which some decoders pass through. */
 const STRIP_RE = /[\s*]+/g;
 
-interface VinWindow {
-  vin: string;
-  /** Position within the run it came from; §4.2 step 4a ranks on it. */
-  offset: number;
-  runLength: number;
-}
-
 /**
  * Returns null for NO_VIN. `raw` is echoed back unmodified so a record can keep
  * the exact bytes the decoder produced (§5.2).
@@ -23,37 +16,41 @@ interface VinWindow {
 export function extractVin(raw: string): ExtractResult | null {
   const cleaned = raw.toUpperCase().replace(STRIP_RE, "");
 
-  const windows: VinWindow[] = [];
+  const windows: string[] = [];
   for (const run of splitRuns(cleaned)) {
     for (let offset = 0; offset + VIN_LENGTH <= run.length; offset += 1) {
-      windows.push({ vin: run.slice(offset, offset + VIN_LENGTH), offset, runLength: run.length });
+      windows.push(run.slice(offset, offset + VIN_LENGTH));
     }
   }
-  const candidates = windows.filter((w) => isVinGrammarValid(w.vin));
-
-  const valid = candidates.filter((w) => isCheckDigitValid(w.vin));
-  if (valid.length > 0) {
-    /**
-     * §4.2 step 4a. Roughly one window in eleven passes the check digit by
-     * chance, so in a run longer than 17 a window straddling two concatenated
-     * identifiers can pass before the real VIN is reached. Prefer a window that
-     * spans a whole run, then a run's start, then a run's end, then the first.
-     */
-    const chosen =
-      valid.find((w) => w.runLength === VIN_LENGTH) ??
-      valid.find((w) => w.offset === 0) ??
-      valid.find((w) => w.offset === w.runLength - VIN_LENGTH) ??
-      valid[0];
-    return { vin: chosen.vin, raw, checkDigitValid: true };
-  }
+  // §4.2 step 3, as a filter rather than a guard: runs are alphabet-only by construction,
+  // so the predicate never fails and an `if` would leave an unreachable branch that the
+  // §13.5 100%-branch gate on this file could never cover.
+  const candidates = windows.filter(isVinGrammarValid);
 
   /**
-   * §4.2 step 4b. An identifier carrying no check digit is only locatable when
-   * it is a run of its own; embedded in a longer run nothing distinguishes it
-   * from its neighbours, so that case falls through to NO_VIN.
+   * §4.2 step 4a. Roughly one window in eleven passes the check digit by chance, so a
+   * window straddling the boundary between a VIN and whatever is printed next to it can
+   * validate too — and nothing downstream can tell it from a real read, because the check
+   * digit genuinely matches and a 2D code decodes identically every frame. So the check
+   * digit only settles the answer when it settles it uniquely: distinct VINs that all
+   * validate are an ambiguous run, and N2 says show nothing rather than pick one.
+   *
+   * Uniqueness is by VIN, not by window: the same VIN found at two offsets is one answer.
+   */
+  const valid = [...new Set(candidates.filter(isCheckDigitValid))];
+  if (valid.length === 1) {
+    return { vin: valid[0]!, raw, checkDigitValid: true };
+  }
+  if (valid.length > 1) return null;
+
+  /**
+   * §4.2 step 4b, on window count rather than distinct VINs: an identifier carrying no
+   * check digit is only locatable when it is a run of its own. A longer run of repeated
+   * characters collapses to one distinct string, but the identifier still is not a run of
+   * its own and reading one out of it would be a guess from noise.
    */
   if (candidates.length === 1) {
-    return { vin: candidates[0].vin, raw, checkDigitValid: false };
+    return { vin: candidates[0]!, raw, checkDigitValid: false };
   }
 
   return null;

@@ -100,11 +100,13 @@ Display grouping (always, monospace): `WMI VDS C Y P SERIAL` → e.g. `1HG CM826
 1. Uppercase. Strip whitespace and `*` (Code 39 start/stop, if a decoder ever passes them through).
 2. Split the string into **runs** of allowed characters (`[A-HJ-NPR-Z0-9]+`). Any other character is a separator.
 3. Over every run of length ≥ 17, slide a 17-char window. Collect windows that match the grammar.
-4. Choose, in order: (a) a window whose check digit is valid — when several do, prefer one that spans an entire run, then one aligned to a run's start, then one aligned to a run's end, then the first; (b) if none is valid, and exactly one grammar-valid window exists, that window with `checkDigitValid = false`; (c) otherwise → `NO_VIN`.
+4. Choose, in order: (a) if exactly one **distinct** VIN among the windows has a valid check digit, that VIN; (b) if none has, and exactly one grammar-valid window exists at all, that window with `checkDigitValid = false`; (c) otherwise → `NO_VIN`.
 
-The precedence in (a) matters because roughly one window in eleven passes the check digit by chance: in a run longer than 17 a window straddling two concatenated identifiers can pass before the real VIN is reached. `1HGCM82633A0043531HGCM82633A004352` returns `M82633A0043531HGC` under plain first-match and the correct `1HGCM82633A004352` under the precedence above.
+Uniqueness in (a) is by VIN, not by window: the same VIN found at two offsets is one answer, not two. (b) counts windows, because an identifier with no check digit is only locatable when it is a run of its own — a long run of repeated characters collapses to one distinct string without becoming any less of a guess.
 
-**Known limit.** An identifier that carries no check digit (below) can only be located when it is a run of its own — the normal case, since door-jamb barcodes hold the VIN alone and the ANSI `I` data identifier splits off. Embedded in a longer undelimited run it yields `NO_VIN`, because nothing distinguishes it from its neighbours. Delimited payloads (JSON, separated text) split into runs and are unaffected.
+**Why uniqueness and not precedence.** Roughly one window in eleven passes the check digit by chance, so a window straddling the boundary between a VIN and whatever else is printed beside it validates too. A label reading `UNIT B` above the VIN yielded `TB1HGCM82633A0043` marked check-digit-valid, and nothing downstream could tell it from a real read: §6.3's two-read agreement holds because a 2D code decodes identically every frame, and §4.3's gate is satisfied because the check digit genuinely matches. Ranking the candidates — by run alignment or by position — only chooses which wrong answer to show. When several distinct VINs validate, the run is ambiguous, and N2 requires showing nothing rather than picking one.
+
+**Known limit, and it is deliberate.** A run that contains more than one plausible VIN yields `NO_VIN`, and so does an identifier carrying no check digit unless it is a run of its own. Both are the normal case on real labels: a door-jamb barcode holds the VIN alone, the ANSI `I` data identifier splits off, and delimited payloads (JSON, separated text) split into runs. An undelimited multi-field payload is refused rather than guessed at; the user rescans or types.
 5. Return `{ vin, raw, checkDigitValid }`.
 
 Covered cases (these are tests):
@@ -248,7 +250,8 @@ type OutboxKind  = "scan_event" | "vehicle_meta" | "vehicle_delete";
 | `1HGCM82633A004353` | Grammar ok; **check digit invalid**: sum 313, 313 mod 11 = 5, so the expected check char is **5** and position 9 holds **3**. |
 | `1HGCM826X3A004350` | Check digit **X** (sum 307, 307 mod 11 = 10). The only fixture exercising the `X` branch. |
 | `WVWZZZ1JZ1W123456` | Grammar ok. Position 9 is `Z`, so `checkDigitApplies` is false and `checkDigitValid` is false: neutral note, never the misread banner. A vehicle that carries no check digit still reads. |
-| `1HGCM82633A0043531HGCM82633A004352` | Two identifiers run together. §4.2 4(a) precedence returns `1HGCM82633A004352`, not the straddling window `M82633A0043531HGC`. |
+| `1HGCM82633A0043531HGCM82633A004352` | Two identifiers run together. Several distinct windows pass the check digit, so §4.2 4(a) yields `NO_VIN` rather than choosing one. |
+| `B1HGCM82633A004352` · `UNIT B` + newline + `1HGCM82633A004352` | A §4.1-legal character in front of the VIN makes the offset-0 window validate by chance. Both yield `NO_VIN`. Before §4.2 required uniqueness these returned `B1HGCM82633A00435` and `TB1HGCM82633A0043` marked **check-digit valid** — a wrong VIN accepted as fact. |
 | `1FUJGLDR49SAV1234` · `1HTMMAAL67H412345` · `4V4NC9TJ98N412345` · `1FUJA6CK14LM12345` | Heavy trucks; all check-digit valid (sums 378, 358, 361, 265 → 4, 6, 9, 1). Position 7 is a letter and the late candidate fails the §4.4 cap, so they resolve to **2009, 2007, 2008, 2004** — not 2039/2037/2038/2034. |
 | `I1HGCM82633A004352` | Normalizes to `1HGCM82633A004352` via §4.2. |
 | `1HGCM82633A00435` (16) / `1HGCM82633A0043521` (18, no I) | `NO_VIN` / extracts the valid 17-window. |

@@ -61,7 +61,7 @@ S1 is the camera scanner: `useScanner.ts`, `scanMachine.ts`, `CameraView.tsx`, `
 
 Delivered as a list, per §13.6 criterion 5. The loop never resolves these itself.
 
-### Z1 (S1) — §4.2 accepts a wrong VIN as check-digit-valid when anything legal precedes it
+### Z1 (S1) — RESOLVED by Zach: §4.2 now requires the winning VIN to be unique
 
 **This is a false accept, and §13.6 criterion 4 requires zero.** Verified directly, not just reported:
 
@@ -83,6 +83,12 @@ This is the same mechanism D14 closed for the app's own carriers, left open for 
 - (c) stop step 1 joining runs across whitespace, so multi-field payloads split.
 
 Option (b) is the most conservative: it turns an ambiguous run into `NO_VIN` rather than a guess, which is what N2 argues for.
+
+**Zach chose (b), and it is applied.** §4.2 step 4(a) now reads: if exactly one *distinct* VIN among the windows has a valid check digit, that VIN; more than one and the run is ambiguous, so `NO_VIN`. Uniqueness is by VIN, not by window — the same VIN at two offsets is one answer. Step 4(b) still counts *windows*, because an identifier with no check digit is only locatable when it is a run of its own, and a long run of repeated characters collapses to one distinct string without becoming any less of a guess.
+
+Measured after the change: **0 of 33** legal leading characters produce a wrong VIN, down from 4; and 0 of 2,000 random `<field> <VIN>` payloads, down from 1–6%. The four characterisation tests that pinned the hazard now assert it is closed and stand as the regression guard.
+
+What it costs, stated plainly: a run holding more than one plausible VIN is now refused rather than resolved. `1HGCM82633A0043531HGCM82633A004352` was returning the real VIN and now returns `NO_VIN`, and so does the same VIN printed twice — which contains three *spurious* straddling windows that also validate, so the old rule was returning the right answer there by luck rather than by reasoning. The user rescans or types. §4.11 records both.
 
 ### Z2 (S2) — §13.4's degradation tiers are not ordered
 

@@ -51,13 +51,10 @@ describe("extractVin", () => {
     expect(extractVin(`{"vin":"${VALID}","unit":"UNIT-42"}`)?.vin).toBe(VALID);
   });
 
-  it("prefers the run-aligned window over a straddling window that passes by chance", () => {
-    // §4.2 step 4a. Windows at offsets 4, 5 and 17 all pass the check digit;
-    // only offset 17 is aligned to the end of the run.
-    const result = extractVin(BAD_CHECK + VALID);
-    expect(result?.vin).toBe(VALID);
-    expect(result?.vin).not.toBe("M82633A0043531HGC");
-    expect(result?.checkDigitValid).toBe(true);
+  it("refuses a run holding more than one plausible VIN (Z1)", () => {
+    // Several distinct windows pass the check digit here, so §4.2 4(a) yields NO_VIN
+    // rather than ranking them and showing the winner as fact (N2).
+    expect(extractVin("1HGCM82633A0043531HGCM82633A004352")).toBeNull();
   });
 
   it("falls back to the only interior window when nothing is run-aligned", () => {

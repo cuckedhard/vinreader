@@ -2,11 +2,11 @@
  * §13.2 adversary tests for §4.2 extraction as the S1 scanner uses it, round 1 of
  * `harden S1`.
  *
- * The characterisation tests marked [A-01] PASS today. They exist because the
- * behaviour they pin is a §4.2 false accept and §4.2 is a §4 constant: no agent may
- * change it (CLAUDE.md rule 2, §13.6 hard stop). They are the repro attached to the
- * NEEDS-ZACH finding, and they fail loudly if §4.2 is ever revised — which is what a
- * decision from Zach would look like.
+ * The tests marked [A-01] were written to pin a §4.2 false accept: a stray legal
+ * character in front of the VIN made the offset-0 window validate by chance, and the
+ * scanner confirmed a 17-character string nobody printed. Zach resolved it (ledger Z1)
+ * by requiring the chosen window to be the only distinct VIN that validates, so they now
+ * assert the hazard is CLOSED. They are the regression guard for it.
  */
 
 import { describe, expect, it } from "vitest";
@@ -17,7 +17,7 @@ import { extractVin } from "./extractVin";
 const VIN = "1HGCM82633A004352";
 const ALPHABET = "ABCDEFGHJKLMNPRSTUVWXYZ0123456789";
 
-describe("[A-01] §4.2 step 4a prefers a run-start window over the real VIN", () => {
+describe("[A-01] §4.2 refuses a run that holds more than one plausible VIN", () => {
   /**
    * §4.2 step 4a ranks a window "aligned to a run's start" above every later window.
    * One stray §4.1-legal character in front of the VIN shifts the run by one, and the
@@ -25,14 +25,13 @@ describe("[A-01] §4.2 step 4a prefers a run-start window over the real VIN", ()
    * confirms a 17-character string that is not on the label, with
    * `checkDigitValid: true`. Nothing downstream can tell it from a real read.
    */
-  it("returns the straddling window, not the VIN, for a leading B / K / S / 2", () => {
-    expect(extractVin(`B${VIN}`)).toEqual({
-      vin: "B1HGCM82633A00435",
-      raw: `B${VIN}`,
-      checkDigitValid: true,
-    });
-    for (const c of ["B", "K", "S", "2"]) {
-      expect(extractVin(`${c}${VIN}`)?.vin).toBe(`${c}${VIN}`.slice(0, 17));
+  it("returns NO_VIN rather than a straddling window, for every legal leading character", () => {
+    expect(extractVin(`B${VIN}`)).toBeNull();
+    // B, K, S and 2 were the four that produced a check-digit-VALID wrong VIN. Now none
+    // of the 33 does: either the run is ambiguous, or nothing validates at all.
+    for (const c of ALPHABET) {
+      const got = extractVin(`${c}${VIN}`);
+      expect(got === null || got.vin === VIN).toBe(true);
     }
   });
 
@@ -43,15 +42,14 @@ describe("[A-01] §4.2 step 4a prefers a run-start window over the real VIN", ()
    * window wins.
    */
   it("does the same when whitespace joined a neighbouring field to the VIN", () => {
-    expect(extractVin(`B ${VIN}`)?.vin).toBe("B1HGCM82633A00435");
-    // A realistic two-field label: "UNIT B" then the VIN. The `I` splits the run, the
-    // newline is stripped, and the surviving run is `TB1HGCM82633A004352` whose
-    // offset-0 window passes the check digit — so the record is a VIN nobody printed.
-    expect(extractVin(`UNIT B\n${VIN}`)?.vin).toBe("TB1HGCM82633A0043");
-    expect(extractVin(`2\t${VIN}`)?.vin).toBe("21HGCM82633A00435");
+    expect(extractVin(`B ${VIN}`)).toBeNull();
+    // A realistic two-field label: "UNIT B" then the VIN. This one returned
+    // `TB1HGCM82633A0043` marked check-digit-valid — a VIN nobody printed, saved as fact.
+    expect(extractVin(`UNIT B\n${VIN}`)).toBeNull();
+    expect(extractVin(`2\t${VIN}`)).toBeNull();
   });
 
-  it("is a ~3% hazard across random single-field-plus-VIN payloads", () => {
+  it("never returns a wrong VIN across random single-field-plus-VIN payloads", () => {
     // Deterministic LCG: the rate is a measurement, not a flake.
     let seed = 12345;
     const rng = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
@@ -67,9 +65,9 @@ describe("[A-01] §4.2 step 4a prefers a run-start window over the real VIN", ()
       const result = extractVin(`${prefix} ${vin}`);
       if (result !== null && result.vin !== vin) wrong += 1;
     }
-    // Pinned as a range so a §4.2 revision moves it and the ledger notices.
-    expect(wrong / N).toBeGreaterThan(0.01);
-    expect(wrong / N).toBeLessThan(0.06);
+    // Was 1-6% before Z1. A wrong VIN accepted is §13.6 criterion 4, so the bar is zero,
+    // not "low": an ambiguous run is refused rather than resolved to the likelier guess.
+    expect(wrong).toBe(0);
   });
 
   /**
@@ -78,12 +76,12 @@ describe("[A-01] §4.2 step 4a prefers a run-start window over the real VIN", ()
    * becomes `S`, U+00DF becomes `SS`, the `ﬅ` ligature becomes `ST`. A 2D code
    * carrying UTF-8 text can therefore grow a run and trigger the straddle above.
    */
-  it("lets toUpperCase manufacture §4.1 characters out of non-ASCII text", () => {
-    // U+017F uppercases to a bare ASCII "S", which is a §4.1 character, so the run
-    // grows by one and the straddling window wins.
-    expect(extractVin(`ſ${VIN}`)?.vin).toBe("S1HGCM82633A00435");
-    // U+FB05 uppercases to "ST": two characters, so this VIN's straddle happens to
-    // fail the check digit and the run's end wins. The mechanism is the same.
+  it("is not fooled when toUpperCase manufactures §4.1 characters out of non-ASCII text", () => {
+    // U+017F uppercases to a bare ASCII "S", a §4.1 character, so the run grows by one
+    // and the offset-0 window validates. It used to be returned as "S1HGCM82633A00435".
+    expect(extractVin(`ſ${VIN}`)).toBeNull();
+    // U+FB05 uppercases to "ST": two characters, and this VIN's straddle fails the check
+    // digit, so the run holds exactly one plausible VIN and it still reads.
     expect(extractVin(`ﬅ${VIN}`)?.vin).toBe(VIN);
   });
 });

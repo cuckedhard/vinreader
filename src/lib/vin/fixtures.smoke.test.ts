@@ -47,12 +47,17 @@ describe("§4.11 fixtures end to end", () => {
   it.each([
     ["I1HGCM82633A004352", "1HGCM82633A004352"],
     ["1HG CM826 3 3 A 004352", "1HGCM82633A004352"],
-    ["1HGCM82633A0043531HGCM82633A004352", "1HGCM82633A004352"],
   ])("extracts %s", (raw, vin) => {
     expect(extractVin(raw)?.vin).toBe(vin);
   });
 
-  it.each(["1HGCM82633A00435", "1HGCM8263IA004352"])("rejects %s", (raw) => {
+  it.each([
+    "1HGCM82633A00435",
+    "1HGCM8263IA004352",
+    // Z1: a run holding more than one plausible VIN is refused, not ranked.
+    "1HGCM82633A0043531HGCM82633A004352",
+    "UNIT B\n1HGCM82633A004352",
+  ])("rejects %s", (raw) => {
     expect(extractVin(raw)).toBeNull();
   });
 });
