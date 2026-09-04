@@ -120,6 +120,44 @@ const isoArb = fc
   })
   .map((date) => date.toISOString());
 
+/**
+ * Carrier-shaped strings, and noise that is nearly one. Assembled from §4.9's parts
+ * rather than drawn from an alphabet: a generic string generator produced a carrier
+ * 4 times in 5,000, which is a property that tests nothing (A29).
+ */
+const carrierishArb: fc.Arbitrary<string> = fc.oneof(
+  fc
+    .tuple(
+      fc.constantFrom("", "https://vinrelay.example/", "UNIT B ", "https://h/#/v/X"),
+      fc.constantFrom(
+        "#/i?",
+        "#i?",
+        "#/I?",
+        "#/i?src=qr&",
+        "#/i?a=1&b=2&",
+        "#/x?y=1#/i?",
+        "#/i?id=7#/i?",
+      ),
+      fc.constantFrom("d=", "D=", "id=", "xd="),
+      fc.oneof(
+        fc.constant(encodePayload(MINIMAL)),
+        fc.stringMatching(/^[A-Za-z0-9_%&=#+ .-]{0,30}$/),
+      ),
+    )
+    .map(([lead, route, marker, body]) => `${lead}${route}${marker}${body}`),
+  fc
+    .tuple(
+      fc.constantFrom("VINRELAY", "vinrelay", "VINRELAY0", "VINRELAY1", "VINRELAY2", "VINRELAY10"),
+      fc.constantFrom(":", ""),
+      fc.oneof(
+        fc.constant(encodePayload(MINIMAL)),
+        fc.stringMatching(/^[A-Za-z0-9_%&=#+ .-]{0,30}$/),
+      ),
+    )
+    .map(([prefix, colon, body]) => `${prefix}${colon}${body}`),
+  fc.stringMatching(/^[A-Za-z0-9#?&=:/ _-]{0,40}$/),
+);
+
 const payloadArb: fc.Arbitrary<Payload> = fc.record(
   {
     v: fc.constant(PAYLOAD_VERSION),
@@ -517,6 +555,72 @@ describe("parseCarrier", () => {
         expect(fromUrl?.vin).toBe(payload.vin);
         for (const key of dropped) expect(DROP_ORDER).toContain(key);
         expect(parseCarrier(buildTextCarrier(payload))).toEqual(payload);
+      }),
+    );
+  });
+
+  it("reads the body out of the very match the D14 guard made", () => {
+    // R3-F. Both functions ask `matchCarrier`, so the answers cannot drift apart. These
+    // three were recognised by the guard and answered with null by the parser, and
+    // `ScanScreen.handleCarrier` drops a null without a word.
+    const body = encodePayload(EXAMPLE);
+    for (const carrier of [
+      `https://vinrelay.example/#/I?D=${body}`,
+      `https://vinrelay.example/#/i?src=qr#/i?d=${body}`,
+      `VINRELAY2:${body}`,
+    ]) {
+      expect(isPayloadCarrier(carrier)).toBe(true);
+      expect(() => parseCarrier(carrier)).not.toThrow();
+      expect(parseCarrier(carrier)).toEqual(EXAMPLE);
+    }
+  });
+
+  it("takes the first `d` when a query repeats it, as a query string does", () => {
+    const body = encodePayload(EXAMPLE);
+    const other = encodePayload(MINIMAL);
+    expect(parseCarrier(`https://vinrelay.example/#/i?d=${body}&d=${other}`)).toEqual(EXAMPLE);
+  });
+
+  it("undoes percent-escapes in a URL body, and names one that will not decode", () => {
+    // A carrier that travelled as a link can arrive escaped. base64url contains none of
+    // the characters that need escaping, so undoing them is safe...
+    const body = encodePayload(EXAMPLE);
+    const escaped = `%${body.charCodeAt(0).toString(16).padStart(2, "0")}${body.slice(1)}`;
+    expect(parseCarrier(`https://vinrelay.example/#/i?d=${escaped}`)).toEqual(EXAMPLE);
+
+    // ...and a `%` that is not an escape is a damaged body, not another encoding: it is
+    // named by the base64url guard rather than swallowed (P7).
+    expect(() => parseCarrier(`https://vinrelay.example/#/i?d=%zz${body}`)).toThrow(PayloadError);
+    try {
+      parseCarrier(`https://vinrelay.example/#/i?d=%zz${body}`);
+    } catch (error) {
+      expect((error as PayloadError).kind).toBe("encoding");
+    }
+  });
+
+  it("answers every string the D14 guard accepts, and parses nothing it refuses", () => {
+    // R3-F stated as a property rather than as a comment claiming the two are "kept in
+    // step". A silent null is the failure that matters: `ScanScreen.handleCarrier` drops
+    // one without a word while the camera keeps running at a code it will never resolve,
+    // and the other direction would hand a base64url body to `extractVin` (D14, N2).
+    //
+    // Not vacuous: 28% of the generated strings are carriers, split about evenly between
+    // ones that import and ones that raise a PayloadError. Run against the two
+    // recognisers as they stood before this fix it shrinks to `#/i?id=7#/i?d=<body>` in
+    // under twenty cases — the guard matched the second fragment, the parser the first.
+    fc.assert(
+      fc.property(carrierishArb, (raw) => {
+        const recognized = isPayloadCarrier(raw);
+        let parsed: Payload | null;
+        try {
+          parsed = parseCarrier(raw);
+        } catch (error) {
+          expect(error).toBeInstanceOf(PayloadError);
+          expect(recognized).toBe(true);
+          return;
+        }
+        if (recognized) expect(parsed).not.toBeNull();
+        else expect(parsed).toBeNull();
       }),
     );
   });

@@ -8,19 +8,18 @@
  */
 
 import type { VehicleRecord } from "../vin/types";
+import type { CarrierMatch } from "./carrier";
+import { TEXT_PREFIX, matchCarrier } from "./carrier";
 import type { Payload } from "./schema";
 import { PAYLOAD_VERSION, payloadSchema } from "./schema";
 
-export { PAYLOAD_VERSION };
+export { PAYLOAD_VERSION, TEXT_PREFIX };
 
 /** §4.9 hard cap, measured on the whole URL in **bytes**. */
 export const MAX_URL_BYTES = 700;
 
 /** §4.9 drop order. Never `vin`, `v`, `y`, `mk` or `md`. */
 export const DROP_ORDER = ["n", "en", "dr", "fu", "bc", "tr", "gv"] as const;
-
-/** §4.9 text carrier prefix (clipboard, messages). */
-export const TEXT_PREFIX = "VINRELAY1:";
 
 export type PayloadErrorKind = "encoding" | "schema" | "version" | "empty";
 
@@ -143,46 +142,39 @@ export function buildTextCarrier(payload: Payload): string {
   return `${TEXT_PREFIX}${encodePayload(payload)}`;
 }
 
-/** §4.9 text carrier, matched case-insensitively like `isPayloadCarrier`. */
-const TEXT_CARRIER_RE = /^VINRELAY1:/i;
-
-/**
- * §4.9 URL carrier. Scheme and host are ignored — a payload may come from any
- * deployment and the fragment never reaches a server — so only the fragment is
- * matched, with or without the HashRouter leading slash. Kept in step with
- * `carrier.ts`: whatever `isPayloadCarrier` calls a carrier lands here.
- */
-const URL_CARRIER_RE = /#\/?i\?([^#]*)/i;
-
 const WHITESPACE_RE = /\s+/g;
 
 /**
  * Returns null when `raw` is not a carrier at all — a bare VIN, an ordinary URL — and
  * throws `PayloadError` when it is a carrier whose body is bad. The caller treats those
  * differently: one falls through to the other import paths, the other is an error to show.
+ *
+ * `matchCarrier` is the same question `isPayloadCarrier` asks (§7 item 5), so null here
+ * means the D14 guard said no too: nothing the guard accepts can be dropped in silence.
  */
 export function parseCarrier(raw: string): Payload | null {
-  const trimmed = raw.trim();
-
-  if (TEXT_CARRIER_RE.test(trimmed)) {
-    return decodePayload(unwrap(trimmed.slice(TEXT_PREFIX.length)));
-  }
-
-  const match = URL_CARRIER_RE.exec(trimmed);
-  if (match) {
-    // `d` in any position, percent-escapes undone. base64url has no `+`, so the
-    // form-encoding rule that turns `+` into a space cannot corrupt a body.
-    const body = new URLSearchParams(match[1]).get("d");
-    if (body === null) return null;
-    return decodePayload(unwrap(body));
-  }
-
-  return null;
+  const match = matchCarrier(raw);
+  if (match === null) return null;
+  return decodePayload(unwrap(match));
 }
 
-/** A pasted link can arrive line-wrapped; no whitespace is ever part of a body. */
-function unwrap(body: string): string {
-  return body.replace(WHITESPACE_RE, "");
+/**
+ * A pasted link can arrive line-wrapped; no whitespace is ever part of a body. A URL
+ * carrier can also arrive percent-escaped, and base64url has no `%`, so an escape that
+ * will not decode is a damaged body rather than a different encoding — it is passed on
+ * as it stands and named by the base64url guard instead of being swallowed here (P7).
+ */
+function unwrap({ kind, body }: CarrierMatch): string {
+  const decoded = kind === "url" ? percentDecoded(body) : body;
+  return decoded.replace(WHITESPACE_RE, "");
+}
+
+function percentDecoded(body: string): string {
+  try {
+    return decodeURIComponent(body);
+  } catch {
+    return body;
+  }
 }
 
 function payloadUrl(payload: Payload, origin: string): string {

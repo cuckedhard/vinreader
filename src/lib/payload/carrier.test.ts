@@ -73,4 +73,29 @@ describe("isPayloadCarrier", () => {
     // would then confirm a fabricated VIN. extractVin must therefore never see this string.
     expect(isPayloadCarrier(`https://vinrelay.example/#/i?d=${LONG_BODY}`)).toBe(true);
   });
+
+  it("recognizes a text carrier whatever version digit it carries", () => {
+    // R3-M. `VINRELAY1:` stays the only prefix this app writes and the only version it
+    // decodes; the guard is wider on purpose. A carrier from another version reaches
+    // §4.9's version check, which names it, instead of `extractVin`, which mines the
+    // base64url body — 8.3% of those bodies yield a VIN and every one is wrong (N2).
+    expect(isPayloadCarrier(`VINRELAY2:${BODY}`)).toBe(true);
+    expect(isPayloadCarrier(`VINRELAY10:${BODY}`)).toBe(true);
+    expect(isPayloadCarrier(`vinrelay2:${BODY}`)).toBe(true);
+  });
+
+  it("accepts `d` in any case, as it accepts the route in any case", () => {
+    // R3-F. A QR generator that uppercases the URL to reach alphanumeric mode writes
+    // this. The fragment is the app's own client-side route, never a server's contract,
+    // so the marker is read as loosely as the route around it — and `parseCarrier` reads
+    // the body from this same match, so the two can no longer disagree (§7 item 5).
+    expect(isPayloadCarrier(`https://vinrelay.example/#/I?D=${BODY}`)).toBe(true);
+  });
+
+  it("finds the fragment that carries a body when a decode holds more than one", () => {
+    // The guard used to look for the first `#/i?` with a `d`, and `parseCarrier` for the
+    // first `#/i?` of any kind, so this string was a carrier to one and an empty query to
+    // the other — recognised, then dropped without a word.
+    expect(isPayloadCarrier(`https://vinrelay.example/#/i?src=qr#/i?d=${BODY}`)).toBe(true);
+  });
 });
