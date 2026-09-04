@@ -254,7 +254,7 @@ type OutboxKind  = "scan_event" | "vehicle_meta" | "vehicle_delete";
 | `B1HGCM82633A004352` · `UNIT B` + newline + `1HGCM82633A004352` | A §4.1-legal character in front of the VIN makes the offset-0 window validate by chance. Both yield `NO_VIN`. Before §4.2 required uniqueness these returned `B1HGCM82633A00435` and `TB1HGCM82633A0043` marked **check-digit valid** — a wrong VIN accepted as fact. |
 | `1FUJGLDR49SAV1234` · `1HTMMAAL67H412345` · `4V4NC9TJ98N412345` · `1FUJA6CK14LM12345` | Heavy trucks; all check-digit valid (sums 378, 358, 361, 265 → 4, 6, 9, 1). Position 7 is a letter and the late candidate fails the §4.4 cap, so they resolve to **2009, 2007, 2008, 2004** — not 2039/2037/2038/2034. |
 | `I1HGCM82633A004352` | Normalizes to `1HGCM82633A004352` via §4.2. |
-| `1HGCM82633A00435` (16) / `1HGCM82633A0043521` (18, no I) | `NO_VIN` / extracts the valid 17-window. |
+| `1HGCM82633A00435` (16) / `1HGCM82633A0043521` (18, no I) | **Both `NO_VIN`** (amended for R4-A). The 18-char row previously read "extracts the valid 17-window", and that is what made R4-A irreducible: `1HGCM82633A0043521` (a valid VIN with a stray trailing character) and `B1HGCM82633A004353` (a *misread* VIN with a stray leading character) are the same shape — an 18-character run, two windows, exactly one of which passes the check digit. No rule expressed over run geometry and the check digit can resolve the first and refuse the second, because the bytes do not distinguish them. Requiring the first to resolve therefore required the second to be fabricated, at a measured 0.80% of such payloads (95% CI [0.73%, 0.87%]). N2 says a refusal beats a guess, so the fixture yields to the rule rather than the rule to the fixture. |
 | `1HGCM8263IA004352` | Contains `I` → `NO_VIN` (window breaks on I). |
 | Synthetic year tests | pos10 `K` + pos7 letter → 2019 resolved. pos10 `T` + pos7 digit → candidates [1996, 2026], unresolved. pos10 `Z` → invalid year code. |
 
@@ -725,7 +725,7 @@ export const FIX = {
   CHECK_IS_X:   "1HGCM826X3A004350",   // check digit X (sum 307)
   I_PREFIXED:   "I1HGCM82633A004352",
   TOO_SHORT:    "1HGCM82633A00435",
-  TRAILING:     "1HGCM82633A0043521", // 18 chars, no I — window 1 wins on the check digit
+  TRAILING:     "1HGCM82633A0043521", // 18 chars, no I — NO_VIN since R4-A; see §4.11
   HAS_I:        "1HGCM8263IA004352",
   // §4.4 cap: position 7 is a letter but the late candidate is impossible
   TRUCK_2009:   "1FUJGLDR49SAV1234",
