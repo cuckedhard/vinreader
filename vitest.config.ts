@@ -10,6 +10,9 @@ export default defineConfig({
       // scanMachine is pure policy and carries the §6.3 rules, so it is gated like src/lib.
       include: ["src/lib/**/*.ts", "src/features/scan/scanMachine.ts"],
       exclude: ["src/lib/**/*.test.ts", "src/lib/**/test-setup.ts", "src/lib/vin/types.ts"],
+      // §13.5 gates on these numbers, and a hardening round is read in exactly the state
+      // where a failing test would otherwise suppress the whole report: a red tree.
+      reportOnFailure: true,
       // §13.5 gate.
       thresholds: {
         lines: 95,

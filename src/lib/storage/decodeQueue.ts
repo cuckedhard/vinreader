@@ -116,10 +116,39 @@ export async function applyDecodeResult(vin: string, result: VpicResult): Promis
 let passInFlight = false;
 
 /**
+ * The same rule one level down, per VIN. `refreshDecode` cannot take `passInFlight`: a
+ * button that does nothing whenever a background pass happens to be running is a dead
+ * control, which P7 forbids. So what the two paths share instead is the set of VINs whose
+ * one §4.7 request is out right now — the granularity that rule is actually written at.
+ */
+const vinsInFlight = new Map<string, Promise<void>>();
+
+/**
+ * Issue the one request §4.7 allows for `vin` and land its result — or hand back the
+ * request already out for it. The endpoint is a pure VIN lookup and the cache is permanent,
+ * so a caller that arrives second gains nothing from its own connection: the answer in the
+ * air is the answer it would fetch.
+ */
+function decodeOnce(vin: string, deps: VpicDeps): Promise<void> {
+  const existing = vinsInFlight.get(vin);
+  if (existing) return existing;
+
+  // The release is a `.finally` rather than a `try` inside the body because a `finally`
+  // callback is a microtask and so cannot run before the `set` below. A VIN left in this
+  // map is out of both paths for the rest of the session: the queue would skip it every
+  // pass and Refresh would join a promise that settled long ago.
+  const run = (async () => applyDecodeResult(vin, await decodeVin(vin, deps)))().finally(() => {
+    vinsInFlight.delete(vin);
+  });
+  vinsInFlight.set(vin, run);
+  return run;
+}
+
+/**
  * One pass of the §5.4 queue. Returns how many rows it processed — 0 when offline, 0 when
- * nothing is eligible, and 0 when a pass is already running. Only `pending` rows are
- * eligible: terminal rows are spent under §4.7's one-request rule, and `failed` rows wait
- * for Refresh details.
+ * nothing is eligible, 0 when a pass is already running, and 0 when every eligible row
+ * already has its request out. Only `pending` rows are eligible: terminal rows are spent
+ * under §4.7's one-request rule, and `failed` rows wait for Refresh details.
  */
 export async function runDecodeQueueOnce(deps: VpicDeps = {}): Promise<number> {
   // Two overlapping passes read the same rows and each requests the same VIN — §4.7's
@@ -143,7 +172,12 @@ export async function runDecodeQueueOnce(deps: VpicDeps = {}): Promise<number> {
       // Serial by §5.4, and re-checked each turn so a run stops the moment the device
       // drops off signal rather than burning attempts against a dead radio.
       if (!isOnline()) break;
-      await applyDecodeResult(row.vin, await decodeVin(row.vin, deps));
+      // Refresh — §4.7's one sanctioned re-fetch — may already have this VIN out. Skip it
+      // rather than join it: that answer writes the same row this pass would have written,
+      // and a pass owes the user nothing on a row it did not claim. A transport failure
+      // leaves the row `pending`, so the next pass picks it up.
+      if (vinsInFlight.has(row.vin)) continue;
+      await decodeOnce(row.vin, deps);
       processed += 1;
     }
     return processed;
@@ -182,6 +216,15 @@ export async function kickDecodeQueue(deps: VpicDeps = {}): Promise<void> {
  * Existing fields stay on screen while the request is out; only the status moves.
  */
 export async function refreshDecode(vin: string, deps: VpicDeps = {}): Promise<void> {
+  // A request for this VIN is already out — the queue's, or a tap that beat this one.
+  // Join it: §4.7 budgets one request per VIN, and the answer in the air is the answer a
+  // second one would fetch. The tap is not swallowed by that, which is the point — this
+  // resolves when that answer lands, so the button stays busy and the sheet fills in front
+  // of the user (P7). Nothing is armed on this path: the reset below exists to put a
+  // `failed` row back in §5.4's queue, and a VIN with a request out is either already
+  // `pending` in that queue or was armed by the tap that issued the request.
+  if (vinsInFlight.has(vin)) return decodeOnce(vin, deps);
+
   const armed = await db.transaction("rw", db.vehicles, async () => {
     const existing = await db.vehicles.get(vin);
     if (!existing) return false;
@@ -193,7 +236,7 @@ export async function refreshDecode(vin: string, deps: VpicDeps = {}): Promise<v
   });
   if (!armed) return;
 
-  await applyDecodeResult(vin, await decodeVin(vin, deps));
+  await decodeOnce(vin, deps);
 }
 
 /**

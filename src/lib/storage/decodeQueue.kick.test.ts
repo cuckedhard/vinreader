@@ -13,10 +13,16 @@
  * assertion here depends on how fast anything runs.
  *
  * Finding: [R3-A] — both tests FAIL today.
+ *
+ * [R3-Q] adds the third entry point to the same argument. R3-A's guard is per *pass*, and
+ * `refreshDecode` cannot take it — a Refresh button that goes quiet whenever a background
+ * pass happens to be running is a dead control (P7). The guard the two paths share is
+ * per VIN instead, so the queue skips a VIN Refresh has out and Refresh joins the answer
+ * already coming rather than opening a second connection for it (§4.7).
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { db } from "./db";
-import { runDecodeQueueOnce, startDecodeQueue } from "./decodeQueue";
+import { refreshDecode, runDecodeQueueOnce, startDecodeQueue } from "./decodeQueue";
 import { upsertVehicle } from "./upsert";
 import { VPIC_ENDPOINT } from "../vpic/client";
 import type { VpicRawResponse } from "../vpic/types";
@@ -141,5 +147,79 @@ describe("[R3-A] §4.7 one request per VIN, across both decode entry points", ()
     // runs spend two of the ten for one round of bad signal, so the row is written off
     // in half the rounds §5.4 allows. FAILS today: attempts is 2.
     expect((await db.vehicles.get(VIN_A))!.decode.attempts).toBe(1);
+  });
+});
+
+describe("[R3-Q] §4.7 one request per VIN, with Refresh as the third entry point", () => {
+  it("does not re-request a VIN Refresh already has in flight", async () => {
+    const network = gatedFetch(() => OK_BODY);
+    const deps = { fetchImpl: network.impl, sleep: noSleep };
+
+    // The user is on the sheet and taps "Refresh details" (§4.7's one sanctioned
+    // re-fetch); that request is out, against a row it has armed `pending`.
+    const refreshed = refreshDecode(VIN_A, deps);
+    await settle();
+    expect(network.vins).toEqual([VIN_A]);
+
+    // §5.4's poll comes round while it is still out and finds that pending row. R3-A's
+    // pass-level guard is no help here: Refresh never took it. Started rather than
+    // awaited, so a pass that does issue the second request is caught at the assertion
+    // below instead of deadlocking on the gate this test still holds.
+    const passed = runDecodeQueueOnce(deps);
+    await settle();
+    expect(network.vins).toEqual([VIN_A]);
+
+    network.release();
+    expect(await passed).toBe(0);
+    await refreshed;
+    await settle();
+
+    // One VIN, one request, and the skipped row still got its answer.
+    expect(network.vins).toEqual([VIN_A]);
+    expect((await db.vehicles.get(VIN_A))!.decode.status).toBe("ok");
+  });
+
+  it("joins the request the queue has out rather than opening a second", async () => {
+    const network = gatedFetch(() => OK_BODY);
+    const deps = { fetchImpl: network.impl, sleep: noSleep };
+
+    // §5.4 trigger 1: the app is up and the request for the pending row is out.
+    stops.push(startDecodeQueue(deps));
+    await settle();
+    expect(network.vins).toEqual([VIN_A]);
+
+    let landed = false;
+    const refreshed = refreshDecode(VIN_A, deps).then(() => {
+      landed = true;
+    });
+    await settle();
+    expect(network.vins).toEqual([VIN_A]);
+    // The tap is not silently dropped, which is the whole reason the guard is per VIN and
+    // not per pass: it resolves when the answer lands, so the sheet's button stays busy
+    // and then fills in front of the user (P7).
+    expect(landed).toBe(false);
+
+    network.release();
+    await refreshed;
+
+    expect(landed).toBe(true);
+    expect(network.vins).toEqual([VIN_A]);
+    expect((await db.vehicles.get(VIN_A))!.decode.status).toBe("ok");
+  });
+
+  it("makes one request out of two taps on the same VIN", async () => {
+    const network = gatedFetch(() => OK_BODY);
+    const deps = { fetchImpl: network.impl, sleep: noSleep };
+
+    const first = refreshDecode(VIN_A, deps);
+    await settle();
+    const second = refreshDecode(VIN_A, deps);
+    await settle();
+
+    network.release();
+    await Promise.all([first, second]);
+
+    expect(network.vins).toEqual([VIN_A]);
+    expect((await db.vehicles.get(VIN_A))!.decode.status).toBe("ok");
   });
 });
