@@ -14,6 +14,14 @@
  * Z6) by requiring the winning window to sit in a run the check digit can speak for —
  * one in which every window carries a check digit — so they now assert the hazard is
  * CLOSED, and they are the regression guard for it.
+ *
+ * R4-A then closed the THIRD straddle, the one Z6 could not reach by construction: a
+ * misread North-American VIN beside a stray legal character, where every window carries a
+ * check digit and the run therefore is settleable — on the straddle, because the misread
+ * is the window that fails. §4.2 step 4(a) now returns a check-digit-valid window only
+ * when that window IS its whole run, which implies Z6's rule and replaced it. Two
+ * assertions in this file moved as a result, both marked R4-A below; they are the cost of
+ * the rule and not a defect in it.
  */
 
 import { describe, expect, it } from "vitest";
@@ -92,9 +100,16 @@ describe("[A-01] §4.2 refuses a run that holds more than one plausible VIN", ()
     // not "low": an ambiguous run is refused rather than resolved to the likelier guess.
     expect(wrong).toBe(0);
     // What the refusal costs on this population, recorded because a rule that refused
-    // everything would also pass the line above: 49 of 2,000 (2.5%) still read, and the
-    // other 1,951 are runs where a straddle validated too. 2.97% over 200,000 trials.
-    expect(read).toBe(49);
+    // everything would also pass the line above — and under R4-A this rule IS that rule
+    // on this shape. WAS 49 of 2,000 (2.5%) read, the runs in which every window carried
+    // a check digit and only one passed; those are exactly the runs R4-A showed cannot be
+    // told apart from a misread beside a stray character, so they are 0 of 2,000 now.
+    // Every payload here joins its prefix to the VIN (step 1 strips the space before step
+    // 2 splits), so this whole population is the undelimited multi-field text §4.2's
+    // "Known limit" says is refused rather than guessed at. The shapes §4.2 names as
+    // covered — a bare code, a leading `I`, JSON, punctuation-delimited text — are
+    // unaffected and are asserted in `extractVin.test.ts`.
+    expect(read).toBe(0);
   });
 
   /**
@@ -108,8 +123,12 @@ describe("[A-01] §4.2 refuses a run that holds more than one plausible VIN", ()
     // and the offset-0 window validates. It used to be returned as "S1HGCM82633A00435".
     expect(extractVin(`ſ${VIN}`)).toBeNull();
     // U+FB05 uppercases to "ST": two characters, and this VIN's straddle fails the check
-    // digit, so the run holds exactly one plausible VIN and it still reads.
-    expect(extractVin(`ﬅ${VIN}`)?.vin).toBe(VIN);
+    // digit, so Z1's uniqueness left the run holding exactly one plausible VIN. WAS:
+    // `?.vin === VIN`. Under R4-A it is NO_VIN — the run is 19 characters, the VIN is not
+    // a run of its own, and the straddle that fails here is the same shape as the straddle
+    // that passes one time in eleven. A hostile payload cannot be allowed to depend on
+    // which way that coin landed.
+    expect(extractVin(`ﬅ${VIN}`)).toBeNull();
   });
 });
 

@@ -1,7 +1,7 @@
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 
-import { expectedCheckDigit } from "./checkDigit";
+import { expectedCheckDigit, isCheckDigitValid } from "./checkDigit";
 import { extractVin } from "./extractVin";
 import { VIN_LENGTH } from "./grammar";
 
@@ -20,11 +20,21 @@ describe("extractVin", () => {
     expect(extractVin(`I${VALID}`)?.vin).toBe(VALID);
   });
 
-  it("picks the check-valid window out of an 18-character run", () => {
-    // §4.11 fixture. Both windows of this run carry a check digit, so the one that fails
-    // is genuinely refuted and the one that passes is the answer (Z6).
+  it("refuses an 18-character run, whichever of its two windows was printed (R4-A)", () => {
+    // §4.11, AMENDED for R4-A. WAS: { vin: VALID, raw, checkDigitValid: true } — "extract
+    // the valid 17-window" — and that requirement is exactly what made R4-A irreducible.
+    // This payload (a good VIN with one stray character after it) and `B1HGCM82633A004353`
+    // (a MISREAD VIN with one stray character in front) are byte-for-byte the same shape:
+    // an 18-character run, two windows, exactly one of which passes §4.3. No rule over run
+    // geometry and the check digit can resolve one and refuse the other, so requiring this
+    // to resolve required that to be fabricated — measured at 0.80% of such payloads. N2
+    // prefers the refusal, so both are NO_VIN.
     const raw = `${VALID}1`;
-    expect(extractVin(raw)).toEqual({ vin: VALID, raw, checkDigitValid: true });
+    expect(extractVin(raw)).toBeNull();
+    // The window did not stop passing §4.3; the run stopped being one this function will
+    // answer for. That is the whole difference, and it is why nothing downstream could
+    // ever have caught the other half of this shape.
+    expect(isCheckDigitValid(VALID)).toBe(true);
   });
 
   it("returns null for 16 characters", () => {
@@ -63,11 +73,15 @@ describe("extractVin", () => {
     // A JCB PIN behind a field label. `JCB4CX00CJ2345678` has a letter at position 9, so
     // §4.3 never tests it and failing the check digit does not refute it; the only window
     // that validates is the straddle `NJCB4CX00CJ234567`, which used to be returned as
-    // fact. The run is ambiguous between the two and N2 refuses it.
+    // fact. The run is ambiguous between the two and N2 refuses it. Z6's own per-run
+    // testability rule is gone — R4-A's whole-run rule implies it, since a window that
+    // passes §4.3 has a digit or X at position 9 — but the population it closed stays
+    // closed, which is what this test is for.
     expect(extractVin("PIN JCB4CX00CJ2345678")).toBeNull();
     // The cost, stated as a test: an ordinary VIN with a stray legal character beside it
-    // is refused too when the character puts an untested window in the run. Here the year
-    // code is a letter, so the offset-1 window carries no check digit.
+    // is refused too. Here the year code is a letter, so the offset-1 window carries no
+    // check digit either — under Z6 that was the reason and under R4-A it is one reason
+    // too many.
     const yearLetter = (() => {
       const body = "1HGCM8263AA004352";
       return body.slice(0, 8) + expectedCheckDigit(body) + body.slice(9);
@@ -76,7 +90,7 @@ describe("extractVin", () => {
     expect(extractVin(`${yearLetter}9`)).toBeNull();
   });
 
-  it("still reads a VIN whose own run is settled when another run is not (Z6)", () => {
+  it("still reads a VIN that is a run of its own when another run is not (Z6, R4-A)", () => {
     // Scoped to the run, because only a window inside the same run can straddle this one.
     // §4.2's covered cases include a 2D code carrying JSON, whose other fields — here a
     // machine PIN that carries no check digit — split off into runs of their own.
@@ -84,10 +98,13 @@ describe("extractVin", () => {
     expect(extractVin(raw)).toEqual({ vin: VALID, raw, checkDigitValid: true });
   });
 
-  it("falls back to the only interior window when nothing is run-aligned", () => {
-    // A 19-character run whose only check-valid window sits at offset 1.
+  it("refuses an interior window that is not a run of its own (R4-A)", () => {
+    // A 19-character run whose only check-valid window sits at offset 1. WAS:
+    // { vin: VALID, raw, checkDigitValid: true }. An interior window is a straddle unless
+    // the label happens to be this one, and the bytes never say which — so §4.2 4(a)
+    // returns a window only when that window is the entire run.
     const raw = `A${VALID}A`;
-    expect(extractVin(raw)).toEqual({ vin: VALID, raw, checkDigitValid: true });
+    expect(extractVin(raw)).toBeNull();
   });
 
   it("returns a lone grammar-valid window with a bad check digit", () => {

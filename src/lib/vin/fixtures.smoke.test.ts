@@ -53,6 +53,12 @@ describe("§4.11 fixtures end to end", () => {
 
   it.each([
     "1HGCM82633A00435",
+    // §4.11's 16/18 row, AMENDED for R4-A: the 18-character run is NO_VIN too. It used to
+    // "extract the valid 17-window", and that requirement is what made R4-A irreducible —
+    // this payload and `B1HGCM82633A004353` (a misread VIN with a stray leading character)
+    // are the same 18-character two-window run with exactly one window passing §4.3, so
+    // resolving this one required fabricating that one. N2 prefers the refusal.
+    "1HGCM82633A0043521",
     "1HGCM8263IA004352",
     // Z1: a run holding more than one plausible VIN is refused, not ranked.
     "1HGCM82633A0043531HGCM82633A004352",

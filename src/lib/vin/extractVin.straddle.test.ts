@@ -20,25 +20,35 @@
  *      **CLOSED by ledger Z6.**
  *   2. an ordinary North-American VIN misread in one character away from position 9 —
  *      the exact case §6.3's two-read rule and the mismatch banner exist for.
- *      **STILL OPEN**, and still characterised, in the second describe below.
+ *      **CLOSED by ledger R4-A**, and guarded in the last describe below.
  *
- * Z6, AS SHIPPED. Zach ruled on population 1, and §4.2 step 4(a) now reads: a check-digit-
- * valid window may be returned only if it occurs in a run where EVERY grammar-valid window
- * satisfies §4.3 `checkDigitApplies`. A window whose position 9 is a letter was never
- * tested by the check digit, so failing it does not refute it. A run holding one is
- * ambiguous between "a VIN with a stray neighbour" and "a printed no-check-digit
- * identifier plus a chance-validating overlap"; the bytes cannot say which, so N2 refuses
- * the run. The scope is the RUN and not the payload, deliberately — a window in another
- * run cannot overlap this one — and an identifier that is a run of its own still reads,
- * through step 4(b), with `checkDigitValid: false` and no banner (§4.3).
+ * Z6, AND THEN R4-A. Zach ruled on population 1 first, and step 4(a) required the winning
+ * window to sit in a run where EVERY grammar-valid window satisfies §4.3
+ * `checkDigitApplies`: a window whose position 9 is a letter was never tested, so failing
+ * the check digit does not refute it, and a run holding one is ambiguous between "a VIN
+ * with a stray neighbour" and "a printed no-check-digit identifier plus a chance-
+ * validating overlap".
+ *
+ * That rule could not reach population 2 by construction — every window of a misread
+ * North-American VIN's run carries a check digit, so the run IS settleable and 4(a)
+ * settled it, on the straddle. Closing it needed §4.11 to change, because
+ * `1HGCM82633A0043521` (a good VIN with a stray trailing character, which §4.11 required
+ * to resolve) is the same 18-character two-window run as `B1HGCM82633A004353` (a misread
+ * VIN with a stray leading character). §4.11 now says both are NO_VIN, and step 4(a) reads:
+ * **a check-digit-valid window may be returned only when it is the whole run.** That
+ * implies Z6's rule — a window that passes §4.3 has a digit or `X` at position 9, so a run
+ * that is exactly one such window is a run every window of which is testable — so Z6's
+ * rule is gone from `extractVin.ts` and its population is guarded through this one. Scope
+ * is still the RUN and not the payload: a window in another run cannot overlap this one,
+ * so §4.2's JSON and delimited-text cases still read. An identifier that is a run of its
+ * own still reads through step 4(b), with `checkDigitValid: false` and no banner (§4.3).
  *
  * WHAT THESE TESTS ARE NOW. They were written as characterisation: they asserted the
  * hazard as it stood so that it stayed executable and went red the moment §4.2 was
- * corrected, exactly as `[A-01]` did before Zach ruled on Z1. That moment has come. The
- * population-1 tests assert the CLOSURE and are the regression guard for it; each keeps,
- * in its comment, the value it used to return, because that record is what makes a
- * regression legible the day one arrives. Population 2's test is unflipped, because
- * nothing has closed it.
+ * corrected, exactly as `[A-01]` did before Zach ruled on Z1. Both moments have come, so
+ * every describe below asserts a CLOSURE and is the regression guard for it; each keeps,
+ * in its comment, the value its input used to return, because that record is what makes a
+ * regression legible the day one arrives.
  */
 
 import { describe, expect, it } from "vitest";
@@ -49,6 +59,9 @@ import { countingRandom, mulberry32 } from "./rng.testutil";
 
 /** A JCB backhoe PIN. Position 9 is `C`, so §4.3 says it carries no check digit at all. */
 const PIN = "JCB4CX00CJ2345678";
+
+/** The §4.11 reference VIN: grammar-valid, check digit valid. */
+const VALID = "1HGCM82633A004352";
 
 /** The §4.11 fixture VIN with its last character changed: grammar-valid, check digit wrong. */
 const MISREAD = "1HGCM82633A004353";
@@ -74,8 +87,9 @@ describe("[R2-01] §4.2 refuses a run holding a window the check digit never tes
    * the first 16 characters of the PIN, and it passes §4.3 by chance.
    *
    * Window 2 is the PIN itself, and its position 9 is `C`. Under Z6 that one untested
-   * window unsettles the whole run: the check digit cannot say whether the printed
-   * identifier is the PIN or the window that validated, so §4.2 returns NO_VIN and the
+   * window unsettled the whole run: the check digit cannot say whether the printed
+   * identifier is the PIN or the window that validated. Under R4-A the run is refused a
+   * second way — no window in it is a run of its own — so §4.2 returns NO_VIN and the
    * user rescans or types (§4.2 "Known limit", which this now implements).
    */
   it("refuses a two-field off-highway label rather than returning the straddling window", () => {
@@ -88,7 +102,7 @@ describe("[R2-01] §4.2 refuses a run holding a window the check digit never tes
     // §6.3's two-read rule agreed because a 2D code decodes identically every frame, and
     // the record was beeped and shown as fact.
     expect(isCheckDigitValid("NJCB4CX00CJ234567")).toBe(true);
-    // And the refusal is the Z6 rule rather than the scan giving up on a hard payload: a
+    // And the refusal is the rule rather than the scan giving up on a hard payload: a
     // separator leaves the PIN a run of its own and step 4(b) still returns it, with no
     // banner — §4.3 promises this vehicle is not told its read is wrong, and it is not.
     expect(extractVin(`PIN: ${PIN}`)).toEqual({
@@ -101,7 +115,8 @@ describe("[R2-01] §4.2 refuses a run holding a window the check digit never tes
   it("does the same for other ordinary field labels in front of the same PIN", () => {
     // Every one of these used to return a check-digit-valid window that was not the PIN.
     // `S/N ` earns its place: the `/` splits, so the run is only `N` + the PIN — two
-    // windows — and Z6 refuses even a two-window run when one window is untested.
+    // windows — and a two-window run is refused too, under Z6 because one window was
+    // never tested and under R4-A because neither window is a run of its own.
     for (const raw of [`SN ${PIN}`, `S/N ${PIN}`, `UNIT 42 ${PIN}`]) {
       expect(extractVin(raw), raw).toBeNull();
     }
@@ -159,19 +174,21 @@ describe("[R2-01] §4.2 refuses a run holding a window the check digit never tes
    *
    *   `untested` — position 9 a letter other than X, so no ISO 3779 check digit exists.
    *                This is the Z6 population, and it is zero: 0 of 1,994.
-   *   `misread`  — position 9 a digit or X with the check digit simply wrong. Z6 does not
+   *   `misread`  — position 9 a digit or X with the check digit simply wrong. Z6 did not
    *                reach it and was never meant to: every window in such a run can be
-   *                asked, so the run IS settleable and step 4(a) settles it — on a window
-   *                that is a straddle. That is the residue: 9 of 918 (0.98%), and it is
-   *                the open hazard the second describe below characterises directly.
+   *                asked, so the run IS settleable and step 4(a) settled it — on a window
+   *                that is a straddle. That was the residue, 9 of 918 (0.98%) at this
+   *                seed, and R4-A's whole-run rule closes it: 0 of 918.
    *
    * The same generator carried out to 200,000 trials — 194,083 distinct payloads, run
-   * offline rather than in the gate — puts the untested population at 0 of 133,328 and
-   * the residue at 487 of 60,755, i.e. **0.80%, 95% CI [0.73%, 0.87%]**. The seed's own
-   * 0.98% sits inside that. This is the number ledger R4-A is about, and it is materially
-   * lower than the 1.34% the degenerate stream reported.
+   * offline rather than in the gate — put the untested population at 0 of 133,328 and the
+   * residue at 487 of 60,755, i.e. **0.80%, 95% CI [0.73%, 0.87%]**, the number ledger
+   * R4-A was ruled on. Re-measured on the same 200,000 trials after the rule: **0 of
+   * 133,328 and 0 of 60,755**. Both equalities below, not ceilings — §13.6 criterion 4 is
+   * zero false accepts, not a low rate — and the sample floors stay, because a zero
+   * measured over three payloads means nothing.
    */
-  it("fabricates nothing out of the Z6 population, and bounds the misread residue", () => {
+  it("fabricates nothing out of either population, over a sample it asserts first", () => {
     const stream = countingRandom(20260904);
     const rng = stream.next;
     const pick = () => ALPHABET[Math.floor(rng() * ALPHABET.length)];
@@ -200,6 +217,11 @@ describe("[R2-01] §4.2 refuses a run holding a window the check digit never tes
       }
     }
 
+    // The denominator the two zeros below are taken over, asserted rather than assumed:
+    // 2,912 of the 3,000 draws are identifiers that do not validate, split 1,994 untested
+    // / 918 misread. A rate of zero says nothing without it.
+    expect(considered).toBe(untested.considered + misread.considered);
+    expect(considered).toBeGreaterThanOrEqual(2900);
     // R4-B: the effective sample, not the trial count. Every payload here is distinct
     // (2,912 / 1,994 / 918 measured), so these floors sit just under the real numbers;
     // the broken LCG produced 708 / 478 / 230 and would fail all three by a wide margin.
@@ -218,21 +240,17 @@ describe("[R2-01] §4.2 refuses a run holding a window the check digit never tes
     // 0 of 1,994 here, and 0 of 133,328 at 200,000 trials.
     expect(untested.fabricated).toBe(0);
 
-    // The residue: misread North-American VINs, 9 of 918 (0.98%) at this seed, 0.80%
-    // [0.73%, 0.87%] over 200,000 trials. A ceiling and not the number, because the
-    // number must be free to fall to zero if §4.2 is ever narrowed again — a floor under
-    // a defect becomes a ceiling on a residue. Headroom is ~2x the measured rate and
-    // ~2.5x the large-sample estimate: loose enough that a §4.2 change which only shifts
-    // the split does not go red for the wrong reason, tight enough that a §4.2 which
-    // stopped refusing ambiguous runs would trip it by an order of magnitude — a 2-6
-    // character prefix leaves 3-7 windows per payload and §4.2's own rationale puts a
-    // chance pass at about one in eleven. `untested.fabricated` above catches a
-    // regression that only revives population 1.
-    expect(misread.fabricated / misread.considered).toBeLessThan(0.02);
-    // Overall: 9 of 2,912, 0.31% at this seed and 0.25% over 200,000 trials. Nothing in
-    // this generator is ever read correctly — the prefix always joins the run — so every
-    // trial that is not a fabrication is a refusal, which is the trade N2 asks for.
-    expect(fabricated / considered).toBeLessThan(0.0075);
+    // The R4-A population, and this is the assertion that finding turns on. WAS a
+    // ceiling — `< 0.02`, against a measured 9 of 918 (0.98%) — because the rule of the
+    // day could not do better and a residue can only be bounded. It is an equality now:
+    // §13.6 criterion 4 is zero, so the number this asserts is 0 and not "low". The
+    // sample it is taken over is the 918 distinct payloads floored above.
+    expect(misread.fabricated).toBe(0);
+    // Overall, therefore: 0 of 2,912, against 9 (0.31%) before. Nothing in this generator
+    // is ever read correctly either — the prefix always joins the run, so this whole
+    // population is the undelimited multi-field text §4.2's "Known limit" refuses rather
+    // than guesses at — so every trial is now a refusal, which is the trade N2 asks for.
+    expect(fabricated).toBe(0);
   });
 });
 
@@ -278,31 +296,77 @@ describe("[R4-B] the shared seeded generator does not degenerate", () => {
 });
 
 /**
- * [R2-01 residue] STILL OPEN, and deliberately not flipped.
+ * [R2-01 residue] CLOSED by ledger R4-A. This describe is the regression guard for it.
  *
- * Z6 closed the run that cannot be asked. This is the run that can: an ordinary
+ * Z6 closed the run that cannot be asked. This was the run that can: an ordinary
  * North-American VIN, misread in one character, with a stray §4.1-legal character beside
  * it. Position 9 is a digit in both windows, so §4.3 speaks for the whole run, the run is
- * settleable, and step 4(a) settles it — on the straddle, because the misread identifier
- * is the one window that fails. Z1 cannot reach it either: a misread does not validate,
- * so it never competes.
+ * settleable, and step 4(a) settled it — on the straddle, because the misread identifier
+ * is the one window that fails. Z1 could not reach it either: a misread does not validate,
+ * so it never competes. §6.3's two-read rule does not help — a 2D symbol decodes
+ * identically every frame, and a 1D misread that repeats is exactly what the check digit
+ * is supposed to catch.
  *
- * §6.3's two-read rule does not help — a 2D symbol decodes identically every frame, and a
- * 1D misread that repeats is exactly what the check digit is supposed to catch. This test
- * therefore keeps asserting the hazard, and it goes red the day someone closes it. That
- * is what a characterisation test is for.
+ * WHY IT STAYED OPEN, AND WHAT CHANGED. `B1HGCM82633A004353` and `1HGCM82633A0043521` are
+ * the same shape: an 18-character run, two windows, exactly one passing §4.3. The first is
+ * a misread VIN with a stray character in front; the second is a good VIN with a stray
+ * character behind. §4.11 used to require the second to "extract the valid 17-window", so
+ * any rule that resolved it fabricated the first, at 0.80% of such payloads (95% CI
+ * [0.73%, 0.87%], 487 of 60,755). §4.11 now says both rows are NO_VIN — N2 prefers a
+ * refusal to a guess, and the fixture yielded to the rule rather than the rule to the
+ * fixture — so both are refused here, by the same rule, in the same test.
+ *
+ * THE RULE, named because this test is what guards it: **a check-digit-valid window may be
+ * returned only when it is the whole run** (§4.2 step 4(a)). Z1's uniqueness and step 4(b)
+ * are untouched; Z6's per-run testability rule is implied by this one and was removed
+ * rather than left where it could never fire.
  */
-describe("[R2-01 residue] §4.2 still fabricates a VIN out of a misread North-American VIN", () => {
-  it("returns a straddling window for a misread North-American VIN", () => {
-    expect(extractVin(`B${MISREAD}`)).toEqual({
-      vin: "B1HGCM82633A00435",
-      raw: `B${MISREAD}`,
-      checkDigitValid: true,
-    });
-    const fabricated = ALPHABET.split("").filter((c) => {
+describe("[R2-01 residue] §4.2 refuses a misread VIN beside a stray character (R4-A)", () => {
+  it("returns NO_VIN where it returned a straddling window", () => {
+    // WAS: { vin: "B1HGCM82633A00435", raw, checkDigitValid: true } — seventeen characters
+    // nobody printed, marked valid, so D03 wrote it, §6.1 beeped it and the §6.3 mismatch
+    // banner never appeared.
+    expect(extractVin(`B${MISREAD}`)).toBeNull();
+    // The straddle still passes §4.3. That is why nothing downstream could ever have
+    // caught this: what changed is the run this function will answer for, not the check
+    // digit. If this inverts, the fabrication was not what was fixed.
+    expect(isCheckDigitValid(`B${MISREAD.slice(0, 16)}`)).toBe(true);
+
+    const fabricated: string[] = [];
+    const returned: string[] = [];
+    for (const c of ALPHABET) {
       const got = extractVin(`${c}${MISREAD}`);
-      return got !== null && got.vin !== MISREAD && got.checkDigitValid;
-    });
-    expect(fabricated).toEqual(["B", "K", "S", "2"]);
+      if (got !== null) returned.push(c);
+      if (got !== null && got.vin !== MISREAD && got.checkDigitValid) fabricated.push(c);
+    }
+    // WAS ["B", "K", "S", "2"]: four of the thirty-three §4.1 characters — one in eleven,
+    // as §4.2's own rationale puts it — every one of them a wrong VIN shown as fact.
+    expect(fabricated).toEqual([]);
+    // And nothing is returned at all: the run is <c> + MISREAD, eighteen characters, so
+    // neither window is a run of its own. Step 4(b) cannot rescue it either — that step
+    // needs exactly one window, and there are two.
+    expect(returned).toEqual([]);
+    for (const c of ["B", "K", "S", "2"]) {
+      expect(isCheckDigitValid(c + MISREAD.slice(0, 16)), c).toBe(true);
+    }
+
+    // The trailing half of the same shape, which used to fabricate for G, P, X and 7.
+    const behind = ALPHABET.split("").filter((c) => extractVin(`${MISREAD}${c}`) !== null);
+    expect(behind).toEqual([]);
+  });
+
+  it("refuses the §4.11 fixture that is the same shape, which is why this could be closed", () => {
+    // `1HGCM82633A0043521`: a VALID VIN with one stray trailing character. Its two windows
+    // are the good VIN and a straddle that fails, so it is `B${MISREAD}` with the passing
+    // and failing windows swapped — and the bytes do not say which of the two payloads
+    // this is. WAS: { vin: VALID, checkDigitValid: true }, required by §4.11 until the row
+    // was amended for R4-A; NO_VIN now, and that is the whole reason the test above can
+    // assert a refusal at all.
+    expect(extractVin(`${VALID}1`)).toBeNull();
+    expect(isCheckDigitValid(VALID)).toBe(true);
+    expect(isCheckDigitValid(`${VALID}1`.slice(1))).toBe(false);
+    // A run of its own still reads, so the rule refuses a shape and not a vehicle: the
+    // user rescans or types, exactly as §4.2's "Known limit" says.
+    expect(extractVin(VALID)).toEqual({ vin: VALID, raw: VALID, checkDigitValid: true });
   });
 });
