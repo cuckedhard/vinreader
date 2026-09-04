@@ -37,7 +37,9 @@ test("[A-05] two activations of Use as-is write one scan event", async ({ page }
   await page.getByRole("button", { name: "Save VIN" }).click();
 
   // D03 / §6.4: nothing is written until the user chooses.
-  await expect(page.getByText("Check digit doesn't match")).toBeVisible();
+  // Scoped to the banner: since the §6.4 apostrophes were normalised to ASCII, the
+  // live-feedback chip carries the same words.
+  await expect(page.getByRole("alert").getByText("Check digit doesn't match")).toBeVisible();
   expect(await scanEventCount(page)).toBe(0);
 
   // A double tap: two activations before the first write can commit.
@@ -60,7 +62,9 @@ test("[A-05] a real 90 ms double tap on Use as-is writes one scan event", async 
   await page.getByRole("button", { name: "Type VIN instead" }).click();
   await page.getByLabel("VIN").fill(BAD_CHECK_VIN);
   await page.getByRole("button", { name: "Save VIN" }).click();
-  await expect(page.getByText("Check digit doesn't match")).toBeVisible();
+  // Scoped to the banner: since the §6.4 apostrophes were normalised to ASCII, the
+  // live-feedback chip carries the same words.
+  await expect(page.getByRole("alert").getByText("Check digit doesn't match")).toBeVisible();
 
   await page.evaluate(() => {
     const button = [...document.querySelectorAll("button")].find(

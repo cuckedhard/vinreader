@@ -217,10 +217,6 @@ export function SettingsScreen() {
           checked={settings.autoDecode}
           onChange={(next) => save({ autoDecode: next })}
         />
-        <p className="text-sm leading-snug text-fg-muted">
-          These three are stored now but change nothing yet: beep and vibrate arrive with camera
-          scanning, and NHTSA details start loading in the step after that.
-        </p>
       </Section>
 
       <Section title="Clear all data">
@@ -276,7 +272,9 @@ export function SettingsScreen() {
           </div>
           <div className="flex justify-between gap-4">
             <dt>Build</dt>
-            <dd className="font-bold text-fg">Slice S0</dd>
+            {/* Stamped by the bundler at build time, so it cannot go stale the way the
+                hand-written slice number it replaces did. */}
+            <dd className="font-bold text-fg">{import.meta.env.MODE}</dd>
           </div>
         </dl>
       </Section>

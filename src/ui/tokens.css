@@ -9,7 +9,7 @@
   --accent: #57c7ff;
   --ok: #4ade80;
   --warn: #fbbf24;
-  --danger: #ff6b6b;
+  --danger: #ff8a8a; /* §6.1 body text: 8.47:1 on --bg, 7.48:1 on --bg-elev */
   --border: #2a3642;
   --radius: 12px;
   --tap: 48px;

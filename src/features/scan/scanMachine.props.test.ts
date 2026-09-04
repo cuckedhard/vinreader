@@ -142,7 +142,10 @@ const stepArb: fc.Arbitrary<Step> = fc.oneof(
     }),
     weight: 1,
   },
-  { arbitrary: fc.record({ k: fc.constant("failed" as const), error: fc.constantFrom(...ERRORS) }), weight: 1 },
+  {
+    arbitrary: fc.record({ k: fc.constant("failed" as const), error: fc.constantFrom(...ERRORS) }),
+    weight: 1,
+  },
   { arbitrary: fc.constant<Step>({ k: "rescan" }), weight: 1 },
   { arbitrary: fc.constant<Step>({ k: "track_ended" }), weight: 1 },
   { arbitrary: fc.constant<Step>({ k: "mount" }), weight: 2 },
@@ -194,9 +197,7 @@ function toSession(steps: readonly Step[]): ScanAction[] {
   return out;
 }
 
-const sessionArb = fc
-  .array(stepArb, { minLength: 30, maxLength: 80, size: "max" })
-  .map(toSession);
+const sessionArb = fc.array(stepArb, { minLength: 30, maxLength: 80, size: "max" }).map(toSession);
 
 /** Both models, in every property. */
 const sequenceArb = fc.oneof(chaosArb, sessionArb);
@@ -452,12 +453,16 @@ describe("§6.3 branches with no standing assertion", () => {
     // is written for the lost case, and this is the other way into `idle`.
     const accepted = run([{ type: "accepted", vin: VIN_A, atMs: EPOCH }], streaming());
     expect(accepted.state).toEqual({ kind: "idle", lost: false });
-    const machine = scanReducer(accepted, { type: "visible", atMs: EPOCH + 5, secureContext: true });
+    const machine = scanReducer(accepted, {
+      type: "visible",
+      atMs: EPOCH + 5,
+      secureContext: true,
+    });
     expect(machine.state).toEqual({ kind: "requesting" });
     expect(machine.cooldown).toEqual({ [VIN_A]: EPOCH });
   });
 
-  it("loses a stream that stayed hidden past the window while the prompt was open", () => {
+  it("re-requests a stream that stayed hidden past the window while the prompt was open", () => {
     // `hidden` records its time in every state, not only under a candidate. Pocketing the
     // phone during the permission prompt for over 30 s is a lost stream like any other.
     const machine = run(
@@ -467,7 +472,9 @@ describe("§6.3 branches with no standing assertion", () => {
       ],
       run([MOUNT]),
     );
-    expect(machine.state).toEqual({ kind: "idle", lost: true });
+    // §6.3: "return to idle and re-request on next visibility" — the visibility that
+    // measures the gap IS that next visibility, so it re-requests rather than dead-ending.
+    expect(machine.state).toEqual({ kind: "requesting" });
   });
 });
 
@@ -500,7 +507,7 @@ describe("§6.3 windows on a wall clock", () => {
     expect(after.state.kind).toBe("confirmed");
   });
 
-  it("survives 30.000 s hidden and gives up at 30.001 s", () => {
+  it("survives 30.000 s hidden and re-requests at 30.001 s", () => {
     const hidden = run([{ type: "hidden", atMs: EPOCH }], streaming());
     expect(
       scanReducer(hidden, { type: "visible", atMs: EPOCH + HIDDEN_LOST_MS, secureContext: true })
@@ -512,6 +519,6 @@ describe("§6.3 windows on a wall clock", () => {
         atMs: EPOCH + HIDDEN_LOST_MS + 1,
         secureContext: true,
       }).state,
-    ).toEqual({ kind: "idle", lost: true });
+    ).toEqual({ kind: "requesting" });
   });
 });

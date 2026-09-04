@@ -21,7 +21,6 @@ type Mode = "camera" | "manual";
  */
 export function ScanScreen() {
   const [mode, setMode] = useState<Mode>("camera");
-  const [savedOffline, setSavedOffline] = useState(false);
   const navigate = useNavigate();
   // §9-S3 phone-to-phone: the receiving phone shows the import preview rather than
   // confirming a VIN. Both carriers are re-encoded into the single `d` the route reads,
@@ -69,7 +68,6 @@ export function ScanScreen() {
       if (!saved) return;
       scanFeedback(settings);
       accept(read.vin);
-      if (!navigator.onLine) setSavedOffline(true);
     }
 
     void commit(sighting);
@@ -84,7 +82,6 @@ export function ScanScreen() {
     scanFeedback(settings);
     accept(pending.vin);
     await saveAsIs();
-    if (!navigator.onLine) setSavedOffline(true);
   }, [pending, accept, saveAsIs]);
 
   const handleRescan = useCallback(() => {
@@ -101,7 +98,6 @@ export function ScanScreen() {
 
   const showManual = useCallback(() => {
     dismiss();
-    setSavedOffline(false);
     setMode("manual");
   }, [dismiss]);
 
@@ -128,7 +124,7 @@ export function ScanScreen() {
           {pending !== null ? (
             <Banner
               tone="warn"
-              title="Check digit doesn't match"
+              title="Check digit doesn't match."
               actions={
                 <>
                   {/* h-14 pins the §6.1 56 px target: the Banner action row sets its children
@@ -169,15 +165,6 @@ export function ScanScreen() {
               <p>Nothing was written. Read the label again, or type it.</p>
               <p className="mt-2 font-vin text-sm break-words text-fg-muted">{error}</p>
             </Banner>
-          ) : null}
-
-          {/* §6.4. Suppressed while a write error stands, so the line never claims a save
-              that did not happen (N1). */}
-          {savedOffline && error === null ? (
-            <Banner
-              tone="info"
-              title="Offline — VIN saved. Details will fill in when you're back on signal."
-            />
           ) : null}
         </>
       ) : (

@@ -8,11 +8,10 @@
  * `HybridBinarizer` → `BinaryBitmap` → `MultiFormatReader` — is byte-for-byte what the app
  * runs.
  *
- * The hints are §4.6 exactly: `POSSIBLE_FORMATS` = CODE_39, CODE_128, DATA_MATRIX, QR_CODE
- * in that order, plus `TRY_HARDER`. They are duplicated from `src/features/scan/useScanner.ts`
- * rather than imported because that module is React and DOM all the way down; the two lists
- * are asserted to agree in the bench report header, and a bench that decoded with different
- * hints than the app ships would measure the wrong program.
+ * The hints come from `src/lib/vin/symbologies.ts` — the same §4.6 module the scanner builds
+ * its reader from, imported rather than copied so there is no second list to drift (§7 item
+ * 5). A bench that decoded with different hints than the app ships would measure the wrong
+ * program.
  *
  * A `NotFoundException` is the normal negative result — most degraded frames simply do not
  * decode — so it returns `{ text: null, format: null, ms }` instead of throwing. Checksum
@@ -27,7 +26,6 @@ import {
   BarcodeFormat,
   BinaryBitmap,
   ChecksumException,
-  DecodeHintType,
   FormatException,
   HybridBinarizer,
   MultiFormatReader,
@@ -35,6 +33,7 @@ import {
   RGBLuminanceSource,
 } from "@zxing/library";
 import type { Result } from "@zxing/library";
+import { SCAN_FORMATS, buildScanHints } from "../src/lib/vin/symbologies";
 
 export interface DecodeOutcome {
   /** Exactly what the decoder read, unnormalised. `null` when nothing decoded. */
@@ -45,28 +44,12 @@ export interface DecodeOutcome {
   ms: number;
 }
 
-/** §4.6, in priority order. The app's list, in the app's order. */
-export const BENCH_FORMATS: readonly BarcodeFormat[] = [
-  BarcodeFormat.CODE_39,
-  BarcodeFormat.CODE_128,
-  BarcodeFormat.DATA_MATRIX,
-  BarcodeFormat.QR_CODE,
-];
-
-/** Human-readable §4.6 list, for the report header. */
-export const BENCH_FORMAT_NAMES: readonly string[] = BENCH_FORMATS.map(
+/** Human-readable §4.6 list, for the report header. The app's list, in the app's order. */
+export const BENCH_FORMAT_NAMES: readonly string[] = SCAN_FORMATS.map(
   (format) => BarcodeFormat[format],
 );
 
-/** §4.6: these four formats in this priority order, `TRY_HARDER`, nothing else. */
-function buildHints(): Map<DecodeHintType, unknown> {
-  const hints = new Map<DecodeHintType, unknown>();
-  hints.set(DecodeHintType.POSSIBLE_FORMATS, [...BENCH_FORMATS]);
-  hints.set(DecodeHintType.TRY_HARDER, true);
-  return hints;
-}
-
-const HINTS = buildHints();
+const HINTS = buildScanHints();
 
 /**
  * One reader for the whole run. `MultiFormatReader.decode` is fully synchronous and

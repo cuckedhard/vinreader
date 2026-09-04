@@ -15,12 +15,14 @@ import {
 import type { RefObject } from "react";
 import { BrowserMultiFormatReader } from "@zxing/browser";
 import type { IScannerControls } from "@zxing/browser";
-import { BarcodeFormat, DecodeHintType } from "@zxing/library";
+import { ChecksumException, FormatException, NotFoundException } from "@zxing/library";
 import type { Result } from "@zxing/library";
 import { isPayloadCarrier } from "../../lib/payload/carrier";
 import { extractVin } from "../../lib/vin/extractVin";
-import type { ScanError, Symbology } from "../../lib/vin/types";
-import { initialScanMachine, scanReducer } from "./scanMachine";
+import { buildScanHints, toSymbology } from "../../lib/vin/symbologies";
+import type { ScanError } from "../../lib/vin/types";
+import { cooldownStore } from "./cooldownStore";
+import { scanReducer, startingScanMachine } from "./scanMachine";
 import type { ScanMachineState } from "./scanMachine";
 
 export interface TorchApi {
@@ -56,34 +58,20 @@ const VIDEO_CONSTRAINTS: MediaStreamConstraints = {
   },
 };
 
-/** §4.6: these four formats in this priority order, `TRY_HARDER`, nothing else. */
-function buildHints(): Map<DecodeHintType, unknown> {
-  const hints = new Map<DecodeHintType, unknown>();
-  hints.set(DecodeHintType.POSSIBLE_FORMATS, [
-    BarcodeFormat.CODE_39,
-    BarcodeFormat.CODE_128,
-    BarcodeFormat.DATA_MATRIX,
-    BarcodeFormat.QR_CODE,
-  ]);
-  hints.set(DecodeHintType.TRY_HARDER, true);
-  return hints;
-}
-
-/** §4.6 → §4.10. Anything else means the hints leaked and the result is dropped. */
-function toSymbology(format: BarcodeFormat): Symbology | null {
-  switch (format) {
-    case BarcodeFormat.CODE_39:
-      return "code_39";
-    case BarcodeFormat.CODE_128:
-      return "code_128";
-    case BarcodeFormat.DATA_MATRIX:
-      return "data_matrix";
-    case BarcodeFormat.QR_CODE:
-      return "qr_code";
-    default:
-      return null;
-  }
-}
+/**
+ * How long ZXing waits before the next decode attempt, and after a successful one. The
+ * §4.6 hints it goes with are `buildScanHints`, shared with the bench.
+ *
+ * §9-S1 asks for a confirmed read in about two seconds, and §6.3 gets there only through
+ * two agreeing reads inside a 1.5 s window. ZXing defaults both delays to 500 ms — roughly
+ * two attempts a second, so three chances in the whole budget and half a second lost to
+ * every frame that misses. At 100 ms, plus the decode itself, the confirmation window holds
+ * four to six attempts. It is not zero because each decode is synchronous on the main
+ * thread: a gap keeps the preview painting and the phone cool, and at 30 fps a shorter one
+ * would re-read frames the camera has not replaced yet. §9-S1 permits this tuning inside
+ * the slice; it is not a §4 constant.
+ */
+const SCAN_DELAY_MS = 100;
 
 function toScanError(error: unknown): ScanError {
   const name = error instanceof DOMException || error instanceof Error ? error.name : "";
@@ -100,6 +88,35 @@ function toScanError(error: unknown): ScanError {
       // the user stands it is unavailable either way.
       return "no_camera";
   }
+}
+
+/** ZXing's own names for "this frame carries no symbol I can read". */
+const NO_READ_KINDS: ReadonlySet<string> = new Set([
+  NotFoundException.kind,
+  ChecksumException.kind,
+  FormatException.kind,
+]);
+
+/**
+ * Whether a decode error is the normal negative result rather than a fault. `@zxing/browser`
+ * re-queues its decode loop after exactly these three and stops permanently after anything
+ * else, so this has to agree with the loop's own reading of the error.
+ *
+ * Both discriminators are consulted because either can fail on its own: `@zxing/library` is
+ * ES5-downlevelled over `ts-custom-error` and its `Exception` prototype chain does not
+ * survive that (`MultiFormatReader` logs "non-ReaderException from reader" for every
+ * ordinary miss for exactly that reason), while `getKind` is absent from a plain `TypeError`
+ * out of the canvas. They need not agree — either witness is enough to ignore the frame,
+ * because mistaking a miss for a fault would tear down a scan that is working.
+ */
+function isNoRead(error: unknown): boolean {
+  const getKind = (error as { getKind?: () => string } | null)?.getKind;
+  if (typeof getKind === "function" && NO_READ_KINDS.has(getKind.call(error))) return true;
+  return (
+    error instanceof NotFoundException ||
+    error instanceof ChecksumException ||
+    error instanceof FormatException
+  );
 }
 
 function stopTracks(stream: MediaStream): void {
@@ -129,7 +146,10 @@ export function useScanner(options: {
   useEffect(() => {
     onCarrierRef.current = onCarrier;
   }, [onCarrier]);
-  const [machine, dispatch] = useReducer(scanReducer, initialScanMachine);
+  // §6.3's cooldown exists to stop a *return to Scan* double-logging, and that return is a
+  // fresh mount: the machine therefore starts from the store that outlives this component
+  // rather than from an empty map (A-01).
+  const [machine, dispatch] = useReducer(scanReducer, undefined, startingScanMachine);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const controlsRef = useRef<IScannerControls | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -157,10 +177,18 @@ export function useScanner(options: {
     setTorchOn(false);
   }, [handleTrackEnded]);
 
-  const handleResult = useCallback((result: Result | undefined) => {
-    // ZXing reports not-found on nearly every frame through the callback's error argument;
-    // that is the normal case, so nothing here inspects or logs it.
-    if (result === undefined) return;
+  const handleResult = useCallback((result: Result | undefined, error: unknown) => {
+    if (result === undefined) {
+      // Not-found, checksum and format failures arrive on nearly every frame and mean only
+      // "no symbol here". Anything else has already ended ZXing's decode loop for good,
+      // with the camera still live: the preview keeps moving and nothing will ever decode
+      // again. The machine leaves `streaming` for the one §4.10 error that says the stream
+      // stopped being usable, which the view already renders with a Retry (P7).
+      if (error !== undefined && !isNoRead(error)) {
+        dispatch({ type: "stream_failed", error: "stream_lost" });
+      }
+      return;
+    }
     const text = result.getText();
     // D14: a §4.9 carrier is one of the app's own handoff payloads, not a VIN, and it decodes
     // identically every frame — so a VIN fabricated out of one would sail through the two-read
@@ -227,7 +255,10 @@ export function useScanner(options: {
         return;
       }
       try {
-        const reader = new BrowserMultiFormatReader(buildHints());
+        const reader = new BrowserMultiFormatReader(buildScanHints(), {
+          delayBetweenScanAttempts: SCAN_DELAY_MS,
+          delayBetweenScanSuccess: SCAN_DELAY_MS,
+        });
         // The element is read only now: the render that put the machine into `requesting` is
         // what mounts it, and that render lands while getUserMedia is still awaiting.
         const controls = await reader.decodeFromStream(
@@ -250,8 +281,10 @@ export function useScanner(options: {
             typeof track.getCapabilities === "function"
               ? (track.getCapabilities() as TorchCapabilities)
               : undefined;
-          // §6.1: no capability, no button — iOS Safari must not show a dead control.
-          setTorchAvailable(capabilities !== undefined && "torch" in capabilities);
+          // §6.1: the button appears when the capabilities *report* torch, which is the
+          // value and not the key — Chrome publishes `torch: false` for a camera with no
+          // lamp. iOS Safari omits the key entirely. Neither gets a dead control (P7).
+          setTorchAvailable(capabilities?.torch === true);
         }
         dispatch({ type: "stream_started" });
       } catch (error) {
@@ -315,7 +348,11 @@ export function useScanner(options: {
   }, []);
 
   const accept = useCallback((vin: string) => {
-    dispatch({ type: "accepted", vin, atMs: Date.now() });
+    const atMs = Date.now();
+    // The write-through lives here, not in the reducer, which stays pure (P3). Both halves
+    // take the same instant so the machine and the store cannot disagree about it.
+    cooldownStore.record(vin, atMs);
+    dispatch({ type: "accepted", vin, atMs });
   }, []);
 
   return { state: machine.state, videoRef, torch, retry, rescan, accept };

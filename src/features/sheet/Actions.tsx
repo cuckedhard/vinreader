@@ -42,6 +42,13 @@ function droppedList(dropped: readonly string[]): string {
 
 const PANEL = "rounded-[var(--radius)] border border-border bg-bg-elev";
 
+/**
+ * §6.1 names Copy alongside Scan, Use as-is and Share as a ≥ 56 px target. Inline rather
+ * than a class, because the secondary variant's own 48 px min-height is a class and would
+ * otherwise win; the variant stays secondary so Share keeps the only primary weight here.
+ */
+const COPY_TARGET = { minHeight: "var(--tap-lg)" };
+
 export function Actions({ record }: { record: VehicleRecord }) {
   // §4.9 `by`. Read here, once, so the tap handlers below never have to: a Dexie read
   // inside a handler would end the user gesture before the clipboard write (see `copy`).
@@ -171,7 +178,7 @@ export function Actions({ record }: { record: VehicleRecord }) {
         <Banner tone="info" title={NO_SHARE} />
       )}
 
-      {/* §6.1: two columns of ≥ 48 px targets, no gesture on any of them (N5). */}
+      {/* §6.1: two columns, every target ≥ 48 px and Copy ≥ 56 px, no gesture (N5). */}
       <div className="grid grid-cols-2 gap-3">
         <Button variant="secondary" onClick={() => setQrOpen(true)}>
           QR code
@@ -179,16 +186,16 @@ export function Actions({ record }: { record: VehicleRecord }) {
         <Button variant="secondary" onClick={download}>
           Download JSON
         </Button>
-        <Button variant="secondary" onClick={() => copy(texts.vin)}>
+        <Button variant="secondary" style={COPY_TARGET} onClick={() => copy(texts.vin)}>
           Copy VIN
         </Button>
-        <Button variant="secondary" onClick={() => copy(texts.summary)}>
+        <Button variant="secondary" style={COPY_TARGET} onClick={() => copy(texts.summary)}>
           Copy summary
         </Button>
-        <Button variant="secondary" onClick={() => copy(texts.link)}>
+        <Button variant="secondary" style={COPY_TARGET} onClick={() => copy(texts.link)}>
           Copy link
         </Button>
-        <Button variant="secondary" onClick={() => copy(texts.json)}>
+        <Button variant="secondary" style={COPY_TARGET} onClick={() => copy(texts.json)}>
           Copy JSON
         </Button>
       </div>

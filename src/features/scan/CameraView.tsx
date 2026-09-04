@@ -1,4 +1,5 @@
 import type { JSX, RefObject } from "react";
+import { checkDigitApplies } from "../../lib/vin/checkDigit";
 import type { ScanError } from "../../lib/vin/types";
 import { Banner } from "../../ui/Banner";
 import type { BannerTone } from "../../ui/Banner";
@@ -23,6 +24,26 @@ const CAMERA_STOPPED = "Camera stopped. It starts again when this screen is acti
 
 /** §6.4 has no line for the 1–3 s black frame while iOS opens the camera. Supplied here. */
 const STARTING = "Starting camera…";
+
+/**
+ * §6.4 has no line for a confirmed read the D03 gate is holding. Supplied here, neutral and
+ * never celebratory: §6.3 says success feedback never fires on a mismatch, and §6.1 makes
+ * this line the primary feedback. The §6.4 check-digit wording belongs to the banner.
+ */
+const HELD_FOR_CHECK = "Check this read.";
+
+/**
+ * Whether a confirmed read is being held back rather than saved (D03). It uses the §4.3
+ * predicate the write path uses, so an identifier that carries no check digit at all still
+ * reads as a success (D17).
+ */
+function isHeldForCheck(state: ScanMachineState): boolean {
+  return (
+    state.kind === "confirmed" &&
+    !state.sighting.checkDigitValid &&
+    checkDigitApplies(state.sighting.vin)
+  );
+}
 
 interface Notice {
   tone: BannerTone;
@@ -73,7 +94,7 @@ function statusFor(state: ScanMachineState): string {
     case "candidate":
       return "Reading… hold steady.";
     case "confirmed":
-      return "Got it ✓";
+      return isHeldForCheck(state) ? HELD_FOR_CHECK : "Got it ✓";
     case "idle":
     case "error":
       // Handled by the notice, which carries its own alert role.
@@ -82,7 +103,9 @@ function statusFor(state: ScanMachineState): string {
 }
 
 function statusToneFor(state: ScanMachineState): string {
-  if (state.kind === "confirmed") return "text-ok";
+  // A held read is a warning, not a success: the success colour next to the mismatch banner
+  // is the screen contradicting itself (§6.3).
+  if (state.kind === "confirmed") return isHeldForCheck(state) ? "text-warn" : "text-ok";
   if (state.kind === "candidate") return "text-accent";
   return "text-fg-muted";
 }
@@ -104,10 +127,20 @@ export function CameraView({
   const sighting = state.kind === "candidate" || state.kind === "confirmed" ? state.sighting : null;
   // Whichever route forward exists gets the 56 px primary target (§6.1).
   const typeVariant = notice !== null && !notice.retry ? "primary" : "secondary";
+  // §6.3 stops the stream on `confirmed`, so what is left is a dead black box ~470 px tall
+  // that pushed the Rescan / Use as-is decision below the fold on every phone viewport. It
+  // is hidden rather than unmounted so `videoRef` still points at this element when Rescan
+  // returns the machine to `streaming`.
+  const previewClasses = [
+    "relative w-full flex-1 overflow-hidden rounded-[var(--radius)] border border-border bg-black",
+    state.kind === "confirmed" ? "hidden" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   return (
     <div className="flex w-full flex-col gap-4">
-      <div className="relative w-full flex-1 overflow-hidden rounded-[var(--radius)] border border-border bg-black">
+      <div className={previewClasses}>
         <div className="aspect-[3/4] max-h-[60vh] w-full">
           <video
             ref={videoRef}
@@ -152,9 +185,9 @@ export function CameraView({
         {status === "" ? null : (
           <p className={`text-lg leading-snug font-bold ${statusToneFor(state)}`}>{status}</p>
         )}
-        {sighting === null ? null : (
-          <VinDisplay vin={sighting.vin} size={state.kind === "confirmed" ? "lg" : "md"} />
-        )}
+        {/* §6.1 floors a VIN display at 28 px on a phone, and the candidate is exactly the
+            moment the number is being checked against the sticker at arm's length. */}
+        {sighting === null ? null : <VinDisplay vin={sighting.vin} size="lg" />}
       </div>
 
       {notice === null ? null : <Banner tone={notice.tone} title={notice.message} />}

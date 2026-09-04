@@ -1,12 +1,14 @@
 import fc from "fast-check";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import { cooldownStore } from "./cooldownStore";
 import {
   COOLDOWN_MS,
   CONFIRM_WINDOW_MS,
   HIDDEN_LOST_MS,
   initialScanMachine,
   scanReducer,
+  startingScanMachine,
 } from "./scanMachine";
 import type { ScanAction, ScanMachine, ScanSighting } from "./scanMachine";
 
@@ -113,7 +115,11 @@ describe("scanReducer — retry", () => {
     expect(scanReducer(machine, { type: "retry", secureContext: true }).hiddenAtMs).toBeNull();
   });
 
-  it("keeps the cooldown across a remount, which is what the cooldown guards", () => {
+  it("keeps the cooldown across the mount action, which is not a React remount", () => {
+    // Named for a remount before, but a `mount` action only reuses the machine object
+    // it is handed. The remount §6.3's cooldown actually guards — accepting navigates
+    // to the Sheet and unmounts the Scan screen — destroys that object, and only
+    // `cooldownStore` survives it; that is proved at the bottom of this file.
     const machine = run([{ type: "accepted", vin: VIN_A, atMs: 5000 }, MOUNT]);
     expect(machine.cooldown).toEqual({ [VIN_A]: 5000 });
   });
@@ -284,7 +290,11 @@ describe("scanReducer — stream loss and visibility", () => {
     expect(machine.state).toEqual({ kind: "streaming" });
   });
 
-  it("goes to idle and reports the loss after 30001 ms hidden", () => {
+  it("re-requests the camera on the visibility that measures 30001 ms hidden", () => {
+    // §6.3: a stream hidden past the window is lost and re-requested "on next
+    // visibility". This event is that next visibility — there is no second one
+    // coming — so stopping at idle here left the preview dead until the user
+    // navigated away and back.
     const machine = run(
       [
         { type: "hidden", atMs: 100 },
@@ -292,8 +302,21 @@ describe("scanReducer — stream loss and visibility", () => {
       ],
       streaming(),
     );
-    expect(machine.state).toEqual({ kind: "idle", lost: true });
+    expect(machine.state).toEqual({ kind: "requesting" });
     expect(machine.hiddenAtMs).toBeNull();
+  });
+
+  it("errors rather than re-requesting when a long absence ends insecure", () => {
+    // The re-request goes down the same path a mount takes, so §6.3's "insecure
+    // context → error before any permission prompt" still applies to it.
+    const machine = run(
+      [
+        { type: "hidden", atMs: 100 },
+        { type: "visible", atMs: 100 + 30001, secureContext: false },
+      ],
+      streaming(),
+    );
+    expect(machine.state).toEqual({ kind: "error", error: "insecure_context" });
   });
 
   it("re-requests the camera on the visibility after a lost stream", () => {
@@ -341,6 +364,53 @@ describe("scanReducer — stream loss and visibility", () => {
       run([MOUNT]),
     );
     expect(machine.state).toEqual({ kind: "requesting" });
+  });
+});
+
+describe("startingScanMachine — the cooldown that outlives the screen", () => {
+  // The store is module state by design (it has to outlive a component), so each
+  // test starts and leaves it empty.
+  beforeEach(() => {
+    cooldownStore.clear();
+  });
+  afterEach(() => {
+    cooldownStore.clear();
+  });
+
+  it("starts a clean machine when nothing has been accepted", () => {
+    expect(startingScanMachine()).toEqual(initialScanMachine);
+  });
+
+  it("starts with the cooldown the store holds, which a remount cannot destroy", () => {
+    cooldownStore.record(VIN_A, 5000);
+    const machine = startingScanMachine();
+    expect(machine.cooldown).toEqual({ [VIN_A]: 5000 });
+    expect(machine.state).toEqual({ kind: "idle", lost: false });
+    // Seeded, not decorative: §6.3 ignores that VIN on the freshly mounted screen,
+    // which is the double-log the cooldown exists to stop.
+    const seeded = run([MOUNT, STARTED], machine);
+    expect(scanReducer(seeded, saw(VIN_A, 5000 + COOLDOWN_MS))).toBe(seeded);
+  });
+
+  it("takes an explicit cooldown, so nothing has to reach for module state", () => {
+    expect(startingScanMachine({ [VIN_B]: 42 }).cooldown).toEqual({ [VIN_B]: 42 });
+  });
+
+  it("leaves initialScanMachine empty however much the store has recorded", () => {
+    cooldownStore.record(VIN_A, 5000);
+    expect(initialScanMachine.cooldown).toEqual({});
+  });
+
+  it("hands out a snapshot, so the reducer never writes the store", () => {
+    cooldownStore.record(VIN_A, 5000);
+    const machine = scanReducer(startingScanMachine(), {
+      type: "accepted",
+      vin: VIN_B,
+      atMs: 6000,
+    });
+    expect(machine.cooldown).toEqual({ [VIN_A]: 5000, [VIN_B]: 6000 });
+    // §13.2 / purity: the hook writes through to the store, the reducer does not.
+    expect(cooldownStore.read()).toEqual({ [VIN_A]: 5000 });
   });
 });
 

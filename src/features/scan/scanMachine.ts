@@ -1,9 +1,12 @@
 /**
- * §6.3 scanner state machine. Pure: no DOM, no React, no timers and no clock
- * reads — every time value arrives inside an action, so the whole of §6.3 is
- * testable without a camera.
+ * §6.3 scanner state machine. `scanReducer` is pure: no DOM, no React, no timers
+ * and no clock reads — every time value arrives inside an action, so the whole of
+ * §6.3 is testable without a camera. `startingScanMachine` is the one export that
+ * looks outside itself, and only to seed a cooldown that has to outlive the
+ * component the reducer runs in.
  */
 
+import { cooldownStore } from "./cooldownStore";
 import type { ScanError, Symbology } from "../../lib/vin/types";
 
 /** §6.3 two-read agreement window. */
@@ -56,24 +59,52 @@ export const initialScanMachine: ScanMachine = {
   hiddenAtMs: null,
 };
 
+/**
+ * The machine a mount starts from. §6.3's cooldown guards "return to Scan", and
+ * that return is a fresh React mount — so the cooldown is seeded from a store that
+ * outlives the screen rather than from whatever the last component instance held.
+ * `initialScanMachine` stays empty because the reducer's own tests start clean, and
+ * the reducer itself never touches the store: a reducer that read module state
+ * would not be pure.
+ */
+export function startingScanMachine(
+  cooldown: Record<string, number> = cooldownStore.read(),
+): ScanMachine {
+  return { ...initialScanMachine, cooldown };
+}
+
 /** §6.3: an insecure context is an error before any permission prompt happens. */
 function cameraStart(secureContext: boolean): ScanMachineState {
   return secureContext ? { kind: "requesting" } : { kind: "error", error: "insecure_context" };
 }
 
-/** The states in which a track is live, so decodes and track events are real. */
-function isLive(state: ScanMachineState): boolean {
-  return state.kind === "streaming" || state.kind === "candidate";
+/**
+ * Whether a track is live, so decodes and track events are real. A hidden tab is
+ * not live even while the state kind still reads `streaming`: the camera is
+ * released on `hidden`, but ZXing's decode loop can still call back once from a
+ * timer tick that was already queued, and that frame must not rebuild the
+ * candidate `hidden` just dropped.
+ */
+function isLive(machine: ScanMachine): boolean {
+  if (machine.hiddenAtMs !== null) return false;
+  return machine.state.kind === "streaming" || machine.state.kind === "candidate";
 }
 
 /**
- * §6.3 cooldown, consulted rather than expired: entries are compared, never
- * swept. Both §6.3 windows are inclusive of their bound — a gap of exactly the
- * constant is inside the window.
+ * Both §6.3 windows are two-sided. Timestamps come from `Date.now()`, which follows
+ * the wall clock, so after a backwards correction a one-sided `gap <= bound` reads
+ * every earlier acceptance as "still cooling down" for the whole of the jump. A
+ * sighting stamped before the thing it is measured against is not within any window
+ * of it. The bound itself stays inclusive: a gap of exactly the constant is inside.
  */
+function isWithin(gapMs: number, windowMs: number): boolean {
+  return gapMs >= 0 && gapMs <= windowMs;
+}
+
+/** §6.3 cooldown, consulted rather than expired: entries are compared, never swept. */
 function isCoolingDown(machine: ScanMachine, vin: string, atMs: number): boolean {
   const acceptedAt = machine.cooldown[vin];
-  return acceptedAt !== undefined && atMs - acceptedAt <= COOLDOWN_MS;
+  return acceptedAt !== undefined && isWithin(atMs - acceptedAt, COOLDOWN_MS);
 }
 
 export function scanReducer(machine: ScanMachine, action: ScanAction): ScanMachine {
@@ -93,27 +124,27 @@ export function scanReducer(machine: ScanMachine, action: ScanAction): ScanMachi
       // Honoured while the camera is coming up or running. A failure reported
       // after the caller stopped the stream itself must not overwrite a read
       // the user is still acting on.
-      if (machine.state.kind === "requesting" || isLive(machine.state)) {
+      if (machine.state.kind === "requesting" || isLive(machine)) {
         return { ...machine, state: { kind: "error", error: action.error } };
       }
       return machine;
 
     case "decoded": {
-      // A late frame from a stopped stream cannot resurrect a scan.
-      if (!isLive(machine.state)) return machine;
+      // A late frame from a stopped or hidden stream cannot resurrect a scan.
+      if (!isLive(machine)) return machine;
       const { sighting } = action;
       if (isCoolingDown(machine, sighting.vin, sighting.atMs)) return machine;
       const confirms =
         machine.state.kind === "candidate" &&
         machine.state.sighting.vin === sighting.vin &&
-        sighting.atMs - machine.state.sighting.atMs <= CONFIRM_WINDOW_MS;
+        isWithin(sighting.atMs - machine.state.sighting.atMs, CONFIRM_WINDOW_MS);
       // The confirming sighting is the one kept: its raw bytes are what clinched
       // the read and its timestamp is the moment of confirmation.
       return { ...machine, state: { kind: confirms ? "confirmed" : "candidate", sighting } };
     }
 
     case "track_ended":
-      return isLive(machine.state) ? { ...machine, state: { kind: "idle", lost: true } } : machine;
+      return isLive(machine) ? { ...machine, state: { kind: "idle", lost: true } } : machine;
 
     case "hidden": {
       // A candidate that survived a pocket and confirmed on return would be a
@@ -129,9 +160,13 @@ export function scanReducer(machine: ScanMachine, action: ScanAction): ScanMachi
       // to the tab is not that action.
       if (machine.state.kind === "error" || machine.state.kind === "confirmed") return next;
       const gap = machine.hiddenAtMs === null ? 0 : action.atMs - machine.hiddenAtMs;
-      if (gap > HIDDEN_LOST_MS) return { ...next, state: { kind: "idle", lost: true } };
-      // §6.3: a machine with no stream re-requests on the next visibility.
-      if (machine.state.kind === "idle") {
+      // §6.3: a stream hidden past the window is lost and re-requested "on next
+      // visibility" — and this event is that next visibility, so the re-request
+      // happens here. Stopping at idle left someone back from a pocket looking at a
+      // dead preview with no second visibility coming. A machine that is already
+      // idle (a dead track, a saved scan) re-requests down the same path, and an
+      // insecure context still becomes an error without a permission prompt.
+      if (gap > HIDDEN_LOST_MS || machine.state.kind === "idle") {
         return { ...next, state: cameraStart(action.secureContext) };
       }
       return next;

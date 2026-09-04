@@ -33,6 +33,16 @@ const DECODE_CHIP: Record<DecodeStatus, { tone: ChipTone; label: string } | null
   failed: { tone: "warn", label: "Details failed — tap to retry" },
 };
 
+/**
+ * P7: a row whose `decode.status` is outside §4.10 — corrupt storage, or a row written by
+ * a future schema — renders no chip instead of throwing and taking the whole route down
+ * with it. The lookup is total to TypeScript, so only the runtime needs guarding; §4.10
+ * itself is unchanged and no member is added.
+ */
+function decodeChip(status: DecodeStatus): { tone: ChipTone; label: string } | null {
+  return DECODE_CHIP[status] ?? null;
+}
+
 /** Case-insensitive, space-insensitive, so a VIN pasted in §4.1 display groups still matches. */
 function normalize(value: string): string {
   return value.toUpperCase().replace(/\s+/g, "");
@@ -90,7 +100,7 @@ function formatScannedAt(iso: string, nowMs: number): string {
 
 function HistoryRow({ record, nowMs }: { record: VehicleRecord; nowMs: number }) {
   const title = headline(record);
-  const decode = DECODE_CHIP[record.decode.status];
+  const decode = decodeChip(record.decode.status);
   return (
     <li>
       <Link

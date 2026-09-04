@@ -98,15 +98,13 @@ export function ManualEntry() {
               {checkValid ? (
                 <Chip tone="ok">Check digit OK</Chip>
               ) : checkApplies ? (
-                <Chip tone="warn">Check digit doesn&rsquo;t match</Chip>
+                <Chip tone="warn">Check digit doesn't match</Chip>
               ) : (
                 // D17: no check digit exists here, so nothing is wrong and nothing warns.
                 // The Chip keeps its text on one line; this sentence has to wrap on a
                 // narrow phone, and white-space set on the child wins by inheritance.
                 <Chip tone="neutral">
-                  <span className="whitespace-normal">
-                    This number doesn&rsquo;t use a check digit.
-                  </span>
+                  <span className="whitespace-normal">This number doesn't use a check digit.</span>
                 </Chip>
               )}
             </div>
