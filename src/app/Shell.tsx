@@ -18,9 +18,18 @@ export function Shell() {
   // whole app, not to the screen that happens to change it, and a live query means a
   // change on Settings repaints every route at once. Settings seeds the row, so a
   // missing one here is a first run reading the default rather than a write.
-  const stored = useLiveQuery(() => db.settings.get("settings"));
-  const theme = normalizeSettings(stored).theme;
-  useEffect(() => applyTheme(theme), [theme]);
+  //
+  // `?? null` is what separates "no row" from "no answer yet": `useLiveQuery` returns
+  // `undefined` for both, and applying the default while Dexie is still answering would
+  // repaint dark over whatever index.html's pre-paint bootstrap had already put up — the
+  // flash it exists to remove, one frame later and now visible. Undefined therefore means
+  // "still asking" and nothing is applied; `null` means the row is genuinely absent.
+  const stored = useLiveQuery(async () => (await db.settings.get("settings")) ?? null);
+  const theme = stored === undefined ? null : normalizeSettings(stored ?? undefined).theme;
+  useEffect(() => {
+    if (theme === null) return;
+    return applyTheme(theme);
+  }, [theme]);
 
   return (
     <div className="flex h-full flex-col bg-bg text-fg">

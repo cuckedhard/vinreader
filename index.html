@@ -1,13 +1,67 @@
 <!doctype html>
-<!-- §6.1: dark is the default, and it is the pre-hydration value so the first paint is
-     never the wrong palette. `Shell` replaces it from the §5.6 settings row on mount. -->
+<!-- §6.1: dark is the default, and it is the pre-hydration value, so the majority who never
+     touch the setting never see anything else. The bootstrap in <head> is the only thing
+     allowed to replace it before the first paint; `Shell` re-applies it from the §5.6
+     settings row once Dexie answers. -->
 <html lang="en" data-theme="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <!-- The browser paints its own chrome from this — Android Chrome's toolbar, the task
+         switcher card, Safari's tab bar — so one hardcoded dark value left the toolbar dark
+         behind the light palette (§6.1). `src/ui/theme.ts` rewrites it from the resolved
+         `--bg` on every theme change, and the bootstrap below covers the frames before that.
+
+         Deliberately not the two media-scoped `theme-color` tags this is usually solved with:
+         those key on `prefers-color-scheme`, and §6.1's setting is three-way and independent
+         of the OS. "Dark" on a light phone is a real state they cannot express, and it is the
+         one where the browser chrome ends up white above a dark page. -->
     <meta name="theme-color" content="#0b0f14" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <!-- `default`, not `black-translucent`. Two reasons, and the light theme only exposed the
+         first: black-translucent draws light status-bar glyphs, which are unreadable over the
+         light palette, and iOS reads this once at launch from the cached start page, so no
+         runtime value is available to correct it. It also extends the web view *under* the
+         status bar, which needs an `env(safe-area-inset-top)` this app never reserves (only
+         `nav.tsx` reserves the bottom), so the top of every screen sat under the clock.
+         `default` lets iOS lay out below its own bar and pick legible glyphs.
+         How it actually looks installed is §13.7's to confirm on a real iPhone. -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <!-- §6.1's theme, before the first paint. The choice lives in the §5.6 settings row, which
+         is Dexie: asynchronous, and measured at 63–441 ms on a cold start. Every one of those
+         frames used to be painted dark whatever the user had chosen. No inline script can read
+         IndexedDB in time, so `applyTheme` mirrors the choice into localStorage — synchronous,
+         same origin, display-only, and per-device like the row itself (§5.6: `theme` does not
+         sync) — and this reads it back before anything is drawn.
+
+         Dexie stays the source of truth. The mirror is only ever written from the row, and the
+         row re-applies on mount, so a stale or hand-edited mirror is corrected within a frame
+         of hydration instead of persisting; "Clear all data" (§6.2) resets the row to the
+         default and the mirror follows it back to dark. Anything unreadable — Safari in private
+         browsing throws on `localStorage` — or unrecognised falls through to the static
+         `data-theme="dark"` above, so no storage read can make the dark majority flash.
+
+         The two literals below are the `--bg` of each palette in `src/ui/tokens.css`, which is
+         not loaded yet and so cannot be asked for them. `src/ui/theme.test.ts` fails if they
+         drift apart. -->
+    <script>
+      (function () {
+        try {
+          var choice = localStorage.getItem("vinrelay.theme");
+          if (choice === "system") {
+            choice = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+          }
+          if (choice !== "dark" && choice !== "light") return;
+          document.documentElement.dataset.theme = choice;
+          var meta = document.querySelector('meta[name="theme-color"]');
+          if (meta) meta.setAttribute("content", choice === "light" ? "#ffffff" : "#0b0f14");
+        } catch {
+          // Storage refused. The static dark default stands, which is the point of leaving it
+          // on <html> rather than setting it here: this runs before everything, and a throw
+          // would take the app's first paint down with it.
+        }
+      })();
+    </script>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="apple-touch-icon" href="/icon-192.png" />
     <title>VIN Relay</title>

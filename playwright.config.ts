@@ -13,13 +13,46 @@ import { defineConfig, devices } from "@playwright/test";
  */
 const launch = process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {};
 
+/**
+ * §6.1's light theme, which until this project existed no test in the gate had ever rendered.
+ * One small spec rather than a second pass over all 37: the palette is app-wide, so a handful
+ * of screens carrying banners, chips and a focus ring catch a regression that running the
+ * whole suite twice would only catch more slowly.
+ *
+ * `colorScheme: "light"` is the OS preference, not the app's setting — the spec sets the §5.6
+ * row itself. It matters for the third state: "System" only means anything when the OS has an
+ * answer, and light is the one the dark default disagrees with.
+ */
+const LIGHT_SPEC = /light-theme\.spec\.ts/;
+
 export default defineConfig({
   testDir: "./tests/e2e",
   timeout: 45_000,
   projects: [
-    { name: "desktop", use: { launchOptions: launch } },
-    { name: "pixel-7", use: { ...devices["Pixel 7"], launchOptions: launch } },
-    { name: "galaxy-s9", use: { ...devices["Galaxy S9+"], launchOptions: launch } },
+    { name: "light", testMatch: LIGHT_SPEC, use: { colorScheme: "light", launchOptions: launch } },
+    // `dependencies` is what puts the light guard inside the gate: §13.5 runs `bun run test:e2e`,
+    // which is `--project=desktop`, and Playwright runs a project's dependencies with it. The
+    // cost is that a red light run skips desktop instead of running it alongside — the cleaner
+    // arrangement is for `test:e2e` to name both projects and for this edge to go, but that is
+    // package.json's line to change.
+    {
+      name: "desktop",
+      testIgnore: LIGHT_SPEC,
+      dependencies: ["light"],
+      use: { launchOptions: launch },
+    },
+    // The Android profiles exist for §6.1's target sizes, which the light spec does not measure,
+    // so they skip it rather than paying for it twice.
+    {
+      name: "pixel-7",
+      testIgnore: LIGHT_SPEC,
+      use: { ...devices["Pixel 7"], launchOptions: launch },
+    },
+    {
+      name: "galaxy-s9",
+      testIgnore: LIGHT_SPEC,
+      use: { ...devices["Galaxy S9+"], launchOptions: launch },
+    },
   ],
   use: {
     baseURL: "https://localhost:4173",
