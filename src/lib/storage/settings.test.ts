@@ -90,3 +90,53 @@ describe("clearAllData", () => {
     expect(await getSettings()).toEqual(DEFAULT_SETTINGS);
   });
 });
+
+describe("the S4 flags (§5.6)", () => {
+  it("defaults to syncing, with the first-sign-in prompt unanswered", async () => {
+    expect(await getSettings()).toMatchObject({ syncEnabled: true, uploadPromptDismissed: false });
+  });
+
+  it("remembers 'Not now', which stops the push without discarding the queue", async () => {
+    // §6.4's first-sign-in prompt. §5.7's outbox fills whether or not anyone is signed in,
+    // so the rows this phone accumulated are already queued when the question is asked:
+    // declining has to gate the push and leave them alone.
+    await updateSettings({ syncEnabled: false, uploadPromptDismissed: true });
+
+    expect(await getSettings()).toMatchObject({ syncEnabled: false, uploadPromptDismissed: true });
+  });
+
+  it("gives a row written before S4 the defaults rather than undefined", () => {
+    const legacy = { ...DEFAULT_SETTINGS } as Partial<typeof DEFAULT_SETTINGS>;
+    delete legacy.syncEnabled;
+    delete legacy.uploadPromptDismissed;
+
+    expect(normalizeSettings(legacy)).toEqual(DEFAULT_SETTINGS);
+  });
+
+  it.each([
+    ["the string 'false'", "false"],
+    ["a number", 0],
+    ["null", null],
+  ])("falls back rather than reading %s as an answer", async (_label, value) => {
+    // `if (settings.syncEnabled)` is satisfied by the string "false". A row that is not a
+    // boolean is not an answer, and the push gate is the last place to guess at one.
+    await db.settings.put({ ...DEFAULT_SETTINGS, syncEnabled: value } as never);
+
+    expect((await getSettings()).syncEnabled).toBe(DEFAULT_SETTINGS.syncEnabled);
+    expect(normalizeSettings({ sound: value } as never).sound).toBe(DEFAULT_SETTINGS.sound);
+    expect(normalizeSettings({ haptics: value } as never).haptics).toBe(DEFAULT_SETTINGS.haptics);
+    expect(normalizeSettings({ autoDecode: value } as never).autoDecode).toBe(
+      DEFAULT_SETTINGS.autoDecode,
+    );
+    expect(normalizeSettings({ uploadPromptDismissed: value } as never).uploadPromptDismissed).toBe(
+      DEFAULT_SETTINGS.uploadPromptDismissed,
+    );
+  });
+
+  it("keeps a device label that is not text out of the push payload", () => {
+    // §4.12 sends this as `scan_events.device_label`, a `text` column. A number here is a
+    // row PostgREST rejects on every attempt — backed off forever, never dropped (§5.7).
+    expect(normalizeSettings({ deviceLabel: 42 } as never).deviceLabel).toBe("");
+    expect(normalizeSettings({ deviceLabel: "Bay 3" }).deviceLabel).toBe("Bay 3");
+  });
+});
