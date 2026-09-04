@@ -19,7 +19,8 @@
     "bench:camera": "python3 bench/make-fake-camera.py && node bench/make-qr-camera.mjs \"$(bun -e 'import{encodePayload}from\"./src/lib/payload/codec\";console.log(`https://vinrelay.example/#/i?d=${encodePayload({v:1,vin:\"1HGCM82633A004352\",y:\"2003\",mk:\"HONDA\",md:\"Accord\",u:\"UNIT-42\"})}`)')\" bench/fake-qr.y4m",
     "pretest:e2e": "python3 bench/make-fake-camera.py && node bench/make-qr-camera.mjs \"$(bun -e 'import{encodePayload}from\"./src/lib/payload/codec\";console.log(`https://vinrelay.example/#/i?d=${encodePayload({v:1,vin:\"1HGCM82633A004352\",y:\"2003\",mk:\"HONDA\",md:\"Accord\",u:\"UNIT-42\"})}`)')\" bench/fake-qr.y4m",
     "bench": "bun run bench/run.ts --json bench/report.json",
-    "bench:quick": "bun run bench/run.ts --quick --count 8"
+    "bench:quick": "bun run bench/run.ts --quick --count 8",
+    "mutate": "stryker run"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.115.0",
@@ -37,6 +38,8 @@
     "@axe-core/playwright": "^4.13.0",
     "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.62.1",
+    "@stryker-mutator/core": "10.0.0",
+    "@stryker-mutator/vitest-runner": "10.0.0",
     "@tailwindcss/vite": "^4.3.3",
     "@types/qrcode": "^1.5.6",
     "@types/react": "^19.2.0",

@@ -10,3 +10,8 @@ playwright-report
 bench/*.y4m
 bench/*.quick.md
 bench/*.quick.json
+
+# StrykerJS (§13.5 mutation gate)
+.stryker-tmp
+reports
+stryker-setup-*.js
