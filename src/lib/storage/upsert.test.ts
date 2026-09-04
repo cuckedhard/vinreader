@@ -153,6 +153,20 @@ describe("setVehicleMeta", () => {
     expect(record.notes).toBe("spare key");
   });
 
+  it("edits the notes without touching the unit", async () => {
+    // The mirror of the case above, and the one the Sheet actually performs: unit and
+    // notes are two separate fields, so saving one sends a patch with the other absent.
+    // `undefined` means "leave it as it was" — a patch that read absence as a clear would
+    // wipe the unit number off a truck every time someone typed a note about it (§5.6).
+    await upsertVehicle(scan({ at: T1 }));
+    await setVehicleMeta(VIN, { unit: "TRK-118", notes: "spare key" });
+    const record = await setVehicleMeta(VIN, { notes: "rear light out" });
+
+    expect(record.unit).toBe("TRK-118");
+    expect(record.notes).toBe("rear light out");
+    expect(await db.vehicles.get(VIN)).toMatchObject({ unit: "TRK-118" });
+  });
+
   it("rejects a VIN it has never seen", async () => {
     await expect(setVehicleMeta(VIN, { unit: "TRK-118" })).rejects.toThrow(VIN);
   });

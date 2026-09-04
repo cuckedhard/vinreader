@@ -5,7 +5,7 @@
  * (`{ Count, Message, SearchCriteria, Results: [flat strings] }`). The network is
  * unavailable in this environment, so no field below was captured from a live response.
  */
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { VehicleDecode } from "../vin/types";
 import { VPIC_ENDPOINT } from "../vpic/client";
 import type { VpicDeps, VpicRawResponse, VpicResult } from "../vpic/types";
@@ -354,6 +354,35 @@ describe("runDecodeQueueOnce", () => {
     expect(await decodeOf(VIN_A)).toMatchObject({ status: "pending", attempts: 0 });
   });
 
+  it("stops the run the moment the radio drops, leaving the rest of the queue unspent", async () => {
+    // §5.4 re-checks `navigator.onLine` on every turn, not once at the top: a van pulling
+    // out of yard wifi mid-run must not spend the remaining rows' one permanent §4.7
+    // request each on a dead radio — a spent request is not retried by the automatic queue,
+    // so those vehicles would sit `failed` until someone found "Refresh details".
+    // Scan order is not primary-key order, so the oldest-first rule is under test too.
+    await seed(VIN_A, T_NEW);
+    await seed(VIN_B, T_OLD);
+    await seed(VIN_C, T_MID);
+    const double = fetchDouble(() => {
+      defineGlobal("navigator", { onLine: false });
+      return bodyOf(OK_RESULTS);
+    });
+
+    expect(await runDecodeQueueOnce(depsFor(double))).toBe(1);
+    expect(vinsOf(double.urls)).toEqual([VIN_B]);
+    expect(await decodeOf(VIN_B)).toMatchObject({ status: "ok" });
+    // Untouched, and specifically not charged an attempt: `attempts` counts transport
+    // failures, and never leaving the device is not one.
+    expect(await decodeOf(VIN_C)).toMatchObject({ status: "pending", attempts: 0 });
+    expect(await decodeOf(VIN_A)).toMatchObject({ status: "pending", attempts: 0 });
+
+    // Back on signal, the queue resumes where it stopped and still oldest-first.
+    defineGlobal("navigator", { onLine: true });
+    const resumed = fetchDouble(() => bodyOf(OK_RESULTS));
+    expect(await runDecodeQueueOnce(depsFor(resumed))).toBe(2);
+    expect(vinsOf(resumed.urls)).toEqual([VIN_C, VIN_A]);
+  });
+
   it("leaves a tombstoned row's one permanent request unspent", async () => {
     await seed(VIN_A, T_OLD);
     await tombstone(VIN_A);
@@ -459,6 +488,30 @@ describe("startDecodeQueue", () => {
     await settle();
 
     expect(await decodeOf(VIN_A)).toMatchObject({ attempts: 2 });
+  });
+
+  it("survives a storage failure and runs again on the next trigger", async () => {
+    // §5.4's poll is the only thing that ever retries a pending decode, so a run that
+    // threw and took the interval with it would leave every unfilled sheet unfilled for
+    // the rest of the session — and IndexedDB is exactly what fails on a phone that has
+    // run out of space or is in a private window (P7, N1). Nothing about the failure is
+    // shown to the user; the guarantee is only that the queue is still alive.
+    await seed(VIN_A, T_OLD);
+    const double = fetchDouble(() => bodyOf(OK_RESULTS));
+    const where = vi.spyOn(db.vehicles, "where").mockImplementation(() => {
+      throw new Error("IndexedDB unavailable");
+    });
+
+    stops.push(startDecodeQueue(depsFor(double)));
+    await settle();
+    expect(double.urls).toEqual([]);
+
+    where.mockRestore();
+    window.dispatchEvent(new Event("online"));
+    await settle();
+
+    expect(vinsOf(double.urls)).toEqual([VIN_A]);
+    expect(await decodeOf(VIN_A)).toMatchObject({ status: "ok" });
   });
 
   it("stops listening once the returned teardown runs", async () => {

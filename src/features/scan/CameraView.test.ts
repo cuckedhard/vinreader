@@ -323,3 +323,38 @@ describe("a confirmed read that was not stored", () => {
     );
   });
 });
+
+/**
+ * Round 3. `unsaved` is threaded into both `statusFor` and `statusToneFor`, and every case
+ * above passes it only alongside a confirmed read — so the flag is *executed* on the other
+ * five states and asserted on none of them. The combination is reachable: when Use as-is
+ * fails to write, `ScanScreen` calls `rescan()` (so the machine returns to `streaming`)
+ * while `error` is still set (so the failure banner is still up and `unsaved` is still
+ * true). The user is then aiming at a live camera, and §6.4 owes them the aiming line.
+ */
+describe("a failed write says nothing about the state that follows it", () => {
+  const VALID = "1HGCM82633A004352";
+
+  it.each([
+    ["requesting", state("requesting")],
+    ["streaming", state("streaming")],
+    ["candidate", candidate(VALID)],
+    ["idle", state("idle", false)],
+    ["idle.lost", state("idle", true)],
+    ["error", { kind: "error", error: "permission_denied" } as ScanMachineState],
+  ])("shows the same line and tone on %s whether or not a write failed", (_name, machineState) => {
+    // "Not saved." belongs to the read it is about. Left to leak forwards it would sit
+    // over a live preview telling the user their *next* scan had failed before they took
+    // it, and §6.1 makes this line the primary feedback.
+    expect(status(render(machineState, { unsaved: true }))).toEqual(status(render(machineState)));
+  });
+
+  it("still aims the user at the label while the failure banner is up", () => {
+    // The exact state after Use as-is fails: rescan() returns the machine to streaming and
+    // the "Couldn't save this VIN" banner is still on screen below.
+    expect(status(render(state("streaming"), { unsaved: true }))).toEqual({
+      text: "Point at the barcode on the door-jamb sticker.",
+      tone: "text-fg-muted",
+    });
+  });
+});

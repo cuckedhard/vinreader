@@ -98,3 +98,79 @@ describe("normalizeVehicle", () => {
     }
   });
 });
+
+/**
+ * Round 3. Everything above executes the whole of `normalizeVehicle`, but three of its
+ * decisions are only *executed*, never *asserted*: nothing would fail if the structural
+ * rebuild became conditional again, if `currentYear` were ignored in favour of a clock
+ * read, or if the row handed in were mutated in place. The first is the round-2 review's
+ * second rejection ("the structural guard did not close the class it named") and the one
+ * most likely to be reverted by someone who reads the rebuild as wasted work.
+ */
+describe("normalizeVehicle — the decisions the cases above only execute", () => {
+  it("rebuilds a structural block that disagrees with the VIN instead of trusting it", () => {
+    // A guard that kept a populated block would keep this one, and the Sheet would show
+    // another vehicle's year, plant and country under this VIN (N2). The block is a pure
+    // function of the 17 characters and the VIN is the primary key, so the stored copy is
+    // never evidence about anything — which is also how a record written before a
+    // constants fix heals itself on the next read.
+    const wrong = buildStructural("JH4KA7561PC008269", 2026);
+    const got = must(normalizeVehicle({ ...syncShaped(), structural: wrong }, 2026));
+
+    expect(got.structural).toEqual(buildStructural(VIN, 2026));
+    expect(got.structural.wmi).toBe("1HG");
+    expect(got.structural.serial).toBe("004352");
+    expect(got.structural).not.toEqual(wrong);
+  });
+
+  it("uses the year it is given, not the year the machine happens to be on", () => {
+    // §4.4 is resolved against `currentYear`, and P3 keeps that an argument rather than a
+    // clock read so the whole of §4 stays deterministic. The VIN below is the ambiguous
+    // case: position 10 `T` is 1996 or 2026, and position 7 is a digit, so nothing but the
+    // §4.4 cap can decide. A normaliser that reached for `new Date()` would agree with
+    // this test today and disagree with it every January.
+    const ambiguous = "1HGCM8263TA004352";
+    const row = { ...syncShaped(), vin: ambiguous };
+
+    expect(must(normalizeVehicle(row, 2026)).structural.modelYear).toEqual({
+      candidates: [1996, 2026],
+      resolved: null,
+    });
+    expect(must(normalizeVehicle(row, 2010)).structural.modelYear).toEqual({
+      candidates: [1996],
+      resolved: 1996,
+    });
+  });
+
+  it("defaults a decode block that is absent altogether, not merely empty", () => {
+    // §4.12 defaults the column to `'{}'::jsonb`, but a pull can also deliver the key
+    // missing or null. `{}` is the only shape the cases above pass in, and it takes a
+    // different path through the spread than `undefined` does.
+    for (const decode of [undefined, null]) {
+      const row = { ...syncShaped(), decode: decode as unknown as VehicleRecord["decode"] };
+      expect(must(normalizeVehicle(row, 2026)).decode).toEqual({
+        status: "pending",
+        source: "nhtsa_vpic",
+        fetchedAt: null,
+        attempts: 0,
+        lastError: null,
+        fields: {},
+      });
+    }
+  });
+
+  it("leaves the row it was handed exactly as it found it", () => {
+    // The rows come out of a Dexie live query, and in dev React renders the same objects
+    // twice. A normaliser that filled the blocks in place would look identical on the
+    // first pass and would then be normalising its own output — and would write through
+    // to whatever else holds that row.
+    const row = syncShaped();
+    const before = JSON.stringify(row);
+    const got = must(normalizeVehicle(row, 2026));
+
+    expect(JSON.stringify(row)).toBe(before);
+    expect(got).not.toBe(row);
+    expect(got.structural).not.toBe(row.structural);
+    expect(got.decode).not.toBe(row.decode);
+  });
+});
