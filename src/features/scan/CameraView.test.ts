@@ -11,18 +11,29 @@
  * green beside a mismatch banner (A-05) and a decision pushed below the fold (A-08) were both
  * shipped, both found by hand, and neither is caught by anything that runs in the gate.
  *
- * Coupling, stated: three assertions read Tailwind class names out of the markup, because
- * that is how §6.1's tone and size rules are expressed in this codebase. They are confined to
- * the helpers below, so a restyle touches one place.
+ * Coupling, stated: a handful of assertions read Tailwind class names out of the markup,
+ * because that is how §6.1's tone, size and contrast rules are expressed in this codebase.
+ * They are confined to the helpers below, so a restyle touches one place. The aim box is the
+ * strongest of them — its stroke is the one colour decision in the app that is made against
+ * arbitrary live video rather than against a token, so it is asserted rather than left to a
+ * palette that can be re-derived under it (Z4).
+ *
+ * §9-S1's tap-to-refocus is tested here in both halves — `pickFocusMode`, which decides
+ * whether the platform has anything to offer, and the tap target the view renders when it
+ * does. The probe is a pure function of what `getCapabilities()` returned, so it needs no
+ * camera; the two belong together because the whole feature is "a control, or nothing at
+ * all" (§11), and neither half states that on its own.
  */
 
-import { createElement } from "react";
+import { createElement, isValidElement } from "react";
+import type { ComponentProps, ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
 import { checkDigitApplies } from "../../lib/vin/checkDigit";
 import { CameraView } from "./CameraView";
 import type { ScanMachineState } from "./scanMachine";
+import { pickFocusMode } from "./useScanner";
 import type { ScanError } from "../../lib/vin/types";
 
 /** §4.11. The check digit is deliberately wrong on the second, and absent on the third. */
@@ -54,21 +65,30 @@ function candidate(vin: string): ScanMachineState {
 
 interface Options {
   torch?: { available: boolean; on: boolean };
+  /** §9-S1: absent means the platform reported no focus mode, which is the iOS case. */
+  focus?: { available: boolean; refocus?: () => void };
   unsaved?: boolean;
 }
 
-function render(machineState: ScanMachineState, options: Options = {}): string {
+function viewProps(
+  machineState: ScanMachineState,
+  options: Options,
+): ComponentProps<typeof CameraView> {
   const torch = options.torch ?? { available: false, on: false };
-  return renderToStaticMarkup(
-    createElement(CameraView, {
-      state: machineState,
-      videoRef: { current: null },
-      torch: { ...torch, toggle: () => undefined },
-      onRetry: () => undefined,
-      onTypeInstead: () => undefined,
-      unsaved: options.unsaved ?? false,
-    }),
-  );
+  const focus = options.focus ?? { available: false };
+  return {
+    state: machineState,
+    videoRef: { current: null },
+    torch: { ...torch, toggle: () => undefined },
+    focus: { available: focus.available, refocus: focus.refocus ?? (() => undefined) },
+    onRetry: () => undefined,
+    onTypeInstead: () => undefined,
+    unsaved: options.unsaved ?? false,
+  };
+}
+
+function render(machineState: ScanMachineState, options: Options = {}): string {
+  return renderToStaticMarkup(createElement(CameraView, viewProps(machineState, options)));
 }
 
 /** The §6.4 line and the tone it is painted in. `null` when the screen shows no status. */
@@ -87,10 +107,15 @@ function buttons(html: string): string[] {
   return [...html.matchAll(/<button[^>]*>([^<]*)<\/button>/g)].map((m) => m[1]!);
 }
 
+/** The class list of the button carrying `label` directly, or `null` when there is none. */
+function buttonClasses(html: string, label: string): string[] | null {
+  const match = new RegExp(`<button[^>]*class="([^"]*)"[^>]*>${label}</button>`).exec(html);
+  return match === null ? null : match[1]!.split(" ");
+}
+
 /** §6.1: primary is the 56 px target (`--tap-lg`), everything else 48 px (`--tap`). */
 function isPrimary(html: string, label: string): boolean {
-  const match = new RegExp(`<button[^>]*class="([^"]*)"[^>]*>${label}</button>`).exec(html);
-  return match !== null && match[1]!.includes("min-h-[var(--tap-lg)]");
+  return buttonClasses(html, label)?.includes("min-h-[var(--tap-lg)]") ?? false;
 }
 
 /** Whether the camera preview is collapsed. A whole class token, not a substring of one. */
@@ -102,6 +127,69 @@ function previewIsHidden(html: string): boolean {
 function vinDisplay(html: string): { text: string; classes: string } | null {
   const match = /<span class="font-vin ([^"]*)">([^<]*)<\/span>/.exec(html);
   return match === null ? null : { classes: match[1]!, text: match[2]! };
+}
+
+/**
+ * The §6.1 aim box's own classes. Identified by the scrim — the 100vmax spread that dims
+ * everything outside the box is what makes this element the guide rather than a wrapper.
+ */
+function guideBox(html: string): string[] | null {
+  const match = /<div class="([^"]*100vmax[^"]*)"><\/div>/.exec(html);
+  return match === null ? null : match[1]!.split(" ");
+}
+
+/** §6.4 has no line for it; this is the one CameraView supplies (§0 rule 4). */
+const TAP_TO_FOCUS = "Tap to focus";
+
+/**
+ * §9-S1's tap target: the only button on the screen that carries its label in a child, so
+ * the whole preview can be the target while the label stays a small visible pill.
+ */
+function focusTap(html: string): { attributes: string; label: string } | null {
+  const match = /<button([^>]*)><span[^>]*>([^<]*)<\/span><\/button>/.exec(html);
+  return match === null ? null : { attributes: match[1]!, label: match[2]! };
+}
+
+/** The tap target's own class list — its label lives in a child, so `buttonClasses` misses it. */
+function focusTapClasses(html: string): string[] | null {
+  const match = new RegExp(
+    `<button[^>]*class="([^"]*)"[^>]*><span[^>]*>${TAP_TO_FOCUS}</span></button>`,
+  ).exec(html);
+  return match === null ? null : match[1]!.split(" ");
+}
+
+/**
+ * The elements `CameraView` returns, depth first. `renderToStaticMarkup` drops every handler
+ * it renders and this suite has no DOM to click in (`environment: "node"`), so the one thing
+ * the markup cannot show — that the tap is wired to the hook's `refocus` — is read off the
+ * element tree instead. `CameraView` is a hook-free function of its props, so calling it is
+ * exactly what React does with it.
+ */
+function* elements(node: unknown): Generator<ReactElement<{ children?: unknown }>> {
+  if (Array.isArray(node)) {
+    for (const child of node) yield* elements(child);
+    return;
+  }
+  if (!isValidElement(node)) return;
+  const element = node as ReactElement<{ children?: unknown }>;
+  yield element;
+  yield* elements(element.props.children);
+}
+
+/** The tap surface itself, or `null` when the screen renders none. */
+function tapTarget(
+  machineState: ScanMachineState,
+  options: Options,
+): ReactElement<Record<string, unknown>> | null {
+  for (const element of elements(CameraView(viewProps(machineState, options)))) {
+    if (element.type !== "button") continue;
+    for (const child of elements(element.props.children)) {
+      if (child.props.children === TAP_TO_FOCUS) {
+        return element as ReactElement<Record<string, unknown>>;
+      }
+    }
+  }
+  return null;
 }
 
 describe("§6.4 microcopy on the scan screen", () => {
@@ -256,6 +344,225 @@ describe("§6.1 — the aim box and the torch", () => {
     const on = render(state("streaming"), { torch: { available: true, on: true } });
     expect(buttons(on)).toContain("Torch on");
     expect(on).toContain('aria-pressed="true"');
+  });
+});
+
+/**
+ * Z4's consequence, measured. The aim box is the one piece of the UI that sits over
+ * *arbitrary live video*, so no single palette colour can be guaranteed to contrast with it:
+ * `--accent` reads 2.50:1 (dark) and as little as 1.00:1 (light) against the scrimmed
+ * surround as the video brightens — snow glare, which is exactly the case §6.1 is written
+ * for. The answer is a two-tone stroke, whose ratios live in a comment in `CameraView.tsx`.
+ */
+describe("§6.1 — the aim box stays legible over video of any luminance, in both themes", () => {
+  it("draws the guide as a light stroke and a dark stroke, not one flat colour", () => {
+    const classes = guideBox(render(state("streaming")));
+    expect(classes).not.toBeNull();
+    // The white core reads against the scrimmed surround (≥ 4.76:1) and against the dark
+    // stroke (21:1); the dark stroke reads against bright video the white would vanish into.
+    expect(classes).toContain("border-white");
+    expect(classes!.join(" ")).toContain("inset_0_0_0_2px_#000");
+    // The scrim stays: it is what fixes the *outer* neighbour of the stroke at 0.45 × video
+    // instead of the video itself, and §6.1 wants everything outside the box dimmed.
+    expect(classes!.join(" ")).toContain("100vmax_rgba(0,0,0,0.55)");
+  });
+
+  it("takes no colour from the theme palette, so switching theme cannot wash it out", () => {
+    // Both strokes are literals, not tokens, so the dark and light themes render the same
+    // outline and the same ratios. A palette token here is how Z4's finding happened.
+    const classes = guideBox(render(state("streaming")))!;
+    for (const token of ["accent", "fg", "fg-muted", "ok", "warn", "danger", "border"]) {
+      expect(classes.some((name) => name === `border-${token}` || name === `text-${token}`)).toBe(
+        false,
+      );
+    }
+  });
+});
+
+/**
+ * R3-U, the same defect one element over. §6.6 requires a visible focus ring and the wide
+ * layout makes both controls inside the preview Tab-reachable with a desktop webcam, but their
+ * ring was `--accent` over the scrimmed video — 2.50:1 at worst in dark, 1.00:1 in light —
+ * and on the tap target it was drawn *outside* a box that fills an `overflow-hidden` parent,
+ * so it was clipped away and there was no indicator at all. Both now carry `FOCUS_RING`, whose
+ * ratios are in `CameraView.tsx`.
+ */
+describe("§6.6 — the focus ring on the two controls that sit over live video", () => {
+  /** The two tones, so whichever the background washes out, the other reads. */
+  const RING_SHADOW = "focus-visible:shadow-[inset_0_0_0_2px_#000,inset_0_0_0_5px_#fff]";
+  /**
+   * `outline` is unusable on these two: the global `:focus-visible` in `src/index.css` is
+   * unlayered, so it outranks every Tailwind outline utility whatever the specificity, and an
+   * outset ring is clipped away by the `overflow-hidden` preview. `outline-none` sets
+   * `--tw-outline-style`, which the width utility reads, so it disables Tailwind's outline
+   * regardless of rule order — including the one the `Button` primitive brings with it.
+   */
+  const RING = [RING_SHADOW, "focus-visible:outline-none"];
+
+  it("gives the tap target an inset ring, which is the only kind the preview cannot clip", () => {
+    const classes = focusTapClasses(render(state("streaming"), { focus: { available: true } }))!;
+    for (const token of RING) expect(classes).toContain(token);
+    // The ring it replaces, which never rendered where it claimed to: `outline-offset-[-3px]`
+    // lost to the unlayered global rule's `outline-offset: 2px`, putting the ring outside a
+    // box that fills the clipping parent — so there was no visible indicator at all.
+    expect(classes).not.toContain("focus-visible:outline-accent");
+    expect(classes).not.toContain("focus-visible:outline-offset-[-3px]");
+  });
+
+  it("gives the torch the same ring, on its own fill where video never reaches it", () => {
+    // Passing it through `className` is the point: the Button primitive's ring is drawn at
+    // `outline-offset: 2px`, which is 2 px *outside* the solid fill and therefore on the
+    // scrim. This one is inset, so it lands on `--bg-elev` — 16.96:1 dark, 19.02:1 light.
+    const html = render(state("streaming"), {
+      focus: { available: true },
+      torch: { available: true, on: false },
+    });
+    const classes = buttonClasses(html, "Torch off")!;
+    for (const token of RING) expect(classes).toContain(token);
+    // `Button`'s own `outline-accent` is still in the list and is not this file's to remove;
+    // `outline-none` above is what makes it inert. Asserted so a reader is not misled into
+    // thinking the accent ring is what renders.
+    expect(classes).toContain("focus-visible:outline-accent");
+  });
+
+  it("uses one ring for both, so the two controls cannot drift apart", () => {
+    const html = render(state("streaming"), {
+      focus: { available: true },
+      torch: { available: true, on: true },
+    });
+    for (const classes of [focusTapClasses(html)!, buttonClasses(html, "Torch on")!]) {
+      // Every stroke is a literal, so neither control can be re-derived under by a palette
+      // change the way the guide box was (Z4), and both themes get the same ring.
+      const ring = classes.filter((name) => name.startsWith("focus-visible:shadow-"));
+      expect(ring).toEqual([RING_SHADOW]);
+    }
+  });
+});
+
+/**
+ * §9-S1: "tap-to-refocus only if the platform supports `focusMode` constraints (otherwise
+ * nothing)". §11 is the reason for the second half — focus constraints are inconsistent
+ * across browsers and must degrade to a hidden control, never to an error — and P7 is the
+ * reason it is nothing rather than a disabled button: a control that cannot work is worse
+ * than no control at all in a yard, in the dark, with gloves on.
+ */
+describe("§9-S1 — tap-to-refocus, where the platform has it", () => {
+  it("finds nothing to offer on a track that reports no capabilities at all", () => {
+    // iOS Safari: `getCapabilities` is absent, so `useScanner` passes `undefined`. This is
+    // the platform the whole "otherwise nothing" clause is written for.
+    expect(pickFocusMode(undefined)).toBeNull();
+  });
+
+  it("finds nothing to offer when the capabilities name no focus mode", () => {
+    // A camera that reports a lamp and nothing else still gets a torch button and no tap
+    // target: the two capabilities are read off one call and answered separately.
+    expect(pickFocusMode({})).toBeNull();
+    expect(pickFocusMode({ torch: true })).toBeNull();
+    expect(pickFocusMode({ focusMode: [] })).toBeNull();
+    expect(pickFocusMode({ focusMode: ["none"] })).toBeNull();
+  });
+
+  it("ignores a focusMode that is not a list of modes", () => {
+    // §11: inconsistent across browsers. A key reported as a bare string would throw inside
+    // the camera-start path, which would turn a missing feature into a dead scanner.
+    expect(pickFocusMode({ focusMode: "continuous" } as unknown as MediaTrackCapabilities)).toBe(
+      null,
+    );
+  });
+
+  it("asks for a single-shot refocus where the track offers one, and takes what it can", () => {
+    // Android Chrome reports the list; a tap means "focus on this, now", so a one-shot pass
+    // is the first choice, a restart of the continuous loop the second, and pinning focus
+    // where it is the most a track offering only `manual` can do with a tap.
+    expect(pickFocusMode({ focusMode: ["continuous", "single-shot", "manual"] })).toBe(
+      "single-shot",
+    );
+    expect(pickFocusMode({ focusMode: ["continuous", "manual"] })).toBe("continuous");
+    expect(pickFocusMode({ focusMode: ["manual"] })).toBe("manual");
+  });
+
+  it("renders no tap target at all when the platform reported no mode", () => {
+    // The iOS screen, and the one every other test in this file renders: not a disabled
+    // button, not an inert overlay — nothing (P7).
+    for (const machineState of [state("streaming"), candidate(VIN_A)]) {
+      const html = render(machineState);
+      expect(focusTap(html)).toBeNull();
+      expect(html).not.toContain(TAP_TO_FOCUS);
+    }
+  });
+
+  it("makes the whole preview the target while the user is aiming", () => {
+    // §6.1 floors a target at 48 px and the tap is aimed at the label the user is already
+    // pointing at, so the target is the preview rather than a small button beside it.
+    for (const machineState of [state("streaming"), candidate(VIN_A)]) {
+      const tap = focusTap(render(machineState, { focus: { available: true } }));
+      expect(tap?.label).toBe(TAP_TO_FOCUS);
+      expect(tap?.attributes).toContain("inset-0");
+    }
+  });
+
+  it("takes a tap and nothing else", () => {
+    // N5 and §6.1 allow exactly one gesture: no long press, no swipe, no pinch. A handler
+    // for any of those renders to markup identical to none, so the element's own props are
+    // what is read here.
+    const handlers = Object.keys(
+      tapTarget(state("streaming"), { focus: { available: true } })!.props,
+    )
+      .filter((key) => key.startsWith("on"))
+      .sort();
+    expect(handlers).toEqual(["onClick"]);
+  });
+
+  it("wires the tap to the hook, which is the half no markup can show", () => {
+    let taps = 0;
+    const target = tapTarget(state("streaming"), {
+      focus: { available: true, refocus: () => (taps += 1) },
+    });
+    const onClick = target?.props.onClick;
+    expect(onClick).toBeTypeOf("function");
+    (onClick as () => void)();
+    expect(taps).toBe(1);
+  });
+
+  it("refuses to render at all without the focus API (R3-B)", () => {
+    // R3-B shipped built and unwired: `focus` was optional, `ScanScreen` never passed it, the
+    // default said "unavailable" and no tap target reached the running app on any platform.
+    // A required prop is the only guard that catches that, because the bug is an *absence* —
+    // there is no markup for a test to look at. `bun run typecheck` covers this file (tsconfig
+    // includes `src`), so making `focus` optional again leaves the directive below unused,
+    // which is a tsc error and reddens the §13.5 gate.
+    const { focus, ...withoutFocus } = viewProps(state("streaming"), {
+      focus: { available: true },
+    });
+    expect(focus.available).toBe(true);
+    // @ts-expect-error R3-B: omitting `focus` must not typecheck.
+    const props: ComponentProps<typeof CameraView> = withoutFocus;
+    expect(props.torch.available).toBe(false);
+  });
+
+  it("shows no tap target once there is nothing live to focus", () => {
+    // §6.3 stops the stream on `confirmed` and never started one in the other three, so a
+    // tap could only apply a constraint to a track that is gone.
+    for (const machineState of [
+      state("requesting"),
+      sighting(VIN_A, true),
+      state("idle", true),
+      { kind: "error", error: "permission_denied" } as ScanMachineState,
+    ]) {
+      expect(focusTap(render(machineState, { focus: { available: true } }))).toBeNull();
+    }
+  });
+
+  it("leaves the aim box inert and the torch its own tap", () => {
+    // The guide box is `pointer-events-none` on purpose (§6.1: it must never intercept a
+    // tap), and the tap surface sits after it, so neither takes the other's tap.
+    const html = render(state("streaming"), {
+      focus: { available: true },
+      torch: { available: true, on: false },
+    });
+    expect(html).toContain("pointer-events-none");
+    expect(buttons(html)).toContain("Torch off");
+    expect(focusTap(html)?.label).toBe(TAP_TO_FOCUS);
   });
 });
 

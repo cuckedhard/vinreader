@@ -6,12 +6,20 @@ import type { BannerTone } from "../../ui/Banner";
 import { Button } from "../../ui/Button";
 import { VinDisplay } from "../../ui/VinDisplay";
 import type { ScanMachineState } from "./scanMachine";
-import type { TorchApi } from "./useScanner";
+import type { FocusApi, TorchApi } from "./useScanner";
 
 export interface CameraViewProps {
   state: ScanMachineState;
   videoRef: RefObject<HTMLVideoElement | null>;
   torch: TorchApi;
+  /**
+   * §9-S1's tap-to-refocus. Required, and deliberately: it was optional, no screen passed
+   * it, the default said "unavailable" and the feature was unreachable in the running app
+   * (R3-B). The platform gate belongs to `useScanner`, which reports `available: false`
+   * wherever no `focusMode` was reported — that is the §11 "otherwise nothing" branch, and
+   * it is not the same thing as a caller forgetting the prop.
+   */
+  focus: FocusApi;
   onRetry: () => void;
   onTypeInstead: () => void;
   /**
@@ -46,6 +54,80 @@ const HELD_FOR_CHECK = "Check this read.";
  * the wrong remedy while the banner below points at the right one is worse than silence.
  */
 const NOT_SAVED = "Not saved.";
+
+/**
+ * §6.4 has no line for §9-S1's tap-to-refocus, which only exists where the platform reports
+ * the capability. Supplied here (§0 rule 4), and it names the gesture rather than the
+ * machinery: the target is the whole preview, and a tap is the only gesture N5 allows.
+ */
+const TAP_TO_FOCUS = "Tap to focus";
+
+/**
+ * §6.1's aim box: a wide horizontal box (~90% × ~22%) because the target is a 1D barcode,
+ * with a `100vmax` spread shadow dimming everything outside it so the aim point survives
+ * glare.
+ *
+ * The stroke is a **pair** — a white core with a black ring immediately inside it — and not
+ * one palette colour. This is the only element in the app that sits over *arbitrary live
+ * video*, and no single colour contrasts with all of it. Measured the way Z4 measured
+ * (WCAG relative luminance), against the scrimmed surround outside the box (0.55 black over
+ * video, i.e. 0.45 × video) and against the raw video inside it, at video luminance
+ * 255 / 128 / 40, plus the worst case over all 256 levels:
+ *
+ *   `--accent`, dark theme      2.50 :  6.00 :  9.83   worst  2.50 (video 255)
+ *   `--accent`, light theme     1.67 :  1.44 :  2.35   worst  1.00 (video 180 — invisible)
+ *   white core vs. surround     4.76 : 11.44 : 18.73   worst  4.76 (video 255)
+ *   black ring vs. video       21.00 :  5.32 :  1.42   fades on dark video, where the white
+ *   white core vs. video        1.00 :  3.95 : 14.74   core reads that edge instead
+ *   white core vs. black ring  21.00 at every level
+ *
+ * So the outline holds ≥ 4.76:1 against the surround and ≥ 4.61:1 across the inner edge
+ * (worst at video 117), against the 3:1 floor for a non-text graphic — §6.1's 7:1 is a
+ * body-text floor and this is a graphic. Both strokes are literals rather than tokens, so
+ * the dark and light themes render the same box and the same numbers, and a future palette
+ * change cannot take the guide box with it. Not decoration: §12 rules out light-theme
+ * polish, and snow glare is the case §6.1 is written for.
+ */
+const GUIDE_BOX =
+  "h-[22%] w-[90%] rounded-[var(--radius)] border-2 border-white " +
+  "shadow-[inset_0_0_0_2px_#000,0_0_0_100vmax_rgba(0,0,0,0.55)]";
+
+/**
+ * §6.6 wants a visible focus ring, and the two controls inside the preview are the only ones
+ * in the app whose ring can land on live video. They share this one (R3-U), which is the same
+ * idea as `GUIDE_BOX`: a black stroke and a white stroke together, so whichever the background
+ * washes out, the other reads. Black sits outermost (0–2 px) and white inside it (2–5 px),
+ * because on the tap target it is the *inner* side that faces the scrimmed video.
+ *
+ * Drawn as an inset `box-shadow` rather than an `outline`, for two reasons that are not
+ * stylistic:
+ *
+ *  1. `src/index.css` ends with an **unlayered** `:focus-visible { outline: 3px solid
+ *     var(--accent); outline-offset: 2px }`. Tailwind's utilities live in `@layer utilities`,
+ *     and unlayered declarations beat layered ones whatever their specificity — so every
+ *     `focus-visible:outline-*` class in this repo is inert, including the one this ring
+ *     replaces. `box-shadow` is a property that rule does not set, so it lands.
+ *  2. The preview is `overflow-hidden` and the tap target fills its padding box, so any ring
+ *     drawn *outside* the target — which is what `outline-offset: 2px` does — is clipped
+ *     away entirely. Inset is the only ring that survives on that control.
+ *
+ * Measured as `GUIDE_BOX` was, sweeping all 256 video levels rather than three:
+ *
+ *   tap target, white edge vs. the scrimmed video   4.76 : 11.44 : 18.73 at video 255/128/40,
+ *                                                   worst **4.76** (video 255), both themes
+ *   torch, on its own `--bg-elev` fill              white 16.96 (dark) · black 19.02 (light),
+ *                                                   worst **16.96**, and video never reaches it
+ *   white vs. black, inside the ring                21.00 everywhere
+ *
+ * against the 2.50 (dark) / 1.00 (light, at video 180) the `--accent` ring measures over the
+ * same scrim, and WCAG's 3:1 floor for a focus indicator. `focus-visible:outline-none` turns
+ * off Tailwind's own outline via `--tw-outline-style`, which is order-independent; it cannot
+ * turn off the unlayered global rule, so the torch still draws a faint accent halo outside
+ * itself until that rule is scoped. Reported, not fixed here — `src/index.css` is not this
+ * component's to edit.
+ */
+const FOCUS_RING =
+  "focus-visible:outline-none focus-visible:shadow-[inset_0_0_0_2px_#000,inset_0_0_0_5px_#fff]";
 
 /**
  * Whether a confirmed read is being held back rather than saved (D03). It uses the §4.3
@@ -134,6 +216,7 @@ export function CameraView({
   state,
   videoRef,
   torch,
+  focus,
   onRetry,
   onTypeInstead,
   unsaved = false,
@@ -176,10 +259,27 @@ export function CameraView({
             aria-hidden="true"
             className="pointer-events-none absolute inset-0 flex items-center justify-center"
           >
-            {/* The wide box matches a 1D barcode on a door-jamb label; the spread
-                shadow dims everything outside it so the aim point survives glare. */}
-            <div className="h-[22%] w-[90%] rounded-[var(--radius)] border-2 border-accent shadow-[0_0_0_100vmax_rgba(0,0,0,0.55)]" />
+            {/* Shape, scrim and the two-tone stroke are all documented on GUIDE_BOX. */}
+            <div className={GUIDE_BOX} />
           </div>
+        ) : null}
+
+        {focus.available && aiming ? (
+          // §9-S1: tap-to-refocus, and only where the platform reported a focusMode — iOS
+          // Safari reports none and gets nothing here (§11). The whole preview is the
+          // target, because the tap is aimed at the label the user is already pointing at
+          // and §6.1 floors a target at 48 px; it is a plain tap, never a long press or a
+          // pinch (N5). It comes after the guide box, which stays inert and takes no tap of
+          // its own, and before the torch, which keeps its own.
+          <button
+            type="button"
+            onClick={focus.refocus}
+            className={"absolute inset-0 h-full w-full cursor-pointer bg-transparent " + FOCUS_RING}
+          >
+            <span className="absolute bottom-3 left-3 inline-flex min-h-[var(--tap)] items-center rounded-[var(--radius)] border border-border bg-bg-elev px-4 text-base font-bold text-fg">
+              {TAP_TO_FOCUS}
+            </span>
+          </button>
         ) : null}
 
         {torch.available ? (
@@ -187,7 +287,7 @@ export function CameraView({
             variant="secondary"
             onClick={torch.toggle}
             aria-pressed={torch.on}
-            className="absolute right-3 bottom-3 px-4"
+            className={`absolute right-3 bottom-3 px-4 ${FOCUS_RING}`}
           >
             {torch.on ? "Torch on" : "Torch off"}
           </Button>

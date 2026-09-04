@@ -81,6 +81,9 @@ const chaosActionArb: fc.Arbitrary<ScanAction> = fc.oneof(
       atMs: chaosTime,
     }),
   }),
+  // Z9's timer, drawn like everything else here: a tick from any moment, in any state,
+  // including the ones where the hook would never have armed one.
+  fc.record({ type: fc.constant("tick" as const), atMs: chaosTime }),
   fc.constant<ScanAction>({ type: "track_ended" }),
   fc.record({ type: fc.constant("hidden" as const), atMs: chaosTime }),
   fc.record({
@@ -103,6 +106,7 @@ const chaosArb = fc.array(chaosActionArb, { minLength: 20, maxLength: 60, size: 
 type Step =
   | { k: "decode"; vin: string; dt: number }
   | { k: "accept"; vin: string; dt: number }
+  | { k: "tick"; dt: number }
   | { k: "hidden"; dt: number }
   | { k: "visible"; dt: number }
   | { k: "failed"; error: ScanError }
@@ -143,6 +147,15 @@ const stepArb: fc.Arbitrary<Step> = fc.oneof(
     weight: 1,
   },
   {
+    // Z9: the hook arms this while a candidate stands, so on a device it lands a beat after
+    // one — but the reducer must answer for it wherever it arrives.
+    arbitrary: fc.record({
+      k: fc.constant("tick" as const),
+      dt: fc.integer({ min: 0, max: 2_500 }),
+    }),
+    weight: 2,
+  },
+  {
     arbitrary: fc.record({ k: fc.constant("failed" as const), error: fc.constantFrom(...ERRORS) }),
     weight: 1,
   },
@@ -172,6 +185,9 @@ function toSession(steps: readonly Step[]): ScanAction[] {
         break;
       case "accept":
         out.push({ type: "accepted", vin: step.vin, atMs: clock });
+        break;
+      case "tick":
+        out.push({ type: "tick", atMs: clock });
         break;
       case "hidden":
         out.push({ type: "hidden", atMs: clock });

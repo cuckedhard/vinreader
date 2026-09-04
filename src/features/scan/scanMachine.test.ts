@@ -184,6 +184,58 @@ describe("scanReducer — two-read agreement", () => {
   });
 });
 
+describe("scanReducer — the agreement window running out (Z9)", () => {
+  const candidate = run([saw(VIN_A, 1000)], streaming());
+
+  it("returns a candidate to streaming once the window has passed", () => {
+    // §6.3 gives agreement 1.5 s, and until Z9 nothing left `candidate` when it expired:
+    // lowering the phone after one read left "Reading… hold steady." up over a live preview
+    // of nothing. §6.4's aiming line is the honest one from that moment on.
+    const machine = scanReducer(candidate, { type: "tick", atMs: 1000 + CONFIRM_WINDOW_MS + 1 });
+    expect(machine.state).toEqual({ kind: "streaming" });
+  });
+
+  it("keeps the candidate for the whole window, including its last millisecond", () => {
+    // The bound is inclusive, exactly as the two-read comparison next to it is: a second
+    // frame landing on 1500 still confirms, so a tick landing there must not have thrown the
+    // candidate away first. Identity, because a reading the machine ignores must not
+    // re-render the scan screen either.
+    for (const atMs of [1000, 1001, 1000 + CONFIRM_WINDOW_MS]) {
+      expect(scanReducer(candidate, { type: "tick", atMs })).toBe(candidate);
+    }
+  });
+
+  it("lapses a candidate the clock stepped back under", () => {
+    // Two-sided like every other §6.3 window (A-17). A tick stamped before the candidate
+    // means the clock moved, and that candidate can no longer confirm against anything —
+    // a later sighting measured against a future stamp starts a fresh window — so leaving
+    // the line up would be the same untruth in the other direction.
+    expect(scanReducer(candidate, { type: "tick", atMs: 999 }).state).toEqual({
+      kind: "streaming",
+    });
+  });
+
+  it.each([
+    ["idle", initialScanMachine],
+    ["requesting", run([MOUNT])],
+    ["streaming", streaming()],
+    ["confirmed", confirmed()],
+    ["error", run([MOUNT, { type: "stream_failed", error: "permission_denied" }])],
+  ])("ignores a tick while %s", (_kind, machine) => {
+    // Only a candidate is waiting on the window. A confirmed read in particular is waiting
+    // on the *user*, and a timer must never take that decision away from them.
+    expect(scanReducer(machine, { type: "tick", atMs: 60_000 })).toBe(machine);
+  });
+
+  it("writes nothing when a read lapses, so the same label reads again at once", () => {
+    // §6.3 records a cooldown on acceptance alone. A lapse is the opposite of an acceptance:
+    // nothing was persisted, so raising the phone again must confirm on the next two frames.
+    const lapsed = scanReducer(candidate, { type: "tick", atMs: 3000 });
+    expect(lapsed.cooldown).toEqual({});
+    expect(run([saw(VIN_A, 4000), saw(VIN_A, 4200)], lapsed).state.kind).toBe("confirmed");
+  });
+});
+
 describe("scanReducer — decodes that must be ignored", () => {
   it.each([
     ["idle", initialScanMachine],
@@ -567,10 +619,25 @@ function drive(moves: readonly Move[]): Session {
     dispatch(MOUNT);
     dispatch(STARTED);
   };
+  /**
+   * The timer `useScanner` arms while a candidate stands (Z9). It is armed from the
+   * sighting's own stamp and cleared by anything that replaces or drops the candidate, so
+   * the only firings that reach the reducer are the ones where nothing happened for the
+   * whole §6.3 window — which is exactly the phone being lowered mid-read. The driver fires
+   * it where the hook would: on the way to the next thing, once its deadline is behind.
+   */
+  const lapseIfDue = (): void => {
+    const { state } = machine;
+    if (state.kind !== "candidate") return;
+    const dueAt = state.sighting.atMs + CONFIRM_WINDOW_MS + 1;
+    if (dueAt > clock) return;
+    dispatch({ type: "tick", atMs: dueAt });
+  };
 
   openScanScreen();
   for (const move of moves) {
     if ("dt" in move) clock += move.dt;
+    lapseIfDue();
     switch (move.k) {
       case "read":
         dispatch(saw(VINS[aimed]!, clock));
@@ -622,10 +689,18 @@ describe("scanReducer — properties", () => {
     // sit at about half of each, so this states "the generator still gets there" rather
     // than a fixed count. The same measurement over the generator this replaced: nine live
     // decodes, zero confirmations, zero cooldown decisions.
+    //
+    // Z9 added the fifth count and barely moved the rest: 105 candidates lapsed, while
+    // confirmations (279), writes (225) and cooled (841) came back bit-identical, because a
+    // candidate the timer drops is one no later frame could have confirmed anyway —
+    // anything arriving after the deadline is outside the window and starts a fresh
+    // candidate either way. Cooled-after-remount went 439 → 440: one reading is now dropped
+    // on a screen that has gone back to `streaming` instead of on a stale candidate.
     let confirmations = 0;
     let writes = 0;
     let cooled = 0;
     let cooledAfterRemount = 0;
+    let lapsed = 0;
     for (const moves of fc.sample(planArb, { numRuns: 200, seed: 0x5c9_3001 })) {
       const session = drive(moves);
       writes += session.writes.length;
@@ -635,6 +710,9 @@ describe("scanReducer — properties", () => {
         if (turn.after.state.kind === "confirmed" && turn.before.state.kind !== "confirmed") {
           confirmations += 1;
         }
+        // Z9: the phone lowered mid-read, which is the only way a tick reaches the reducer
+        // with anything to do. Counted so a later edit cannot quietly stop generating it.
+        if (turn.action.type === "tick" && turn.after !== turn.before) lapsed += 1;
         if (turn.action.type !== "decoded" || turn.after !== turn.before) return;
         const acceptedAt = turn.before.cooldown[turn.action.sighting.vin];
         if (acceptedAt === undefined || turn.before.hiddenAtMs !== null) return;
@@ -648,6 +726,7 @@ describe("scanReducer — properties", () => {
     expect(writes).toBeGreaterThan(110);
     expect(cooled).toBeGreaterThan(400);
     expect(cooledAfterRemount).toBeGreaterThan(200);
+    expect(lapsed).toBeGreaterThan(50);
   });
 
   it("never reaches an unknown state and only grows the cooldown on acceptance", () => {

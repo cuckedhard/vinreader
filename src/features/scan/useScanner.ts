@@ -22,7 +22,7 @@ import { extractVin } from "../../lib/vin/extractVin";
 import { buildScanHints, toSymbology } from "../../lib/vin/symbologies";
 import type { ScanError } from "../../lib/vin/types";
 import { cooldownStore } from "./cooldownStore";
-import { scanReducer, startingScanMachine } from "./scanMachine";
+import { CONFIRM_WINDOW_MS, scanReducer, startingScanMachine } from "./scanMachine";
 import type { ScanMachineState } from "./scanMachine";
 
 export interface TorchApi {
@@ -31,22 +31,61 @@ export interface TorchApi {
   toggle: () => void;
 }
 
+/** §9-S1's tap-to-refocus. `available` is false wherever the platform reports no mode. */
+export interface FocusApi {
+  available: boolean;
+  refocus: () => void;
+}
+
 export interface ScannerApi {
   state: ScanMachineState;
   videoRef: RefObject<HTMLVideoElement | null>;
   torch: TorchApi;
+  focus: FocusApi;
   retry: () => void;
   rescan: () => void;
   accept: (vin: string) => void;
 }
 
-/** `torch` is absent from the standard MediaTrack types; §6.1 gates the button on it. */
-interface TorchCapabilities extends MediaTrackCapabilities {
+/**
+ * Neither capability is in the standard MediaTrack types. §6.1 gates the torch button on
+ * `torch`; §9-S1 gates tap-to-refocus on `focusMode`, which is a list of the modes the
+ * track will accept rather than a flag.
+ */
+interface TrackCapabilities extends MediaTrackCapabilities {
   torch?: boolean;
+  focusMode?: string[];
 }
 
 interface TorchConstraintSet extends MediaTrackConstraintSet {
   torch: boolean;
+}
+
+interface FocusConstraintSet extends MediaTrackConstraintSet {
+  focusMode: string;
+}
+
+/**
+ * The modes a tap may ask for, in the order a tap means. `single-shot` re-runs autofocus
+ * once, which is the gesture itself; `continuous` restarts the running loop on the scene the
+ * user just aimed at; `manual` pins focus where it is, the most a device offering nothing
+ * else can do with a tap. §9-S1 wants the control "only if the platform supports focusMode
+ * constraints (otherwise nothing)", and §11 makes that absence the rule rather than the
+ * exception: Android Chrome reports some subset of these, iOS Safari reports no key at all.
+ */
+const FOCUS_MODES = ["single-shot", "continuous", "manual"] as const;
+
+/**
+ * The mode a tap would apply, or `null` where the platform offers none — which is also what
+ * a track with no `getCapabilities` at all reports. Pure, so the §11 degradation is testable
+ * without a camera. `null` means no control is rendered, never a dead one (P7).
+ */
+export function pickFocusMode(capabilities: TrackCapabilities | undefined): string | null {
+  const modes = capabilities?.focusMode;
+  // A browser that reports the key as something other than a list is telling us nothing we
+  // can act on, and `includes` on it would throw inside the camera-start path.
+  if (!Array.isArray(modes)) return null;
+  return FOCUS_MODES.find((mode) => modes.includes(mode)) ?? null;
 }
 
 /** §6.3, verbatim. */
@@ -156,6 +195,7 @@ export function useScanner(options: {
   const trackRef = useRef<MediaStreamTrack | null>(null);
   const [torchAvailable, setTorchAvailable] = useState(false);
   const [torchOn, setTorchOn] = useState(false);
+  const [focusMode, setFocusMode] = useState<string | null>(null);
   const pageHidden = useSyncExternalStore(subscribeVisibility, isPageHidden);
 
   const handleTrackEnded = useCallback(() => {
@@ -175,6 +215,9 @@ export function useScanner(options: {
     if (video !== null) video.srcObject = null;
     setTorchAvailable(false);
     setTorchOn(false);
+    // The next track answers the capability question again; until it does there is nothing
+    // to focus, so the tap target goes with the stream (§11).
+    setFocusMode(null);
   }, [handleTrackEnded]);
 
   const handleResult = useCallback((result: Result | undefined, error: unknown) => {
@@ -279,12 +322,15 @@ export function useScanner(options: {
           track.addEventListener("ended", handleTrackEnded);
           const capabilities =
             typeof track.getCapabilities === "function"
-              ? (track.getCapabilities() as TorchCapabilities)
+              ? (track.getCapabilities() as TrackCapabilities)
               : undefined;
           // §6.1: the button appears when the capabilities *report* torch, which is the
           // value and not the key — Chrome publishes `torch: false` for a camera with no
           // lamp. iOS Safari omits the key entirely. Neither gets a dead control (P7).
           setTorchAvailable(capabilities?.torch === true);
+          // §9-S1's tap-to-refocus, gated on the same one call: a platform that names no
+          // focus mode gets no tap target at all rather than a tap that does nothing.
+          setFocusMode(pickFocusMode(capabilities));
         }
         dispatch({ type: "stream_started" });
       } catch (error) {
@@ -339,6 +385,46 @@ export function useScanner(options: {
     [torchAvailable, torchOn, toggle],
   );
 
+  const refocus = useCallback(() => {
+    const track = trackRef.current;
+    if (track === null || focusMode === null) return;
+    const focusSet: FocusConstraintSet = { focusMode };
+    const constraints: MediaTrackConstraints = { advanced: [focusSet] };
+    async function apply(target: MediaStreamTrack) {
+      try {
+        await target.applyConstraints(constraints);
+      } catch {
+        // §11: focus constraints are inconsistent across browsers and degrade to nothing,
+        // never to an error. A refused tap leaves the preview exactly as it was, and the
+        // user's remedy — move the phone, tap again — is the same either way.
+      }
+    }
+    void apply(track);
+  }, [focusMode]);
+
+  const focus = useMemo<FocusApi>(
+    () => ({ available: focusMode !== null, refocus }),
+    [focusMode, refocus],
+  );
+
+  // §6.3 gives agreement 1.5 s and nothing reported it running out (Z9). The deadline is
+  // read off the sighting the machine is holding, so a second frame — which replaces that
+  // sighting and re-runs this effect — restarts the window rather than inheriting it.
+  const candidateAtMs = machine.state.kind === "candidate" ? machine.state.sighting.atMs : null;
+
+  useEffect(() => {
+    // A disabled scanner dispatches nothing, and a hidden tab has already had its candidate
+    // dropped by §6.3's `hidden`, so there is nothing left to lapse in either case.
+    if (!enabled || pageHidden || candidateAtMs === null) return;
+    // One millisecond past the window, because §6.3's bound is inclusive: a tick landing on
+    // it is still inside it. Clamped at zero for a deadline that is already behind us.
+    const delay = Math.max(candidateAtMs + CONFIRM_WINDOW_MS + 1 - Date.now(), 0);
+    const timer = window.setTimeout(() => dispatch({ type: "tick", atMs: Date.now() }), delay);
+    // Cleared when the candidate changes or goes, when the tab hides, and on unmount: a
+    // timer that outlived the screen would dispatch into a machine nobody is showing.
+    return () => window.clearTimeout(timer);
+  }, [enabled, pageHidden, candidateAtMs]);
+
   const retry = useCallback(() => {
     dispatch({ type: "retry", secureContext: window.isSecureContext });
   }, []);
@@ -355,5 +441,5 @@ export function useScanner(options: {
     dispatch({ type: "accepted", vin, atMs });
   }, []);
 
-  return { state: machine.state, videoRef, torch, retry, rescan, accept };
+  return { state: machine.state, videoRef, torch, focus, retry, rescan, accept };
 }

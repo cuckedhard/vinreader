@@ -52,7 +52,7 @@ export function ScanScreen() {
     },
     [navigate],
   );
-  const { state, videoRef, torch, retry, rescan, accept } = useScanner({
+  const { state, videoRef, torch, focus, retry, rescan, accept } = useScanner({
     enabled: mode === "camera",
     onCarrier: handleCarrier,
   });
@@ -145,6 +145,7 @@ export function ScanScreen() {
             state={state}
             videoRef={videoRef}
             torch={torch}
+            focus={focus}
             onRetry={retry}
             onTypeInstead={showManual}
             unsaved={error !== null}

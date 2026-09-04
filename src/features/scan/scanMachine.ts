@@ -46,6 +46,11 @@ export type ScanAction =
   | { type: "stream_started" }
   | { type: "stream_failed"; error: ScanError }
   | { type: "decoded"; sighting: ScanSighting }
+  /**
+   * The §6.3 agreement window running out under a standing candidate. The hook owns the
+   * timer and stamps the instant; the reducer only compares it, so P3 holds.
+   */
+  | { type: "tick"; atMs: number }
   | { type: "track_ended" }
   | { type: "hidden"; atMs: number }
   | { type: "visible"; atMs: number; secureContext: boolean }
@@ -141,6 +146,23 @@ export function scanReducer(machine: ScanMachine, action: ScanAction): ScanMachi
       // The confirming sighting is the one kept: its raw bytes are what clinched
       // the read and its timestamp is the moment of confirmation.
       return { ...machine, state: { kind: confirms ? "confirmed" : "candidate", sighting } };
+    }
+
+    case "tick": {
+      // §6.3 gives agreement 1.5 s, and nothing used to leave `candidate` when it ran out:
+      // a phone lowered after a single read kept "Reading… hold steady." up over a live
+      // preview of nothing, which in the dark reads as "keep holding" for a beep that can
+      // never come (Z9). Function was never at stake — every sighting replaces the
+      // candidate, so a stale one cannot confirm — but §6.1 makes that line the primary
+      // feedback, and it was telling the user something untrue.
+      if (machine.state.kind !== "candidate") return machine;
+      // Two-sided like every other §6.3 window: a tick stamped before the candidate means
+      // the clock moved, and that candidate can no longer confirm against anything either
+      // (a sighting measured against a future stamp starts a fresh window), so the line
+      // would be as untrue in that direction.
+      return isWithin(action.atMs - machine.state.sighting.atMs, CONFIRM_WINDOW_MS)
+        ? machine
+        : { ...machine, state: { kind: "streaming" } };
     }
 
     case "track_ended":
