@@ -225,18 +225,18 @@ Over 4200 frames: `canvas` 2839 correct, `rgb` 2839 correct — 0 read only by `
 
 | Scope | Decodes | Mean ms | p95 ms |
 |---|---:|---:|---:|
-| canvas: all | 4200 | 21.4 | 87.9 |
-| canvas: clean | 1400 | 7.7 | 11.7 |
-| canvas: moderate | 1400 | 21.5 | 107.4 |
-| canvas: severe | 1400 | 34.9 | 76.1 |
-| yuv: all | 4200 | 21.0 | 87.6 |
-| yuv: clean | 1400 | 7.1 | 10.6 |
-| yuv: moderate | 1400 | 21.1 | 109.2 |
-| yuv: severe | 1400 | 34.8 | 73.7 |
-| rgb: all | 4200 | 16.2 | 80.7 |
-| rgb: clean | 1400 | 4.0 | 4.9 |
-| rgb: moderate | 1400 | 17.3 | 93.9 |
-| rgb: severe | 1400 | 27.2 | 59.0 |
+| canvas: all | 4200 | 21.6 | 88.1 |
+| canvas: clean | 1400 | 7.8 | 12.3 |
+| canvas: moderate | 1400 | 21.9 | 110.0 |
+| canvas: severe | 1400 | 35.1 | 77.2 |
+| yuv: all | 4200 | 21.4 | 88.3 |
+| yuv: clean | 1400 | 7.3 | 11.1 |
+| yuv: moderate | 1400 | 21.4 | 109.9 |
+| yuv: severe | 1400 | 35.5 | 78.5 |
+| rgb: all | 4200 | 16.4 | 81.8 |
+| rgb: clean | 1400 | 4.1 | 5.1 |
+| rgb: moderate | 1400 | 17.4 | 93.7 |
+| rgb: severe | 1400 | 27.8 | 60.2 |
 
 Times cover the ZXing read only — binarisation and the decode — and exclude getting the frame onto the canvas, because the app never parses a PNG either: it draws a video frame it already has. Timings are the one part of this report that is not bit-reproducible; no threshold rides on them. §13.4's mean **time-to-confirm** is not here: confirmation is two agreeing reads inside §6.3's window, which run (b) — the Playwright fake-camera pass — is what exercises. This run measures one frame at a time.
 

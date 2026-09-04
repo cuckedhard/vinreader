@@ -1208,74 +1208,74 @@
     {
       "scope": "canvas: all",
       "decodes": 4200,
-      "meanMs": 21.376166666664094,
-      "p95Ms": 87.90000000037253
+      "meanMs": 21.607357142848805,
+      "p95Ms": 88.10000000149012
     },
     {
       "scope": "canvas: clean",
       "decodes": 1400,
-      "meanMs": 7.6930000000127725,
-      "p95Ms": 11.700000001117587
+      "meanMs": 7.844642857124231,
+      "p95Ms": 12.300000000745058
     },
     {
       "scope": "canvas: moderate",
       "decodes": 1400,
-      "meanMs": 21.513928571409945,
-      "p95Ms": 107.40000000037253
+      "meanMs": 21.899357142874173,
+      "p95Ms": 110
     },
     {
       "scope": "canvas: severe",
       "decodes": 1400,
-      "meanMs": 34.921571428569564,
-      "p95Ms": 76.09999999962747
+      "meanMs": 35.078071428548014,
+      "p95Ms": 77.20000000111759
     },
     {
       "scope": "yuv: all",
       "decodes": 4200,
-      "meanMs": 20.979047619049837,
-      "p95Ms": 87.59999999962747
+      "meanMs": 21.39961904761958,
+      "p95Ms": 88.29999999888241
     },
     {
       "scope": "yuv: clean",
       "decodes": 1400,
-      "meanMs": 7.096071428558124,
-      "p95Ms": 10.600000001490116
+      "meanMs": 7.291500000006386,
+      "p95Ms": 11.099999999627471
     },
     {
       "scope": "yuv: moderate",
       "decodes": 1400,
-      "meanMs": 21.062142857134873,
-      "p95Ms": 109.19999999925494
+      "meanMs": 21.409714285723332,
+      "p95Ms": 109.90000000037253
     },
     {
       "scope": "yuv: severe",
       "decodes": 1400,
-      "meanMs": 34.77892857145651,
-      "p95Ms": 73.69999999925494
+      "meanMs": 35.49764285712902,
+      "p95Ms": 78.5
     },
     {
       "scope": "rgb: all",
       "decodes": 4200,
-      "meanMs": 16.202708960714354,
-      "p95Ms": 80.71577400001115
+      "meanMs": 16.441896017380863,
+      "p95Ms": 81.8272280000092
     },
     {
       "scope": "rgb: clean",
       "decodes": 1400,
-      "meanMs": 4.042099977142992,
-      "p95Ms": 4.908216999989236
+      "meanMs": 4.122288962856853,
+      "p95Ms": 5.123690999986138
     },
     {
       "scope": "rgb: moderate",
       "decodes": 1400,
-      "meanMs": 17.338037539999668,
-      "p95Ms": 93.93970600000466
+      "meanMs": 17.398277724285613,
+      "p95Ms": 93.6617799999949
     },
     {
       "scope": "rgb: severe",
       "decodes": 1400,
-      "meanMs": 27.22798936500041,
-      "p95Ms": 58.99059899999702
+      "meanMs": 27.80512136500014,
+      "p95Ms": 60.21476900001289
     }
   ],
   "delta": [
@@ -2408,7 +2408,7 @@
       "format": "CODE_128",
       "extracted": "EH8U2YHX60HU7VAWD",
       "checkDigitValid": false,
-      "ms": 3.900000000372529,
+      "ms": 6.900000000372529,
       "error": null,
       "verdict": "false_accept",
       "missReason": null
@@ -2428,7 +2428,7 @@
       "format": "CODE_128",
       "extracted": "EH8U2YHX60HU7VAWD",
       "checkDigitValid": false,
-      "ms": 3.300000000745058,
+      "ms": 3.299999998882413,
       "error": null,
       "verdict": "false_accept",
       "missReason": null
@@ -2448,7 +2448,7 @@
       "format": "CODE_128",
       "extracted": "EH8U2YHX60HU7VAWD",
       "checkDigitValid": false,
-      "ms": 2.4984870000043884,
+      "ms": 2.980937000014819,
       "error": null,
       "verdict": "false_accept",
       "missReason": null
