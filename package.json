@@ -16,7 +16,9 @@
     "seed:wmi": "bun run scripts/build-wmi-seed.ts",
     "test:e2e": "playwright test",
     "bench:camera": "python3 bench/make-fake-camera.py && node bench/make-qr-camera.mjs \"$(bun -e 'import{encodePayload}from\"./src/lib/payload/codec\";console.log(`https://vinrelay.example/#/i?d=${encodePayload({v:1,vin:\"1HGCM82633A004352\",y:\"2003\",mk:\"HONDA\",md:\"Accord\",u:\"UNIT-42\"})}`)')\" bench/fake-qr.y4m",
-    "pretest:e2e": "python3 bench/make-fake-camera.py && node bench/make-qr-camera.mjs \"$(bun -e 'import{encodePayload}from\"./src/lib/payload/codec\";console.log(`https://vinrelay.example/#/i?d=${encodePayload({v:1,vin:\"1HGCM82633A004352\",y:\"2003\",mk:\"HONDA\",md:\"Accord\",u:\"UNIT-42\"})}`)')\" bench/fake-qr.y4m"
+    "pretest:e2e": "python3 bench/make-fake-camera.py && node bench/make-qr-camera.mjs \"$(bun -e 'import{encodePayload}from\"./src/lib/payload/codec\";console.log(`https://vinrelay.example/#/i?d=${encodePayload({v:1,vin:\"1HGCM82633A004352\",y:\"2003\",mk:\"HONDA\",md:\"Accord\",u:\"UNIT-42\"})}`)')\" bench/fake-qr.y4m",
+    "bench": "bun run bench/run.ts",
+    "bench:quick": "bun run bench/run.ts --quick --count 8"
   },
   "dependencies": {
     "@zxing/browser": "^0.2.1",
@@ -30,6 +32,7 @@
     "zod": "^4.5.4"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
     "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.62.1",
     "@tailwindcss/vite": "^4.3.3",
@@ -39,12 +42,15 @@
     "@vitejs/plugin-basic-ssl": "^2.3.0",
     "@vitejs/plugin-react": "^6.1.1",
     "@vitest/coverage-v8": "4.1.11",
+    "axe-core": "^4.13.0",
+    "bwip-js": "^4.11.4",
     "eslint": "^10.9.1",
     "eslint-plugin-react-hooks": "^7.0.0",
     "fake-indexeddb": "^6.2.2",
     "fast-check": "^4.9.0",
     "globals": "^16.5.0",
     "prettier": "^3.9.6",
+    "sharp": "^0.35.4",
     "tailwindcss": "^4.3.3",
     "typescript": "6.0.3",
     "typescript-eslint": "^8.69.0",

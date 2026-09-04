@@ -19,5 +19,5 @@
     "noFallthroughCasesInSwitch": true,
     "noImplicitOverride": true
   },
-  "include": ["src", "scripts", "vite.config.ts", "vitest.config.ts"]
+  "include": ["src", "scripts", "bench", "vite.config.ts", "vitest.config.ts"]
 }
