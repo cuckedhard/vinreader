@@ -32,8 +32,8 @@ import { extractVin } from "../src/lib/vin/extractVin";
 import { BENCH_SYMBOLOGIES, buildCorpus } from "./corpus";
 import type { BenchSymbology, CorpusItem } from "./corpus";
 import { BENCH_FORMAT_NAMES, decodeImage, suppressedWarnings } from "./decode";
-import { TIERS, degrade } from "./degrade";
-import type { Tier } from "./degrade";
+import { SEVERE_EXTRAS, SEVERE_EXTRAS_DRAWN, TIERS, degrade, severeExtrasFor } from "./degrade";
+import type { SevereExtra, Tier } from "./degrade";
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -91,6 +91,8 @@ interface Attempt {
   tier: Tier;
   /** The exact seed handed to `degrade`, so a single row can be reproduced on its own. */
   seed: number;
+  /** Z5: which severe extras this frame drew, `SEVERE_EXTRAS` order. `null` off the tier. */
+  severeExtras: readonly SevereExtra[] | null;
   verdict: Verdict;
   missReason: MissReason | null;
   /** Raw decoder output, or null when nothing decoded. */
@@ -118,12 +120,16 @@ async function runAttempt(
   symbology: BenchSymbology,
   tier: Tier,
   seed: number,
+  forcedExtras: readonly SevereExtra[] | null,
 ): Promise<Attempt> {
+  // Resolved here rather than inside `degrade` so the report can say what each frame drew.
+  const severeExtras = tier === "severe" ? (forcedExtras ?? severeExtrasFor(seed)) : null;
   const base: Omit<Attempt, "verdict" | "missReason"> = {
     vin,
     symbology,
     tier,
     seed,
+    severeExtras,
     decoded: null,
     format: null,
     extracted: null,
@@ -134,7 +140,7 @@ async function runAttempt(
 
   let decoded;
   try {
-    decoded = await decodeImage(await degrade(png, tier, seed));
+    decoded = await decodeImage(await degrade(png, tier, seed, severeExtras ?? undefined));
   } catch (error) {
     // A fault is neither a hit nor an honest miss: it means the bench could not measure this
     // frame at all. It is surfaced rather than folded into the miss count.
@@ -195,7 +201,11 @@ interface Job {
 }
 
 /** Fixed-size worker pool. Results land at their job index, so output order is stable. */
-async function runAll(jobs: readonly Job[], runSeed: number): Promise<Attempt[]> {
+async function runAll(
+  jobs: readonly Job[],
+  runSeed: number,
+  forcedExtras: readonly SevereExtra[] | null,
+): Promise<Attempt[]> {
   const attempts = new Array<Attempt>(jobs.length);
   let next = 0;
   let done = 0;
@@ -208,7 +218,14 @@ async function runAll(jobs: readonly Job[], runSeed: number): Promise<Attempt[]>
       if (index >= jobs.length) return;
       const { item, tier } = jobs[index];
       const seed = attemptSeed(runSeed, item.vin, item.symbology, tier);
-      attempts[index] = await runAttempt(item.png, item.vin, item.symbology, tier, seed);
+      attempts[index] = await runAttempt(
+        item.png,
+        item.vin,
+        item.symbology,
+        tier,
+        seed,
+        forcedExtras,
+      );
       done += 1;
       if (done % step === 0 || done === jobs.length) {
         process.stderr.write(`bench: decoded ${done}/${jobs.length}\n`);
@@ -308,6 +325,12 @@ interface Options {
   json: string | null;
   quick: boolean;
   seed: number;
+  /**
+   * Z5 diagnostic: force every severe frame to carry exactly these extras instead of drawing
+   * `SEVERE_EXTRAS_DRAWN` of them. This is how the per-subset table in the ledger was
+   * measured, and a run using it is not measuring the tier — see `nonCanonical`.
+   */
+  severeExtras: SevereExtra[] | null;
 }
 
 const USAGE = `bun run bench [options]
@@ -317,6 +340,9 @@ const USAGE = `bun run bench [options]
   --tiers a,b          subset of ${TIERS.join(",")}
   --symbologies a,b    subset of ${BENCH_SYMBOLOGIES.join(",")}
   --seed N             run seed (default 0x${DEFAULT_SEED.toString(16)})
+  --severe-extras a,b  force the severe draw to exactly these (diagnostic; never writes
+                       the tracked report). Default: ${SEVERE_EXTRAS_DRAWN} of
+                       ${SEVERE_EXTRAS.join(",")} per frame, from the seed
   --json PATH          also write the raw numbers as JSON
   --help               this text
 `;
@@ -367,6 +393,7 @@ function parseArgs(argv: readonly string[]): Options | null {
   let json: string | null = null;
   let quick = false;
   let seed = DEFAULT_SEED;
+  let severeExtras: SevereExtra[] | null = null;
 
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -399,6 +426,9 @@ function parseArgs(argv: readonly string[]): Options | null {
       case "--seed":
         seed = parseSeed(value());
         break;
+      case "--severe-extras":
+        severeExtras = parseList(value(), SEVERE_EXTRAS, "--severe-extras");
+        break;
       case "--json":
         json = value();
         break;
@@ -415,6 +445,7 @@ function parseArgs(argv: readonly string[]): Options | null {
     json,
     quick,
     seed,
+    severeExtras,
   };
 }
 
@@ -440,6 +471,85 @@ function reproduce(attempt: Attempt): string {
     `degrade(await renderBarcode("${attempt.vin}", "${attempt.symbology}"), ` +
     `"${attempt.tier}", 0x${attempt.seed.toString(16)})`
   );
+}
+
+/**
+ * §13.4: "each a superset of the one before it. The ordering is load-bearing: §13.6's
+ * 99/90/70 ladder is meaningless if a lower tier is harder than a higher one, and it was."
+ *
+ * It was broken once, silently, for a whole slice, and nothing in the report said so — the
+ * numbers were there to be compared and no one compared them. So the run compares them and
+ * prints the answer. This is reported rather than added to the §13.6 failures: which
+ * thresholds fail a run is §13.6's list, not the bench's to extend, and on a small --quick
+ * cell two tiers that genuinely differ by 20 points can still cross by sampling noise.
+ */
+function orderingViolations(cells: readonly Cell[], tiers: readonly Tier[]): string[] {
+  const violations: string[] = [];
+  for (let i = 1; i < tiers.length; i += 1) {
+    const [easier, harder] = [tiers[i - 1], tiers[i]];
+    for (const cell of cells.filter((c) => c.tier === harder && c.attempts > 0)) {
+      const above = cells.find((c) => c.symbology === cell.symbology && c.tier === easier);
+      if (above === undefined || above.attempts === 0) continue;
+      if (cell.decodeRate > above.decodeRate) {
+        violations.push(
+          `${cell.symbology}: ${harder} ${pct(cell.decodeRate)} > ${easier} ` +
+            `${pct(above.decodeRate)}`,
+        );
+      }
+    }
+  }
+  return violations;
+}
+
+/**
+ * What the severe tier drew, for the report header. A forced list is a diagnostic and says
+ * so, because a table headed "severe" that measured something else is worse than no table.
+ */
+function severeDraw(options: Options): string {
+  if (options.severeExtras !== null) {
+    return `FORCED to ${options.severeExtras.join(" + ")} — diagnostic, not the tier`;
+  }
+  return `${SEVERE_EXTRAS_DRAWN} of ${SEVERE_EXTRAS.join(", ")}, drawn per frame from the seed`;
+}
+
+/**
+ * Decode rate per drawn subset (Z5). This is the evidence for `SEVERE_EXTRAS_DRAWN`, and it
+ * is regenerated by every run rather than written down once: if one extra starts dominating
+ * the tier again, this table is where it shows.
+ */
+function severeSubsetTable(
+  attempts: readonly Attempt[],
+  symbologies: readonly BenchSymbology[],
+): string[] {
+  const severe = attempts.filter((a) => a.tier === "severe" && a.severeExtras !== null);
+  if (severe.length === 0) return [];
+
+  const keys = [...new Set(severe.map((a) => (a.severeExtras ?? []).join(" + ")))].sort();
+  const out: string[] = [];
+  out.push("### Severe: what each frame drew");
+  out.push("");
+  out.push(`| Drawn extras | Frames | ${symbologies.join(" | ")} |`);
+  out.push(`|---|---:|${symbologies.map(() => "---:").join("|")}|`);
+  for (const key of keys) {
+    const rows = severe.filter((a) => (a.severeExtras ?? []).join(" + ") === key);
+    const cells = symbologies.map((symbology) => {
+      const cell = rows.filter((a) => a.symbology === symbology);
+      if (cell.length === 0) return "-";
+      return pct(cell.filter((a) => a.verdict === "hit").length / cell.length);
+    });
+    out.push(`| ${key} | ${rows.length} | ${cells.join(" | ")} |`);
+  }
+  out.push("");
+  out.push(
+    "§13.4 lists six degradations for `severe`; two of them — 50% scale and heavier grain — " +
+      "are harder settings of degradations `moderate` already applies, so they are on for " +
+      "every frame and the tier stays a strict superset of `moderate` whatever is drawn. " +
+      "The other four are drawn " +
+      `${SEVERE_EXTRAS_DRAWN} at a time (Z5): all four at once is not one bad photo, it is ` +
+      "every bad photo, and it left no cell above 57%.",
+  );
+  out.push("");
+  return out;
 }
 
 function markdownReport(
@@ -472,6 +582,7 @@ function markdownReport(
   out.push(`| Tiers | ${options.tiers.join(", ")} |`);
   out.push(`| Attempts | ${attempts.length} |`);
   out.push(`| Decoder hints (§4.6) | ${BENCH_FORMAT_NAMES.join(", ")}; TRY_HARDER |`);
+  out.push(`| Severe extras (Z5) | ${severeDraw(options)} |`);
   out.push(`| ZXing per-reader warnings swallowed | ${suppressedWarnings()} |`);
   out.push("");
   out.push(
@@ -488,17 +599,19 @@ function markdownReport(
     );
   } else {
     out.push(
-      `**${falseAccepts.length} FALSE ACCEPTS** in ${attempts.length} attempts ` +
+      `**${falseAccepts.length} FALSE ACCEPT${falseAccepts.length === 1 ? "" : "S"}** ` +
+        `in ${attempts.length} attempts ` +
         `(threshold ${FALSE_ACCEPT_THRESHOLD}). A wrong VIN accepted is an S1 blocker (§13.3).`,
     );
     out.push("");
     out.push(
-      "| Expected VIN | Returned VIN | Symbology | Tier | ZXing format | Check digit | Decoded text | Seed |",
+      "| Expected VIN | Returned VIN | Symbology | Tier | Drawn extras | ZXing format | Check digit | Decoded text | Seed |",
     );
-    out.push("|---|---|---|---|---|---|---|---|");
+    out.push("|---|---|---|---|---|---|---|---|---|");
     for (const a of falseAccepts) {
       out.push(
         `| \`${a.vin}\` | \`${a.extracted ?? ""}\` | ${a.symbology} | ${a.tier} | ` +
+          `${a.severeExtras === null ? "-" : a.severeExtras.join(" + ")} | ` +
           `${a.format ?? ""} | ${a.checkDigitValid === true ? "valid" : "invalid"} | ` +
           `\`${(a.decoded ?? "").replace(/\|/g, "\\|")}\` | \`0x${a.seed.toString(16)}\` |`,
       );
@@ -530,6 +643,14 @@ function markdownReport(
   out.push("Decode rate is end to end: the fraction of frames that produced the **correct** VIN");
   out.push("through ZXing and §4.2 `extractVin`, not the fraction that merely decoded.");
   out.push("");
+  const ordering = orderingViolations(cells, options.tiers);
+  out.push(
+    ordering.length === 0
+      ? `**Tier ordering holds** (§13.4): ${options.tiers.join(" >= ")} in every cell.`
+      : `**TIER ORDERING BROKEN** (§13.4) — a lower tier measured easier than a higher one, ` +
+          `so §13.6's ladder does not mean what it says: ${ordering.join("; ")}.`,
+  );
+  out.push("");
 
   out.push("### Detail");
   out.push("");
@@ -545,6 +666,8 @@ function markdownReport(
     );
   }
   out.push("");
+
+  out.push(...severeSubsetTable(attempts, options.symbologies));
 
   out.push("### Why the misses missed");
   out.push("");
@@ -628,6 +751,8 @@ function jsonReport(
         count: options.count,
         vins: vinCount,
         quick: options.quick,
+        severeExtras: options.severeExtras,
+        severeExtrasDrawn: SEVERE_EXTRAS_DRAWN,
         tiers: options.tiers,
         symbologies: options.symbologies,
         concurrency: CONCURRENCY,
@@ -703,7 +828,8 @@ async function main(): Promise<number> {
 
   process.stderr.write(
     `bench: seed 0x${options.seed.toString(16)}, ${options.count} VINs, ` +
-      `${options.symbologies.length} symbologies, ${options.tiers.length} tiers\n`,
+      `${options.symbologies.length} symbologies, ${options.tiers.length} tiers\n` +
+      `bench: severe extras — ${severeDraw(options)}\n`,
   );
 
   const corpus = await buildCorpus(options.count);
@@ -719,7 +845,7 @@ async function main(): Promise<number> {
     return 2;
   }
 
-  const attempts = await runAll(jobs, options.seed);
+  const attempts = await runAll(jobs, options.seed, options.severeExtras);
   const cells = summarise(attempts, options.symbologies, options.tiers);
   const timings: Timing[] = [
     timing("all", attempts),
@@ -732,18 +858,22 @@ async function main(): Promise<number> {
   ];
   const failures = checkThresholds(cells, attempts);
 
+  // A --quick run never writes the tracked full-corpus artifacts: the `bench` script
+  // hardcodes --json, so without this an 8-VIN loop overwrites the §13.6 criterion-4
+  // evidence through the flag instead of through the report path. --severe-extras is on
+  // the same footing for the same reason: it forces the tier to be something §13.4 does
+  // not define, so its numbers are a diagnostic and must not land in the tracked report.
+  const nonCanonical = options.quick || options.severeExtras !== null;
+
   await writeFile(
-    options.quick ? QUICK_REPORT_PATH : REPORT_PATH,
+    nonCanonical ? QUICK_REPORT_PATH : REPORT_PATH,
     markdownReport(options, cells, timings, attempts, vinCount, failures),
     "utf8",
   );
-  // A --quick run never writes the tracked full-corpus artifacts: the `bench` script
-  // hardcodes --json, so without this an 8-VIN loop overwrites the §13.6 criterion-4
-  // evidence through the flag instead of through the report path.
   const jsonPath =
     options.json === null
       ? null
-      : options.quick
+      : nonCanonical
         ? options.json.replace(/\.json$/, QUICK_JSON_SUFFIX)
         : options.json;
 
@@ -791,7 +921,7 @@ async function main(): Promise<number> {
   }
   const all = timings[0];
   lines.push(`  decode time: mean ${ms(all.meanMs)} ms, p95 ${ms(all.p95Ms)} ms`);
-  lines.push(`  report: ${options.quick ? QUICK_REPORT_PATH : REPORT_PATH}`);
+  lines.push(`  report: ${nonCanonical ? QUICK_REPORT_PATH : REPORT_PATH}`);
   if (jsonPath !== null) lines.push(`  json:   ${resolve(process.cwd(), jsonPath)}`);
   lines.push("");
   if (failures.length === 0) {

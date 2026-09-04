@@ -7,8 +7,8 @@
  *
  * Determinism (the bench is a gate, so a flaky number is worse than no number):
  * `degrade(png, tier, seed)` is a pure function of its arguments. Every random choice —
- * rotation angle, warp amount, glare band placement, noise field, JPEG quality — comes from
- * a seeded PRNG keyed by `(seed, purpose)`. There is no `Math.random`, no clock read, and no
+ * which severe extras the frame draws, rotation angle, warp amount, glare band placement,
+ * noise field, JPEG quality — comes from a seeded PRNG keyed by `(seed, purpose)`. There is no `Math.random`, no clock read, and no
  * ambient state. sharp's own operations (rotate, resize, blur, JPEG/PNG codecs) are
  * deterministic for a given input, and no metadata is written, so the output bytes are
  * stable across runs.
@@ -26,6 +26,52 @@ import sharp from "sharp";
 export type Tier = "clean" | "moderate" | "severe";
 
 export const TIERS: readonly Tier[] = ["clean", "moderate", "severe"];
+
+/**
+ * The four degradations §13.4 adds on top of `moderate` that are their own axis rather than
+ * a harder setting of one moderate already applies. `severe`'s other two additions — 50%
+ * scale and heavier grain — are intensifications of moderate's 70% scale and light noise,
+ * so they stay on for every sample and are not drawn (see `SEVERE_EXTRAS_DRAWN`).
+ */
+export type SevereExtra = "warp" | "glare" | "low_light" | "jpeg";
+
+export const SEVERE_EXTRAS: readonly SevereExtra[] = ["warp", "glare", "low_light", "jpeg"];
+
+/**
+ * How many of the four a severe sample carries (Z5).
+ *
+ * All four at once is not one bad photo, it is every bad photo, and a tier where everything
+ * fails measures nothing: it cannot tell a regression from the floor. Measured per subset
+ * size over 40 VINs (mean decode rate across the subsets of that size, which is the
+ * expectation of this draw — code_39 / code_39_i / code_128 / data_matrix / qr_code):
+ *
+ *   4 of 4    5.0  0.0  42.5  42.5   0.0
+ *   3 of 4   23.1 27.5  47.5  54.4  21.9
+ *   2 of 4   47.5 55.0  63.8  59.6  45.0
+ *   1 of 4   60.6 81.9  71.3  66.3  71.3
+ *   none     67.5 85.0  75.0 100.0 100.0   ← the tier's floor: moderate at severe's
+ *                                            scale and grain, before any extra
+ *
+ * 2 is the largest draw that leaves the tier able to measure. It costs 11–55 points against
+ * the floor, so the extras are visibly what is being measured, and it holds every cell
+ * between 45% and 64% — a band where a regression moves the number. At 3 the extras cost
+ * 28–78 points and three cells sit under 30%; at 4 three cells are at or near zero and none
+ * is above 43%, so most of the grid measures only whether anything survived at all. At 1 the
+ * extras cost code_39 seven points and the tier would be measuring its own floor.
+ *
+ * The full 200-VIN run with this draw is 51.0 / 45.5 / 59.0 / 55.0 / 43.5 (`report.md`).
+ *
+ * It does not make §13.6's 70% reachable, and it is not meant to: two facts in the sweep are
+ * about the decoder rather than the tier, and both are in the report — QR reads 0% whenever
+ * the warp is drawn, at any arc, because of the keystone inside it (see `warp`), and
+ * code_39's floor is already 67.5% before a single extra is applied.
+ *
+ * Ordering (§13.4, §13.6) is preserved by construction, not by luck: whatever is drawn,
+ * every severe sample still carries **every** moderate degradation at ≥ its moderate
+ * severity — blur σ1.5, rotation ±15°, scale 0.5 ≤ 0.7, grain σ5–8 ≥ σ2–4 — plus at least
+ * one degradation moderate never applies.
+ */
+export const SEVERE_EXTRAS_DRAWN = 2;
 
 /**
  * Every tunable in one place so the bench report can state exactly what "moderate" and
@@ -53,12 +99,13 @@ export const DEGRADE_PARAMS = {
      * Half-angle of the cylinder the label is wrapped around, radians. 0.15–0.3 rad is a
      * 9–17° arc across the frame — a door jamb, which is gently curved sheet metal.
      *
-     * It was 0.45–0.7 (a 26–40° arc). Measured with everything else in the tier
-     * neutralised, QR decodes 100% up to 0.15 and 0% at 0.45: ZXing locates a QR by three
-     * finder patterns and fits a planar perspective transform, and a cylinder is not one,
-     * so past a threshold the sampling grid lands off-module and nothing decodes. A 26°
-     * arc across a label is a pipe, not a jamb, and it put every 2D cell at zero by
-     * construction — which is what made the §13.6 severe threshold unreachable for them.
+     * It was 0.45–0.7 (a 26–40° arc), and the range stands where it is because 26° across a
+     * label is a pipe, not a jamb. **The decode argument first recorded for the change was
+     * wrong** and is corrected here rather than left to be reasoned from: it read the arc as
+     * the reason 2D died, and it is not. Measured with the keystone pinned to zero and the
+     * arc swept — 0.15, 0.225, 0.3, 0.45 rad — qr_code holds 97.5–100% and every other
+     * symbology moves by less than 3 points, i.e. the cylinder alone is nearly free even at
+     * the old 26°. What kills QR is the keystone beside it (see `keystone` and `warp`).
      */
     cylinderTheta: [0.15, 0.3],
     /**
@@ -66,6 +113,9 @@ export const DEGRADE_PARAMS = {
      * near edge. For a label of width W photographed from distance D at yaw φ, that fraction
      * is ≈ (W·sin φ)/D; a 10 cm label at 25 cm gives 0.12 at 18° and 0.28 at 45° off-axis —
      * the range someone gets crouched at an open door, unable to square up to the jamb.
+     *
+     * This is the knob that zeroes qr_code, and the range is not fitted to that — it is the
+     * pose the §13.4 tier describes, and ZXing's QR reader cannot hold it (see `warp`).
      */
     keystone: [0.12, 0.28],
     scale: 0.5,
@@ -113,17 +163,27 @@ interface Gray {
  *   luminance, sRGB PNG) as the other tiers, so a clean failure is a decoder problem and
  *   never a format problem.
  * - `moderate` — rotate ±15° on white, scale to 70%, defocus blur σ≈1.5, light sensor grain.
- * - `severe` — cylindrical + perspective warp, the same optical blur `moderate` applies
- *   (Z2: the tiers are ordered, so severe contains everything moderate does), scale to 50%,
- *   a glare band across the code,
- *   underexposure, heavier grain, low-quality JPEG.
+ * - `severe` — everything `moderate` applies (Z2: the tiers are ordered), with scale and
+ *   grain at their harsher severe settings, plus `SEVERE_EXTRAS_DRAWN` of the four
+ *   §13.4 extras — cylindrical + perspective warp, a glare band, underexposure, JPEG
+ *   artifacts — drawn from the seed (Z5).
  *
  * The pose depends only on the seed, not on the image, so every corpus item degraded with
- * seed 1 gets the *same* rotation and the same warp. Callers wanting a distribution rather
- * than a handful of poses must vary the seed per image (e.g. the item's index), otherwise a
- * cell of 200 images is really a sample of however many distinct seeds were used.
+ * seed 1 gets the *same* rotation, the same warp and the same draw. Callers wanting a
+ * distribution rather than a handful of poses must vary the seed per image (e.g. the item's
+ * index), otherwise a cell of 200 images is really a sample of however many distinct seeds
+ * were used.
+ *
+ * `severeExtras` forces the draw instead of taking it from the seed. It exists for the Z5
+ * sweep — "what does each subset of the extras cost, per symbology" — and a run that uses it
+ * is not measuring the tier, so `run.ts` refuses to write the tracked report from one.
  */
-export async function degrade(png: Buffer, tier: Tier, seed: number): Promise<Buffer> {
+export async function degrade(
+  png: Buffer,
+  tier: Tier,
+  seed: number,
+  severeExtras?: readonly SevereExtra[],
+): Promise<Buffer> {
   const source = await rawGray(sharp(png).flatten({ background: WHITE }));
   switch (tier) {
     case "clean":
@@ -131,7 +191,7 @@ export async function degrade(png: Buffer, tier: Tier, seed: number): Promise<Bu
     case "moderate":
       return toPng(await moderate(source, seed));
     case "severe":
-      return toPng(await severe(source, seed));
+      return toPng(await severe(source, seed, severeExtras ?? severeExtrasFor(seed)));
     default: {
       const unreachable: never = tier;
       throw new Error(`degrade: unknown tier ${String(unreachable)}`);
@@ -170,35 +230,74 @@ async function moderate(source: Gray, seed: number): Promise<Gray> {
 }
 
 /**
- * A label wrapped around a curved door jamb, photographed off-axis in bad light with the sun
- * on the laminate. Geometry first, then lighting, then grain, then compression.
+ * A bad photo of a door-jamb label: hand-held and rolled, out of focus, further away, in
+ * grain — and, of the four things §13.4 adds, the ones this particular frame drew. Geometry
+ * first, then lighting, then grain, then compression, the order a camera applies them.
+ *
+ * Every extra reads its parameters from its own seeded stream, so a frame that does not draw
+ * the warp gets exactly the rotation, glare and grain it would have had if it did. Skipping
+ * one cannot shift the others (Z5: the draw had to leave the run bit-reproducible).
  */
-async function severe(source: Gray, seed: number): Promise<Gray> {
+async function severe(source: Gray, seed: number, extras: readonly SevereExtra[]): Promise<Gray> {
   const p = DEGRADE_PARAMS.severe;
+  const m = DEGRADE_PARAMS.moderate;
 
-  const geometry = stream(seed, "severe/geometry");
-  const thetaMax = range(geometry, p.cylinderTheta[0], p.cylinderTheta[1]);
-  const keystone = range(geometry, p.keystone[0], p.keystone[1]);
-  const farSide: -1 | 1 = geometry() < 0.5 ? -1 : 1;
+  let image = source;
+  if (extras.includes("warp")) {
+    const geometry = stream(seed, "severe/geometry");
+    const thetaMax = range(geometry, p.cylinderTheta[0], p.cylinderTheta[1]);
+    const keystone = range(geometry, p.keystone[0], p.keystone[1]);
+    const farSide: -1 | 1 = geometry() < 0.5 ? -1 : 1;
+    image = warp(image, thetaMax, keystone, farSide);
+  }
 
-  const warped = warp(source, thetaMax, keystone, farSide);
-  // Z2: severe is a superset of moderate. Without this the tiers were not ordered — a
+  // Z2: severe is a superset of moderate. Without the blur the tiers were not ordered — a
   // σ1.5 blur is the single most destructive thing in `moderate`, and `severe` carried
   // none, so moderate measured harder than severe on every 1D symbology and §13.6's
   // 99/90/70 ladder could not mean what it says. Blur is optical, so it precedes the
   // sensor's sampling (the resize) exactly as a camera would apply it.
-  const blurred = await viaSharp(warped, (s) => s.blur(DEGRADE_PARAMS.moderate.blurSigma));
-  const scaled = await viaSharp(blurred, (s) => resizeBy(s, blurred, p.scale));
+  image = await viaSharp(image, (s) => s.blur(m.blurSigma));
+  // Z5 completes what Z2 started: moderate's in-plane roll was the one moderate axis severe
+  // did not carry, so "superset" held on every axis but that one. A phone held at a jamb is
+  // rolled whether or not the jamb is curved, and the warp is a different degradation, not a
+  // harder version of this one.
+  const roll = stream(seed, "severe/rotation");
+  const angle = range(roll, m.rotationDeg[0], m.rotationDeg[1]);
+  image = await viaSharp(image, (s) => s.rotate(angle, { background: WHITE }));
+  image = await viaSharp(image, (s) => resizeBy(s, image, p.scale));
 
-  const glared = applyGlare(scaled, stream(seed, "severe/glare"));
-  const dim = applyLowLight(glared, stream(seed, "severe/lowLight"));
+  if (extras.includes("glare")) image = applyGlare(image, stream(seed, "severe/glare"));
+  if (extras.includes("low_light")) image = applyLowLight(image, stream(seed, "severe/lowLight"));
 
   const grain = stream(seed, "severe/noise");
-  const noisy = addNoise(dim, range(grain, p.noiseSigma[0], p.noiseSigma[1]), grain);
+  image = addNoise(image, range(grain, p.noiseSigma[0], p.noiseSigma[1]), grain);
 
-  const codec = stream(seed, "severe/jpeg");
-  const quality = Math.round(range(codec, p.jpegQuality[0], p.jpegQuality[1]));
-  return jpegRoundTrip(noisy, quality);
+  if (extras.includes("jpeg")) {
+    const codec = stream(seed, "severe/jpeg");
+    const quality = Math.round(range(codec, p.jpegQuality[0], p.jpegQuality[1]));
+    image = await jpegRoundTrip(image, quality);
+  }
+  return image;
+}
+
+/**
+ * The extras this seed's frame carries: a `SEVERE_EXTRAS_DRAWN`-sized subset, drawn from a
+ * stream of its own so the choice is reproducible and independent of every parameter.
+ *
+ * Returned in `SEVERE_EXTRAS` order rather than draw order, so two seeds that picked the
+ * same pair report the same string.
+ */
+export function severeExtrasFor(seed: number): SevereExtra[] {
+  const rng = stream(seed, "severe/extras");
+  const pool = [...SEVERE_EXTRAS];
+  // Partial Fisher-Yates: k swaps from the front, so the draw is uniform over subsets and
+  // costs the same k numbers from the stream whatever the pool's order.
+  for (let i = 0; i < SEVERE_EXTRAS_DRAWN; i += 1) {
+    const j = i + Math.floor(rng() * (pool.length - i));
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+  }
+  const drawn = new Set(pool.slice(0, SEVERE_EXTRAS_DRAWN));
+  return SEVERE_EXTRAS.filter((extra) => drawn.has(extra));
 }
 
 // ---------------------------------------------------------------------------
@@ -227,10 +326,20 @@ async function severe(source: Gray, seed: number): Promise<Gray> {
  * not projective and took QR from 100% to 0% on its own — that was a bug in the tier, not a
  * finding about the scanner.
  *
- * With the homography in place Data Matrix and both 1D symbologies are unaffected by the
- * keystone up to 0.28 in isolation, and QR is not: a VIN-only QR (version 2, 42-module
- * grid) reads at 100% up to keystone 0.04 and 0% from 0.06 — see the bench report. That
- * cliff is a property of ZXing's QR detector, so it is left in place rather than tuned out.
+ * With the homography in place, and every other degradation neutralised, both 1D
+ * symbologies read 100% through keystone 0.28 and Data Matrix through 0.20. QR does not:
+ * 100% at 0.06, 20.8% at 0.08, **0% from 0.10** — and it fails as a `ChecksumException` out
+ * of `QRCodeReader`, i.e. ZXing finds the symbol, samples a grid, and the bits come back
+ * wrong. `@zxing/library`'s `qrcode/detector/Detector` says why: it estimates the fourth
+ * corner as `topRight − topLeft + bottomLeft`, which is a parallelogram — an affine guess at
+ * a projective quantity — searches for the alignment pattern around that point, and when it
+ * is not there builds the sampling transform from the three finder patterns alone, which
+ * cannot represent perspective. Past ~0.08 the grid walks off-module and Reed–Solomon fails.
+ *
+ * Keystone 0.10 is a label viewed about 15° off-axis at arm's length. That is not a stress
+ * pose, it is how anyone crouched at an open door photographs a jamb, and no other
+ * symbology in the corpus is troubled by it — so it is a property of the decoder the app
+ * ships, it is left in place rather than tuned out, and it belongs on §13.7's human list.
  *
  * Samples outside the source are white: past the edge of the label is the door jamb's light
  * surround, not black.
