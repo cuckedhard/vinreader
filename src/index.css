@@ -1,3 +1,8 @@
+/* Cascade layers matter in this file. Everything below the import lands *outside* the
+   layers Tailwind generates into, and an unlayered declaration beats every utility class
+   in the app whatever the specificity — see the note above `:focus-visible` at the bottom
+   for what that cost once. `src/ui/stylesheets.test.ts` is the only check in the gate that
+   can see a cascade layer at all; read its header before adding a rule here. */
 @import "tailwindcss";
 @import "./ui/tokens.css";
 
@@ -56,7 +61,9 @@ a[role="button"] {
    — no visible indicator at all (§6.6, WCAG 2.4.7). Measured in Chromium, before and after.
 
    `base` is emitted before `utilities`, so a component that states its own ring now wins,
-   and anything that states nothing still gets one. */
+   and anything that states nothing still gets one. Held there by
+   `src/ui/stylesheets.test.ts`, which fails on any `:focus` rule outside a layer — including
+   a second one added further down this file, which is how this would come back. */
 @layer base {
   :focus-visible {
     outline: 3px solid var(--accent);
