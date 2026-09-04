@@ -1,0 +1,342 @@
+{
+  "spec": "§13.4 scan-robustness bench",
+  "config": {
+    "seed": 1592597116,
+    "seedHex": "0x5eed1a7c",
+    "count": 200,
+    "vins": 200,
+    "quick": false,
+    "tiers": [
+      "clean",
+      "moderate",
+      "severe"
+    ],
+    "symbologies": [
+      "code_39",
+      "code_39_i",
+      "code_128",
+      "data_matrix",
+      "qr_code"
+    ],
+    "concurrency": 8,
+    "hints": {
+      "possibleFormats": [
+        "CODE_39",
+        "CODE_128",
+        "DATA_MATRIX",
+        "QR_CODE"
+      ],
+      "tryHarder": true
+    },
+    "suppressedZxingWarnings": 5259
+  },
+  "thresholds": {
+    "decodeRate": {
+      "clean": 0.99,
+      "moderate": 0.9,
+      "severe": 0.7
+    },
+    "falseAccepts": 0
+  },
+  "totals": {
+    "attempts": 3000,
+    "hits": 2451,
+    "misses": 549,
+    "falseAccepts": 0,
+    "errors": 0
+  },
+  "cells": [
+    {
+      "symbology": "code_39",
+      "tier": "clean",
+      "attempts": 200,
+      "hits": 200,
+      "misses": 0,
+      "falseAccepts": 0,
+      "errors": 0,
+      "decodeRate": 1,
+      "threshold": 0.99,
+      "pass": true,
+      "missReasons": {
+        "no_decode": 0,
+        "no_vin": 0,
+        "carrier": 0
+      }
+    },
+    {
+      "symbology": "code_39",
+      "tier": "moderate",
+      "attempts": 200,
+      "hits": 155,
+      "misses": 45,
+      "falseAccepts": 0,
+      "errors": 0,
+      "decodeRate": 0.775,
+      "threshold": 0.9,
+      "pass": false,
+      "missReasons": {
+        "no_decode": 45,
+        "no_vin": 0,
+        "carrier": 0
+      }
+    },
+    {
+      "symbology": "code_39",
+      "tier": "severe",
+      "attempts": 200,
+      "hits": 161,
+      "misses": 39,
+      "falseAccepts": 0,
+      "errors": 0,
+      "decodeRate": 0.805,
+      "threshold": 0.7,
+      "pass": true,
+      "missReasons": {
+        "no_decode": 39,
+        "no_vin": 0,
+        "carrier": 0
+      }
+    },
+    {
+      "symbology": "code_39_i",
+      "tier": "clean",
+      "attempts": 200,
+      "hits": 200,
+      "misses": 0,
+      "falseAccepts": 0,
+      "errors": 0,
+      "decodeRate": 1,
+      "threshold": 0.99,
+      "pass": true,
+      "missReasons": {
+        "no_decode": 0,
+        "no_vin": 0,
+        "carrier": 0
+      }
+    },
+    {
+      "symbology": "code_39_i",
+      "tier": "moderate",
+      "attempts": 200,
+      "hits": 158,
+      "misses": 42,
+      "falseAccepts": 0,
+      "errors": 0,
+      "decodeRate": 0.79,
+      "threshold": 0.9,
+      "pass": false,
+      "missReasons": {
+        "no_decode": 42,
+        "no_vin": 0,
+        "carrier": 0
+      }
+    },
+    {
+      "symbology": "code_39_i",
+      "tier": "severe",
+      "attempts": 200,
+      "hits": 147,
+      "misses": 53,
+      "falseAccepts": 0,
+      "errors": 0,
+      "decodeRate": 0.735,
+      "threshold": 0.7,
+      "pass": true,
+      "missReasons": {
+        "no_decode": 53,
+        "no_vin": 0,
+        "carrier": 0
+      }
+    },
+    {
+      "symbology": "code_128",
+      "tier": "clean",
+      "attempts": 200,
+      "hits": 200,
+      "misses": 0,
+      "falseAccepts": 0,
+      "errors": 0,
+      "decodeRate": 1,
+      "threshold": 0.99,
+      "pass": true,
+      "missReasons": {
+        "no_decode": 0,
+        "no_vin": 0,
+        "carrier": 0
+      }
+    },
+    {
+      "symbology": "code_128",
+      "tier": "moderate",
+      "attempts": 200,
+      "hits": 162,
+      "misses": 38,
+      "falseAccepts": 0,
+      "errors": 0,
+      "decodeRate": 0.81,
+      "threshold": 0.9,
+      "pass": false,
+      "missReasons": {
+        "no_decode": 38,
+        "no_vin": 0,
+        "carrier": 0
+      }
+    },
+    {
+      "symbology": "code_128",
+      "tier": "severe",
+      "attempts": 200,
+      "hits": 171,
+      "misses": 29,
+      "falseAccepts": 0,
+      "errors": 0,
+      "decodeRate": 0.855,
+      "threshold": 0.7,
+      "pass": true,
+      "missReasons": {
+        "no_decode": 28,
+        "no_vin": 1,
+        "carrier": 0
+      }
+    },
+    {
+      "symbology": "data_matrix",
+      "tier": "clean",
+      "attempts": 200,
+      "hits": 200,
+      "misses": 0,
+      "falseAccepts": 0,
+      "errors": 0,
+      "decodeRate": 1,
+      "threshold": 0.99,
+      "pass": true,
+      "missReasons": {
+        "no_decode": 0,
+        "no_vin": 0,
+        "carrier": 0
+      }
+    },
+    {
+      "symbology": "data_matrix",
+      "tier": "moderate",
+      "attempts": 200,
+      "hits": 198,
+      "misses": 2,
+      "falseAccepts": 0,
+      "errors": 0,
+      "decodeRate": 0.99,
+      "threshold": 0.9,
+      "pass": true,
+      "missReasons": {
+        "no_decode": 2,
+        "no_vin": 0,
+        "carrier": 0
+      }
+    },
+    {
+      "symbology": "data_matrix",
+      "tier": "severe",
+      "attempts": 200,
+      "hits": 107,
+      "misses": 93,
+      "falseAccepts": 0,
+      "errors": 0,
+      "decodeRate": 0.535,
+      "threshold": 0.7,
+      "pass": false,
+      "missReasons": {
+        "no_decode": 93,
+        "no_vin": 0,
+        "carrier": 0
+      }
+    },
+    {
+      "symbology": "qr_code",
+      "tier": "clean",
+      "attempts": 200,
+      "hits": 197,
+      "misses": 3,
+      "falseAccepts": 0,
+      "errors": 0,
+      "decodeRate": 0.985,
+      "threshold": 0.99,
+      "pass": false,
+      "missReasons": {
+        "no_decode": 3,
+        "no_vin": 0,
+        "carrier": 0
+      }
+    },
+    {
+      "symbology": "qr_code",
+      "tier": "moderate",
+      "attempts": 200,
+      "hits": 195,
+      "misses": 5,
+      "falseAccepts": 0,
+      "errors": 0,
+      "decodeRate": 0.975,
+      "threshold": 0.9,
+      "pass": true,
+      "missReasons": {
+        "no_decode": 5,
+        "no_vin": 0,
+        "carrier": 0
+      }
+    },
+    {
+      "symbology": "qr_code",
+      "tier": "severe",
+      "attempts": 200,
+      "hits": 0,
+      "misses": 200,
+      "falseAccepts": 0,
+      "errors": 0,
+      "decodeRate": 0,
+      "threshold": 0.7,
+      "pass": false,
+      "missReasons": {
+        "no_decode": 200,
+        "no_vin": 0,
+        "carrier": 0
+      }
+    }
+  ],
+  "timings": [
+    {
+      "scope": "all",
+      "decodes": 3000,
+      "meanMs": 9.082844633000025,
+      "p95Ms": 34.87894099999903
+    },
+    {
+      "scope": "clean",
+      "decodes": 1000,
+      "meanMs": 3.1587025090001206,
+      "p95Ms": 5.098621999997704
+    },
+    {
+      "scope": "moderate",
+      "decodes": 1000,
+      "meanMs": 10.81422003600004,
+      "p95Ms": 67.58894699999655
+    },
+    {
+      "scope": "severe",
+      "decodes": 1000,
+      "meanMs": 13.275611353999917,
+      "p95Ms": 29.761249999995925
+    }
+  ],
+  "falseAccepts": [],
+  "errors": [],
+  "pass": false,
+  "failures": [
+    "code_39 moderate: 77.5% < 90.0% (155/200 correct, -12.5 pp)",
+    "code_39_i moderate: 79.0% < 90.0% (158/200 correct, -11.0 pp)",
+    "code_128 moderate: 81.0% < 90.0% (162/200 correct, -9.0 pp)",
+    "data_matrix severe: 53.5% < 70.0% (107/200 correct, -16.5 pp)",
+    "qr_code clean: 98.5% < 99.0% (197/200 correct, -0.5 pp)",
+    "qr_code severe: 0.0% < 70.0% (0/200 correct, -70.0 pp)"
+  ]
+}
