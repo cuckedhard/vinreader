@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useNavigate, useParams } from "react-router";
 import { db } from "../../lib/storage/db";
+import { normalizeVehicle } from "../../lib/storage/normalize";
 import { refreshDecode } from "../../lib/storage/decodeQueue";
 import { setVehicleMeta } from "../../lib/storage/upsert";
 import type { ModelYear, VehicleRecord } from "../../lib/vin/types";
@@ -213,7 +214,12 @@ export default function SheetScreen() {
 
   // `undefined` is "the query has not answered yet" and `null` is "no such record";
   // without the sentinel the two look alike and the screen flashes "No record" on load.
-  const record = useLiveQuery(async () => (await db.vehicles.get(vin)) ?? null, [vin]);
+  const record = useLiveQuery(async () => {
+    const row = await db.vehicles.get(vin);
+    // A row synced from §4.12 can arrive with empty structural/decode blocks; the sheet
+    // rebuilds rather than crashes on them.
+    return row ? normalizeVehicle(row, new Date().getFullYear()) : null;
+  }, [vin]);
 
   if (record === undefined) return null;
   // §4.12: a tombstoned record is gone as far as the user is concerned.

@@ -17,7 +17,7 @@
     "test:e2e": "playwright test",
     "bench:camera": "python3 bench/make-fake-camera.py && node bench/make-qr-camera.mjs \"$(bun -e 'import{encodePayload}from\"./src/lib/payload/codec\";console.log(`https://vinrelay.example/#/i?d=${encodePayload({v:1,vin:\"1HGCM82633A004352\",y:\"2003\",mk:\"HONDA\",md:\"Accord\",u:\"UNIT-42\"})}`)')\" bench/fake-qr.y4m",
     "pretest:e2e": "python3 bench/make-fake-camera.py && node bench/make-qr-camera.mjs \"$(bun -e 'import{encodePayload}from\"./src/lib/payload/codec\";console.log(`https://vinrelay.example/#/i?d=${encodePayload({v:1,vin:\"1HGCM82633A004352\",y:\"2003\",mk:\"HONDA\",md:\"Accord\",u:\"UNIT-42\"})}`)')\" bench/fake-qr.y4m",
-    "bench": "bun run bench/run.ts",
+    "bench": "bun run bench/run.ts --json bench/report.json",
     "bench:quick": "bun run bench/run.ts --quick --count 8"
   },
   "dependencies": {

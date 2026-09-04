@@ -4,6 +4,7 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { Link, useNavigate } from "react-router";
 import { buildExportBundle, toCsv } from "../../lib/payload/exportBundle";
 import { db, nowIso } from "../../lib/storage/db";
+import { normalizeVehicle } from "../../lib/storage/normalize";
 import type { DecodeStatus, VehicleRecord } from "../../lib/vin/types";
 import { Button } from "../../ui/Button";
 import { Chip } from "../../ui/Chip";
@@ -255,7 +256,12 @@ export default function HistoryScreen() {
     const rows = await db.vehicles.orderBy("lastScannedAt").reverse().toArray();
     // db.ts: IndexedDB does not index null, so live records are absent from the
     // `deletedAt` index and "not deleted" can only be a JS filter.
-    const live = rows.filter((row) => row.deletedAt === null);
+    // §4.12 rows can arrive with empty structural/decode blocks. One unreadable row must
+    // cost that row, never the whole route (P7).
+    const year = new Date().getFullYear();
+    const live = rows
+      .filter((row) => row.deletedAt === null)
+      .map((row) => normalizeVehicle(row, year));
     // db.ts: §5.1 timestamps carry an offset and do not sort lexicographically across
     // time zones, so the index order is refined here by instant.
     return live.sort((a, b) => Date.parse(b.lastScannedAt) - Date.parse(a.lastScannedAt));

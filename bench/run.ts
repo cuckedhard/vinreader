@@ -62,6 +62,12 @@ const FALSE_ACCEPT_THRESHOLD = 0;
 const CONCURRENCY = 8;
 
 const REPORT_PATH = fileURLToPath(new URL("report.md", import.meta.url));
+/**
+ * A --quick run writes here instead. bench/report.md is the §13.6 criterion-4 evidence over
+ * the full §13.4 corpus, and a 120-attempt loop silently replacing it has now happened three
+ * times — round-1 review finding N-01 and again as R2-02. Separate paths make it impossible.
+ */
+const QUICK_REPORT_PATH = fileURLToPath(new URL("report.quick.md", import.meta.url));
 
 // ---------------------------------------------------------------------------
 // Attempts
@@ -724,7 +730,7 @@ async function main(): Promise<number> {
   const failures = checkThresholds(cells, attempts);
 
   await writeFile(
-    REPORT_PATH,
+    options.quick ? QUICK_REPORT_PATH : REPORT_PATH,
     markdownReport(options, cells, timings, attempts, vinCount, failures),
     "utf8",
   );
@@ -772,7 +778,7 @@ async function main(): Promise<number> {
   }
   const all = timings[0];
   lines.push(`  decode time: mean ${ms(all.meanMs)} ms, p95 ${ms(all.p95Ms)} ms`);
-  lines.push(`  report: ${REPORT_PATH}`);
+  lines.push(`  report: ${options.quick ? QUICK_REPORT_PATH : REPORT_PATH}`);
   if (options.json !== null) lines.push(`  json:   ${resolve(process.cwd(), options.json)}`);
   lines.push("");
   if (failures.length === 0) {

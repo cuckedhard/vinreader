@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
-import { encodePayload, parseCarrier } from "../../lib/payload/codec";
+import { PayloadError, encodePayload, parseCarrier } from "../../lib/payload/codec";
 import { getSettings } from "../../lib/storage/settings";
 import type { ExtractResult } from "../../lib/vin/types";
 import { Banner } from "../../ui/Banner";
@@ -21,6 +21,7 @@ type Mode = "camera" | "manual";
  */
 export function ScanScreen() {
   const [mode, setMode] = useState<Mode>("camera");
+  const [carrierError, setCarrierError] = useState<string | null>(null);
   const navigate = useNavigate();
   // §9-S3 phone-to-phone: the receiving phone shows the import preview rather than
   // confirming a VIN. Both carriers are re-encoded into the single `d` the route reads,
@@ -30,10 +31,20 @@ export function ScanScreen() {
       let payload;
       try {
         payload = parseCarrier(raw);
-      } catch {
+      } catch (cause) {
+        // P6: an unknown version gets a clear rejection, never a crash — and never
+        // silence. The carrier check is what stops extractVin fabricating a VIN out of
+        // the base64url body (D14), so this code is the scanner's to report: dropping it
+        // leaves the user pointing a working camera at a code that never resolves.
+        setCarrierError(
+          cause instanceof PayloadError && cause.kind === "version"
+            ? "That code is from a newer version of VIN Relay. Update this app to read it."
+            : "That VIN Relay code could not be read. Ask for it again, or type the VIN.",
+        );
         return;
       }
       if (payload === null) return;
+      setCarrierError(null);
       void navigate(`/i?d=${encodePayload(payload)}`);
     },
     [navigate],
@@ -56,7 +67,11 @@ export function ScanScreen() {
     acted.current = sighting;
 
     async function commit(read: ScanSighting) {
-      const settings = await getSettings();
+      // N1: a settings read that fails must not fail the save. useVinCommit already
+      // guards its own read this way; these two sites did not, so an unavailable
+      // IndexedDB aborted the write before it started and left "Got it ✓" on screen
+      // for a scan nothing had stored.
+      const settings = await getSettings().catch(() => null);
       const candidate: ExtractResult = {
         vin: read.vin,
         raw: read.raw,
@@ -66,7 +81,7 @@ export function ScanScreen() {
       // §6.3: success feedback never fires on a mismatch — and a read the user has not
       // resolved yet is not a scan, so nothing else fires either.
       if (!saved) return;
-      scanFeedback(settings);
+      if (settings) scanFeedback(settings);
       accept(read.vin);
     }
 
@@ -76,7 +91,7 @@ export function ScanScreen() {
   const handleUseAsIs = useCallback(async () => {
     if (pending === null) return;
     const vin = pending.vin;
-    const settings = await getSettings();
+    const settings = await getSettings().catch(() => null);
     const saved = await saveAsIs();
     if (!saved) {
       // The record was never written, so no cooldown may be recorded: `accept` is what
@@ -86,7 +101,7 @@ export function ScanScreen() {
       rescan();
       return;
     }
-    scanFeedback(settings);
+    if (settings) scanFeedback(settings);
     accept(vin);
   }, [pending, saveAsIs, accept, rescan]);
 
@@ -125,7 +140,22 @@ export function ScanScreen() {
             torch={torch}
             onRetry={retry}
             onTypeInstead={showManual}
+            unsaved={pending !== null || error !== null}
           />
+
+          {carrierError !== null ? (
+            <Banner
+              tone="warn"
+              title="Couldn't read that code"
+              actions={
+                <Button variant="secondary" onClick={() => setCarrierError(null)}>
+                  Keep scanning
+                </Button>
+              }
+            >
+              {carrierError}
+            </Banner>
+          ) : null}
 
           {pending !== null ? (
             <Banner

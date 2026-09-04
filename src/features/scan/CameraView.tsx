@@ -14,6 +14,14 @@ export interface CameraViewProps {
   torch: TorchApi;
   onRetry: () => void;
   onTypeInstead: () => void;
+  /**
+   * True once the read has been confirmed but not stored — held behind the check-digit
+   * decision, or a write that failed. The machine cannot know either, so the screen is
+   * told: a success line above a banner saying nothing was written is the screen
+   * contradicting itself, which is what §6.3 forbids and §6.1 makes dangerous, because
+   * the green line is what gets read at arm's length before walking away from the truck.
+   */
+  unsaved?: boolean;
 }
 
 /**
@@ -37,12 +45,10 @@ const HELD_FOR_CHECK = "Check this read.";
  * predicate the write path uses, so an identifier that carries no check digit at all still
  * reads as a success (D17).
  */
-function isHeldForCheck(state: ScanMachineState): boolean {
-  return (
-    state.kind === "confirmed" &&
-    !state.sighting.checkDigitValid &&
-    checkDigitApplies(state.sighting.vin)
-  );
+function isHeldForCheck(state: ScanMachineState, unsaved = false): boolean {
+  if (state.kind !== "confirmed") return false;
+  if (unsaved) return true;
+  return !state.sighting.checkDigitValid && checkDigitApplies(state.sighting.vin);
 }
 
 interface Notice {
@@ -85,7 +91,7 @@ function noticeFor(state: ScanMachineState): Notice | null {
 }
 
 /** §6.4, verbatim for streaming, candidate and confirmed. */
-function statusFor(state: ScanMachineState): string {
+function statusFor(state: ScanMachineState, unsaved: boolean): string {
   switch (state.kind) {
     case "requesting":
       return STARTING;
@@ -94,7 +100,7 @@ function statusFor(state: ScanMachineState): string {
     case "candidate":
       return "Reading… hold steady.";
     case "confirmed":
-      return isHeldForCheck(state) ? HELD_FOR_CHECK : "Got it ✓";
+      return isHeldForCheck(state, unsaved) ? HELD_FOR_CHECK : "Got it ✓";
     case "idle":
     case "error":
       // Handled by the notice, which carries its own alert role.
@@ -102,10 +108,10 @@ function statusFor(state: ScanMachineState): string {
   }
 }
 
-function statusToneFor(state: ScanMachineState): string {
+function statusToneFor(state: ScanMachineState, unsaved: boolean): string {
   // A held read is a warning, not a success: the success colour next to the mismatch banner
   // is the screen contradicting itself (§6.3).
-  if (state.kind === "confirmed") return isHeldForCheck(state) ? "text-warn" : "text-ok";
+  if (state.kind === "confirmed") return isHeldForCheck(state, unsaved) ? "text-warn" : "text-ok";
   if (state.kind === "candidate") return "text-accent";
   return "text-fg-muted";
 }
@@ -120,9 +126,10 @@ export function CameraView({
   torch,
   onRetry,
   onTypeInstead,
+  unsaved = false,
 }: CameraViewProps): JSX.Element {
   const notice = noticeFor(state);
-  const status = statusFor(state);
+  const status = statusFor(state, unsaved);
   const aiming = state.kind === "streaming" || state.kind === "candidate";
   const sighting = state.kind === "candidate" || state.kind === "confirmed" ? state.sighting : null;
   // Whichever route forward exists gets the 56 px primary target (§6.1).
@@ -183,7 +190,9 @@ export function CameraView({
         className="flex min-h-[var(--tap)] flex-col items-start justify-center gap-2"
       >
         {status === "" ? null : (
-          <p className={`text-lg leading-snug font-bold ${statusToneFor(state)}`}>{status}</p>
+          <p className={`text-lg leading-snug font-bold ${statusToneFor(state, unsaved)}`}>
+            {status}
+          </p>
         )}
         {/* §6.1 floors a VIN display at 28 px on a phone, and the candidate is exactly the
             moment the number is being checked against the sticker at arm's length. */}
