@@ -15,11 +15,11 @@ export interface CameraViewProps {
   onRetry: () => void;
   onTypeInstead: () => void;
   /**
-   * True once the read has been confirmed but not stored — held behind the check-digit
-   * decision, or a write that failed. The machine cannot know either, so the screen is
-   * told: a success line above a banner saying nothing was written is the screen
-   * contradicting itself, which is what §6.3 forbids and §6.1 makes dangerous, because
-   * the green line is what gets read at arm's length before walking away from the truck.
+   * True once a confirmed read failed to store. The machine cannot know a write outcome,
+   * so the screen is told: a success line above a banner saying nothing was written is the
+   * screen contradicting itself, which §6.3 forbids and §6.1 makes dangerous — the green
+   * line is what gets read at arm's length before walking away from the truck. The
+   * check-digit hold is NOT this: `isHeldForCheck` already derives it from the state.
    */
   unsaved?: boolean;
 }
@@ -41,14 +41,23 @@ const STARTING = "Starting camera…";
 const HELD_FOR_CHECK = "Check this read.";
 
 /**
+ * A read that was fine but was not stored. Distinct from HELD_FOR_CHECK: the remedy is not
+ * to look at the label again, and §6.1 makes this line the primary feedback, so pointing at
+ * the wrong remedy while the banner below points at the right one is worse than silence.
+ */
+const NOT_SAVED = "Not saved.";
+
+/**
  * Whether a confirmed read is being held back rather than saved (D03). It uses the §4.3
  * predicate the write path uses, so an identifier that carries no check digit at all still
  * reads as a success (D17).
  */
-function isHeldForCheck(state: ScanMachineState, unsaved = false): boolean {
-  if (state.kind !== "confirmed") return false;
-  if (unsaved) return true;
-  return !state.sighting.checkDigitValid && checkDigitApplies(state.sighting.vin);
+function isHeldForCheck(state: ScanMachineState): boolean {
+  return (
+    state.kind === "confirmed" &&
+    !state.sighting.checkDigitValid &&
+    checkDigitApplies(state.sighting.vin)
+  );
 }
 
 interface Notice {
@@ -100,7 +109,8 @@ function statusFor(state: ScanMachineState, unsaved: boolean): string {
     case "candidate":
       return "Reading… hold steady.";
     case "confirmed":
-      return isHeldForCheck(state, unsaved) ? HELD_FOR_CHECK : "Got it ✓";
+      if (isHeldForCheck(state)) return HELD_FOR_CHECK;
+      return unsaved ? NOT_SAVED : "Got it ✓";
     case "idle":
     case "error":
       // Handled by the notice, which carries its own alert role.
@@ -111,7 +121,7 @@ function statusFor(state: ScanMachineState, unsaved: boolean): string {
 function statusToneFor(state: ScanMachineState, unsaved: boolean): string {
   // A held read is a warning, not a success: the success colour next to the mismatch banner
   // is the screen contradicting itself (§6.3).
-  if (state.kind === "confirmed") return isHeldForCheck(state, unsaved) ? "text-warn" : "text-ok";
+  if (state.kind === "confirmed") return isHeldForCheck(state) || unsaved ? "text-warn" : "text-ok";
   if (state.kind === "candidate") return "text-accent";
   return "text-fg-muted";
 }

@@ -54,6 +54,7 @@ function candidate(vin: string): ScanMachineState {
 
 interface Options {
   torch?: { available: boolean; on: boolean };
+  unsaved?: boolean;
 }
 
 function render(machineState: ScanMachineState, options: Options = {}): string {
@@ -65,6 +66,7 @@ function render(machineState: ScanMachineState, options: Options = {}): string {
       torch: { ...torch, toggle: () => undefined },
       onRetry: () => undefined,
       onTypeInstead: () => undefined,
+      unsaved: options.unsaved ?? false,
     }),
   );
 }
@@ -276,5 +278,48 @@ describe("the status region is announced, whatever it says", () => {
       const html = render(machineState);
       expect(html).toContain('role="status" aria-live="polite"');
     }
+  });
+});
+
+/**
+ * The `unsaved` branch (R2-04). A confirmed read whose write failed must not wear the
+ * success line, and must not wear the check-digit wording either: the read was fine, the
+ * disk was not, and §6.1 makes this line the primary feedback so it has to point at the
+ * right remedy.
+ */
+describe("a confirmed read that was not stored", () => {
+  const VALID = "1HGCM82633A004352";
+  const BAD_CHECK = "1HGCM82633A004353";
+
+  it("shows the success line when the write landed", () => {
+    expect(status(render(sighting(VALID, true)))).toEqual({
+      text: "Got it ✓",
+      tone: "text-ok",
+    });
+  });
+
+  it("drops the success line when nothing was stored", () => {
+    const line = status(render(sighting(VALID, true), { unsaved: true }));
+    expect(line?.text).toBe("Not saved.");
+    expect(line?.tone).toBe("text-warn");
+  });
+
+  it("does not blame the read for a storage failure", () => {
+    // "Check this read." is the check-digit remedy and would send the user back to the
+    // label for a fault that has nothing to do with it.
+    expect(status(render(sighting(VALID, true), { unsaved: true }))?.text).not.toBe(
+      "Check this read.",
+    );
+  });
+
+  it("keeps the check-digit wording when that is the actual hold", () => {
+    expect(status(render(sighting(BAD_CHECK, false)))).toEqual({
+      text: "Check this read.",
+      tone: "text-warn",
+    });
+    // And still does when a write also failed: the read is the thing to fix first.
+    expect(status(render(sighting(BAD_CHECK, false), { unsaved: true }))?.text).toBe(
+      "Check this read.",
+    );
   });
 });

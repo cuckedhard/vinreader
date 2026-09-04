@@ -36,9 +36,12 @@ export function ScanScreen() {
         // silence. The carrier check is what stops extractVin fabricating a VIN out of
         // the base64url body (D14), so this code is the scanner's to report: dropping it
         // leaves the user pointing a working camera at a code that never resolves.
+        // P6 wants a clear rejection. `kind === "version"` covers any v other than 1,
+        // older included, so the message comes from the error rather than assuming which
+        // direction it went — the same text the Import route shows for the same payload.
         setCarrierError(
           cause instanceof PayloadError && cause.kind === "version"
-            ? "That code is from a newer version of VIN Relay. Update this app to read it."
+            ? cause.message
             : "That VIN Relay code could not be read. Ask for it again, or type the VIN.",
         );
         return;
@@ -119,10 +122,14 @@ export function ScanScreen() {
 
   const showManual = useCallback(() => {
     dismiss();
+    // The warning is about a code in front of the camera; leaving it set means it
+    // reappears on the way back from the keyboard, about a code long gone (P7).
+    setCarrierError(null);
     setMode("manual");
   }, [dismiss]);
 
   const showCamera = useCallback(() => {
+    setCarrierError(null);
     setMode("camera");
   }, []);
 
@@ -140,7 +147,7 @@ export function ScanScreen() {
             torch={torch}
             onRetry={retry}
             onTypeInstead={showManual}
-            unsaved={pending !== null || error !== null}
+            unsaved={error !== null}
           />
 
           {carrierError !== null ? (
