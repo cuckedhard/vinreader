@@ -102,7 +102,11 @@ const PLANT: FieldSpec = {
     ),
 };
 
-/** §4.8 verbatim: group titles, row order and vPIC keys are authoritative (P2). */
+/**
+ * §4.8: group titles, row order and vPIC keys are authoritative (P2). Every key below is
+ * §4.8 verbatim except the Cab row, corrected under §4.8's own standing instruction to
+ * "verify every key against a live call ... and correct any that differ" — see there.
+ */
 const GROUPS: readonly GroupSpec[] = [
   {
     title: "Identity",
@@ -136,7 +140,13 @@ const GROUPS: readonly GroupSpec[] = [
       GVWR,
       plain("Axles", "Axles"),
       plain("Brakes", "BrakeSystemType"),
-      plain("Cab", "CabType"),
+      // §4.8 prints this key as `CabType`. `DecodeVinValues` carries no such key: vPIC's
+      // variable "Cab Type" (`Element` id 4, lookup `BodyCab`) emits `BodyCabType`, and it is
+      // a medium/heavy-duty truck field — Cab Over Engine, Conventional, Low Cab Forward.
+      // Reading a key that can never arrive made the row permanently empty, and N2 drops an
+      // empty row, so the sheet showed nothing rather than an error. Corrected per §4.8;
+      // the label is §4.8's and does not change (R4-K). Pinned in `DECODE_VIN_VALUES_KEYS`.
+      plain("Cab", "BodyCabType"),
       BED,
     ],
   },
@@ -157,6 +167,62 @@ export const NOTICE_KEYS: readonly string[] = ["ErrorText", "AdditionalErrorText
 export const MAPPED_KEYS: readonly string[] = [
   ...new Set([...GROUPS.flatMap((group) => group.rows.flatMap((row) => row.keys)), ...NOTICE_KEYS]),
 ];
+
+/**
+ * The key space of a `DecodeVinValues` `Results[0]` row: a **recorded snapshot of key names**,
+ * captured 2026-09-04. Names only — no values, no vehicle data, nothing that could be mistaken
+ * for a decode (N2: never show a guess as a fact; this list cannot fill a sheet).
+ *
+ * Provenance — two independent sources, which agree on all 150 names:
+ *  1. `@shaggytools/nhtsa-api-wrapper@3.0.4`, whose
+ *     `dist/types/api/endpoints/DecodeVinValues.d.ts` declares `DecodeVinValuesResults` as exactly
+ *     150 `string` members. Re-derive with:
+ *       npm pack @shaggytools/nhtsa-api-wrapper && tar xzf *.tgz
+ *       awk '/^export type DecodeVinValuesResults = \{/,/^\};/' \
+ *         package/dist/types/api/endpoints/DecodeVinValues.d.ts |
+ *         grep -oP '^\s{4}\K[A-Za-z_0-9]+(?=: string;)'
+ *  2. vPIC's own `Element` table (mirrored offline in `@cardog/corgi@2.0.4`,
+ *     `dist/db/vpic.lite.db`), whose `Code` column is the flat key each variable emits —
+ *     `select Code from Element where Name = 'Cab Type'` → `BodyCabType`. 146 of the 150 names
+ *     below are `Element.Code` values; the other four (`VIN`, `MakeID`, `ModelID`,
+ *     `ManufacturerId`) are API-level rather than variable-level.
+ *
+ * This is a snapshot, not a live call, and it does not discharge the §9-S2 duty to run
+ * `scripts/verify-vpic-fields.ts` where vPIC is reachable. What it does is give the map something
+ * to be checked against other than a hand-copy of §4.8 — which is exactly how `CabType` survived
+ * S2 and four hardening rounds: the map and the test's own literal agreed with each other, and
+ * both were wrong. The check is a subset (§4.8's keys ⊆ this list), so a variable NHTSA adds later
+ * is not a failure and this list needs no upkeep; a key it stops carrying is the alarm we want.
+ */
+export const DECODE_VIN_VALUES_KEYS: readonly string[] = `
+  ABS ActiveSafetySysNote AdaptiveCruiseControl AdaptiveDrivingBeam AdaptiveHeadlights
+  AdditionalErrorText AirBagLocCurtain AirBagLocFront AirBagLocKnee AirBagLocSeatCushion
+  AirBagLocSide AutoReverseSystem AutomaticPedestrianAlertingSound AxleConfiguration Axles
+  BasePrice BatteryA BatteryA_to BatteryCells BatteryInfo BatteryKWh BatteryKWh_to
+  BatteryModules BatteryPacks BatteryType BatteryV BatteryV_to BedLengthIN BedType
+  BlindSpotIntervention BlindSpotMon BodyCabType BodyClass BrakeSystemDesc BrakeSystemType
+  BusFloorConfigType BusLength BusType CAN_AACN CIB CashForClunkers ChargerLevel ChargerPowerKW
+  CoolingType CurbWeightLB CustomMotorcycleType DaytimeRunningLight DestinationMarket
+  DisplacementCC DisplacementCI DisplacementL Doors DriveType DriverAssist DynamicBrakeSupport
+  EDR ESC EVDriveUnit ElectrificationLevel EngineConfiguration EngineCycles EngineCylinders
+  EngineHP EngineHP_to EngineKW EngineManufacturer EngineModel EntertainmentSystem ErrorCode
+  ErrorText ForwardCollisionWarning FuelInjectionType FuelTypePrimary FuelTypeSecondary GCWR
+  GCWR_to GVWR GVWR_to KeylessIgnition LaneCenteringAssistance LaneDepartureWarning
+  LaneKeepSystem LowerBeamHeadlampLightSource Make MakeID Manufacturer ManufacturerId Model
+  ModelID ModelYear MotorcycleChassisType MotorcycleSuspensionType NCSABodyType NCSAMake
+  NCSAMapExcApprovedBy NCSAMapExcApprovedOn NCSAMappingException NCSAModel NCSANote NonLandUse
+  Note OtherBusInfo OtherEngineInfo OtherMotorcycleInfo OtherRestraintSystemInfo
+  OtherTrailerInfo ParkAssist PedestrianAutomaticEmergencyBraking PlantCity PlantCompanyName
+  PlantCountry PlantState PossibleValues Pretensioner RearAutomaticEmergencyBraking
+  RearCrossTrafficAlert RearVisibilitySystem SAEAutomationLevel SAEAutomationLevel_to
+  SeatBeltsAll SeatRows Seats SemiautomaticHeadlampBeamSwitching Series Series2
+  SteeringLocation SuggestedVIN TPMS TopSpeedMPH TrackWidth TractionControl TrailerBodyType
+  TrailerLength TrailerType TransmissionSpeeds TransmissionStyle Trim Trim2 Turbo VIN
+  ValveTrainDesign VehicleDescriptor VehicleType WheelBaseLong WheelBaseShort WheelBaseType
+  WheelSizeFront WheelSizeRear Wheels Windows
+`
+  .trim()
+  .split(/\s+/);
 
 /** The §4.8 groups that have something to show, in §4.8 order. Empty rows and groups are dropped. */
 export function renderGroups(fields: Fields): RenderedGroup[] {

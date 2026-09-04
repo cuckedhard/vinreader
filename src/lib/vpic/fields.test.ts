@@ -1,14 +1,33 @@
 import { describe, expect, it } from "vitest";
-import { MAPPED_KEYS, NOTICE_KEYS, allFieldRows, noticeLines, renderGroups } from "./fields";
+import {
+  DECODE_VIN_VALUES_KEYS,
+  MAPPED_KEYS,
+  NOTICE_KEYS,
+  allFieldRows,
+  noticeLines,
+  renderGroups,
+} from "./fields";
 
 /**
  * Every field map below is SYNTHETIC. The network is unavailable in this environment
  * (vpic.nhtsa.dot.gov is refused), so no fixture here is a captured live response — each is
  * built from the §4.7 documented shape to exercise one rule of the §4.8 map.
  * The live check is `bun run scripts/verify-vpic-fields.ts`, run where vPIC is reachable.
+ *
+ * `DECODE_VIN_VALUES_KEYS` is the one thing here that is not synthetic and not a hand-copy of the
+ * spec: a recorded snapshot of the response's key NAMES (no values — a name list cannot be
+ * mistaken for a decode). It is what lets these tests disagree with §4.8's text; see R4-K.
  */
 
-/** §4.8 pinned as a literal, independent of the implementation's own tables. */
+/**
+ * §4.8 pinned as a literal, independent of the implementation's own tables.
+ *
+ * One entry is deliberately NOT §4.8's literal text. §4.8 writes the Cab key as `CabType`, and no
+ * `DecodeVinValues` response has ever carried that key (R4-K) — so the row was empty on every
+ * vehicle and N2 dropped it, silently. §4.8 itself requires S2 to "verify every key against a live
+ * call ... and correct any that differ", so the corrected key is what is pinned, and the departure
+ * is listed in `SPEC_TEXT_CORRECTIONS` below so it stays visible and cannot quietly grow.
+ */
 const SPEC_KEYS = [
   "ModelYear",
   "Make",
@@ -32,7 +51,7 @@ const SPEC_KEYS = [
   "GVWR_to",
   "Axles",
   "BrakeSystemType",
-  "CabType",
+  "BodyCabType", // §4.8 text: `CabType` — see SPEC_TEXT_CORRECTIONS
   "BedType",
   "BedLengthIN",
   "Manufacturer",
@@ -69,7 +88,7 @@ const EVERY_FIELD: Record<string, string> = {
   GVWR_to: "Class 2E: 6,001 - 7,000 lb",
   Axles: "2",
   BrakeSystemType: "Hydraulic",
-  CabType: "Crew",
+  BodyCabType: "Crew",
   BedType: "Fleetside",
   BedLengthIN: "78.7",
   Manufacturer: "HONDA OF AMERICA MFG., INC.",
@@ -78,6 +97,51 @@ const EVERY_FIELD: Record<string, string> = {
   PlantCountry: "UNITED STATES (USA)",
   PlantCompanyName: "Marysville Auto Plant",
 };
+
+/**
+ * Where the map departs from §4.8's literal key text, and why it is allowed to. Kept as data so
+ * the count is asserted: a second correction must be argued for, not smuggled in beside this one.
+ */
+const SPEC_TEXT_CORRECTIONS = [
+  { label: "Cab", specText: "CabType", corrected: "BodyCabType" },
+] as const;
+
+describe("§4.8 key-text corrections", () => {
+  it("departs from §4.8's literal text in exactly one key", () => {
+    expect(SPEC_TEXT_CORRECTIONS).toHaveLength(1);
+  });
+
+  it("drops the superseded key and adopts one the response actually carries", () => {
+    for (const { specText, corrected } of SPEC_TEXT_CORRECTIONS) {
+      expect(MAPPED_KEYS).not.toContain(specText);
+      expect(MAPPED_KEYS).toContain(corrected);
+      expect(DECODE_VIN_VALUES_KEYS).not.toContain(specText);
+      expect(DECODE_VIN_VALUES_KEYS).toContain(corrected);
+    }
+  });
+
+  it("keeps §4.8's label, since only the key was wrong", () => {
+    const fields = Object.fromEntries(SPEC_TEXT_CORRECTIONS.map((c) => [c.corrected, "shown"]));
+    const labels = renderGroups(fields).flatMap((group) => group.rows.map((row) => row.label));
+    expect(labels).toEqual(SPEC_TEXT_CORRECTIONS.map((c) => c.label));
+  });
+});
+
+describe("DECODE_VIN_VALUES_KEYS", () => {
+  it("is the recorded 150-name snapshot, with no duplicates", () => {
+    expect(DECODE_VIN_VALUES_KEYS).toHaveLength(150);
+    expect(new Set(DECODE_VIN_VALUES_KEYS).size).toBe(150);
+  });
+
+  it("holds names only — no padding, no empty entry from the template literal split", () => {
+    for (const key of DECODE_VIN_VALUES_KEYS) expect(key).toMatch(/^[A-Za-z][A-Za-z0-9_]*$/);
+  });
+
+  it("carries `BodyCabType` and no `CabType`, which is the whole of R4-K", () => {
+    expect(DECODE_VIN_VALUES_KEYS).toContain("BodyCabType");
+    expect(DECODE_VIN_VALUES_KEYS).not.toContain("CabType");
+  });
+});
 
 describe("MAPPED_KEYS", () => {
   it("names exactly the §4.8 keys, and no others", () => {
@@ -90,6 +154,15 @@ describe("MAPPED_KEYS", () => {
 
   it("contains every notice key", () => {
     for (const key of NOTICE_KEYS) expect(MAPPED_KEYS).toContain(key);
+  });
+
+  /**
+   * The check the map never had: every key measured against a source outside this repo, rather
+   * than against a transcription of §4.8 that can be — and was — wrong in the same way twice.
+   */
+  it("names only keys a DecodeVinValues row actually carries", () => {
+    const absent = MAPPED_KEYS.filter((key) => !DECODE_VIN_VALUES_KEYS.includes(key));
+    expect(absent).toEqual([]);
   });
 });
 
@@ -253,6 +326,22 @@ describe("renderGroups", () => {
       expect(rowValue({ GVWR_to: "Class 3: 10,001 - 14,000 lb" }, "Weight & class", "GVWR")).toBe(
         null,
       );
+    });
+  });
+
+  /** R4-K: the row read `CabType`, a key vPIC does not send, so it was empty on every vehicle. */
+  describe("Cab", () => {
+    it("reads `BodyCabType`, the key vPIC sends for its 'Cab Type' variable", () => {
+      expect(rowValue({ BodyCabType: "Crew" }, "Weight & class", "Cab")).toBe("Crew");
+    });
+
+    it("shows a medium/heavy-duty cab, which is the fleet this field exists for", () => {
+      const fields = { BodyCabType: "COE: Cab Over Engine or Flat Nose" };
+      expect(rowValue(fields, "Weight & class", "Cab")).toBe("COE: Cab Over Engine or Flat Nose");
+    });
+
+    it("renders nothing at all from `CabType`, so no alias keeps the old key alive", () => {
+      expect(renderGroups({ CabType: "Crew" })).toEqual([]);
     });
   });
 

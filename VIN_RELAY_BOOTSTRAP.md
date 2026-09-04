@@ -189,6 +189,8 @@ Rationale: door-jamb certification labels carry the VIN as Code 39 (most common)
 ### 4.8 Display field map (the "easy to read" sheet)
 Left = label shown; right = vPIC key from `DecodeVinValues`. Show a row only if the value is non-empty (N2). **S2 must verify every key against a live call for the fixture VIN (§4.11) and correct any that differ — report corrections in the session report.**
 
+**Correction, R4-K:** Cab read `CabType`, which `DecodeVinValues` does not send — the real key is `BodyCabType`. The row rendered empty for every vehicle and §6.2 drops empty rows, so it showed as nothing at all rather than as an error. Cab is a heavy-truck field (`COE`, `LCF`, `Conventional`), so the one wrong key of the thirty-three was the one that mattered most to this fleet. Established against two independent sources — the published `DecodeVinValues` type, and vPIC's own `Element` table, whose `Code` column is the flat key each variable emits. Every other key here is correct verbatim.
+
 **Identity**
 - Year — `ModelYear` · Make — `Make` · Model — `Model` · Trim — `Trim` · Series — `Series` · Body — `BodyClass` · Type — `VehicleType` · Doors — `Doors`
 
@@ -196,7 +198,7 @@ Left = label shown; right = vPIC key from `DecodeVinValues`. Show a row only if 
 - Engine — `EngineModel` · Cylinders — `EngineCylinders` · Displacement (L) — `DisplacementL` · Fuel — `FuelTypePrimary` (+ `FuelTypeSecondary` if present) · Horsepower — `EngineHP` · Turbo — `Turbo` · Drive — `DriveType` · Transmission — `TransmissionStyle` (+ `TransmissionSpeeds`)
 
 **Weight & class**
-- GVWR — `GVWR` (if `GVWR_to` present and different, show as a range) · Axles — `Axles` · Brakes — `BrakeSystemType` · Cab — `CabType` · Bed — `BedType` (+ `BedLengthIN`)
+- GVWR — `GVWR` (if `GVWR_to` present and different, show as a range) · Axles — `Axles` · Brakes — `BrakeSystemType` · Cab — `BodyCabType` · Bed — `BedType` (+ `BedLengthIN`)
 
 **Manufacturing**
 - Manufacturer — `Manufacturer` · Plant — `PlantCity`, `PlantState`, `PlantCountry` joined with ", " · Plant company — `PlantCompanyName`

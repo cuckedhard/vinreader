@@ -5,11 +5,26 @@
  *
  *   bun run scripts/verify-vpic-fields.ts [VIN]
  *
- * It only reports. The §4.8 map is authoritative (P2): a key that comes back absent is a §4
- * change for Zach to make, never a silent "fix" by this script or by an agent.
+ * It only reports; it never edits the map, and neither does an agent on its own authority. What it
+ * reports, though, §4.8 already licenses: "S2 must verify every key against a live call for the
+ * fixture VIN and correct any that differ — report corrections in the session report." An absent
+ * key is therefore a correction to make and to write up, not a §4 change to wait on.
+ *
+ * R4-K is this script's own postmortem. The map read `CabType`, a key no `DecodeVinValues` response
+ * carries, so the Cab row was empty on every vehicle and N2 dropped it — a heavy-truck field, in a
+ * heavy-truck fleet, showing as nothing rather than as an error. The check below WOULD have caught
+ * it: `CabType` would have landed in `absent` and the run would have exited non-zero. It did not,
+ * because the script had never been run — vPIC is unreachable from the build environment and no
+ * §13.5 gate step invokes it. A guard that cannot fail and a guard that never runs come to the
+ * same thing.
+ *
+ * The standing mitigation is `DECODE_VIN_VALUES_KEYS` in `fields.ts`: a recorded snapshot of the
+ * response's key names that the offline unit tests check the map against on every `bun run test`.
+ * A snapshot is weaker than a live call and can go stale, so this script now re-checks the snapshot
+ * too. When it does run, it is the only thing that can tell us the recorded evidence went wrong.
  */
 
-import { MAPPED_KEYS } from "../src/lib/vpic/fields";
+import { DECODE_VIN_VALUES_KEYS, MAPPED_KEYS } from "../src/lib/vpic/fields";
 
 /** `@types/node` is not in the locked stack (§2); these are the only Node globals used here. */
 declare const process: { argv: readonly string[]; exitCode: number | undefined };
@@ -84,6 +99,11 @@ function value(row: Row, key: string): string {
   return typeof raw === "string" ? raw.trim() : "";
 }
 
+/** Code-point order, so two runs on two machines print the same list. */
+function byName(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
 function list(title: string, keys: readonly string[]): void {
   console.log(`\n${title} (${keys.length})`);
   if (keys.length === 0) {
@@ -105,10 +125,17 @@ async function main(): Promise<void> {
   const populated = MAPPED_KEYS.filter((key) => present.has(key) && value(row, key) !== "");
   const unmapped = Object.keys(row)
     .filter((key) => !MAPPED_KEYS.includes(key) && value(row, key) !== "")
-    .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+    .sort(byName);
+
+  // The snapshot the offline tests trust. A live run is the only thing that can contradict it,
+  // so contradict it here rather than letting a recorded fact stand unexamined forever.
+  const stale = DECODE_VIN_VALUES_KEYS.filter((key) => !present.has(key)).sort(byName);
+  const fresh = [...present].filter((key) => !DECODE_VIN_VALUES_KEYS.includes(key)).sort(byName);
 
   list("MAPPED BUT ABSENT from the response — the map may name these wrongly", absent);
   list("PRESENT AND POPULATED but not mapped — candidates the map may be missing", unmapped);
+  list("SNAPSHOT NAMES ABSENT from the response — DECODE_VIN_VALUES_KEYS has gone stale", stale);
+  list("RESPONSE KEYS MISSING FROM THE SNAPSHOT — new vPIC variables, add them to the list", fresh);
 
   console.log(`\nMAPPED AND POPULATED (${populated.length} of ${MAPPED_KEYS.length})`);
   if (populated.length === 0) {
@@ -124,16 +151,27 @@ async function main(): Promise<void> {
   }
 
   console.log(
-    "\nA key listed as absent is a §4.8 correction. §4 constants are authoritative: report it" +
-      "\nto Zach in the session report. This script never edits the map, and neither does an agent.",
+    "\nA key listed as absent is a §4.8 correction: make it, and report it in the session report" +
+      "\n(§4.8 requires both). This script never edits the map, and neither does an agent alone.",
   );
 
+  // A new vPIC variable is not a failure — the snapshot check is a subset, so the list is
+  // append-only and falling behind costs nothing. A name that has *stopped* arriving does fail:
+  // it means the offline tests are asserting against a key space that no longer exists.
+  const failures: string[] = [];
   if (absent.length > 0) {
-    console.error(`\nFAIL: ${absent.length} mapped key(s) absent from the live response.`);
+    failures.push(`${absent.length} mapped key(s) absent from the live response`);
+  }
+  if (stale.length > 0) {
+    failures.push(`${stale.length} snapshot name(s) absent from the live response`);
+  }
+
+  if (failures.length > 0) {
+    for (const failure of failures) console.error(`\nFAIL: ${failure}.`);
     process.exitCode = 1;
     return;
   }
-  console.log("\nOK: every mapped key exists in the live response.");
+  console.log("\nOK: every mapped key and every snapshot name exists in the live response.");
 }
 
 // `export {}` makes this a module, which is what top-level `await` needs.
