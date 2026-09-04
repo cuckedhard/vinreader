@@ -19,10 +19,21 @@
  * pass happens to be running is a dead control (P7). The guard the two paths share is
  * per VIN instead, so the queue skips a VIN Refresh has out and Refresh joins the answer
  * already coming rather than opening a second connection for it (§4.7).
+ *
+ * [R5-Q] is the half of R3-Q that its own tests never reached: every R3-Q case releases a
+ * *successful* response, so the join path's effect on §5.4's attempt counter was never
+ * exercised. The join was written above `refreshDecode`'s arming transaction, so the one
+ * thing the tap is for — putting `attempts` back to 0 — was skipped exactly when a request
+ * was already out. FAILS before the fix.
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { db } from "./db";
-import { refreshDecode, runDecodeQueueOnce, startDecodeQueue } from "./decodeQueue";
+import {
+  DECODE_MAX_ATTEMPTS,
+  refreshDecode,
+  runDecodeQueueOnce,
+  startDecodeQueue,
+} from "./decodeQueue";
 import { upsertVehicle } from "./upsert";
 import { VPIC_ENDPOINT } from "../vpic/client";
 import type { VpicRawResponse } from "../vpic/types";
@@ -221,5 +232,92 @@ describe("[R3-Q] §4.7 one request per VIN, with Refresh as the third entry poin
 
     expect(network.vins).toEqual([VIN_A]);
     expect((await db.vehicles.get(VIN_A))!.decode.status).toBe("ok");
+  });
+});
+
+/**
+ * §5.4's counter, on the path R3-Q added and never failed a request on.
+ *
+ * `refreshDecode`'s reset exists so "a transient failure puts the row back in the normal
+ * queue instead of leaving it failed on one miss" — the file's own words. §5.4 makes the
+ * tenth attempt terminal and names Refresh as the one way back for a `failed` row, so a
+ * tap that charges an attempt instead of clearing the counter is the trapdoor where the
+ * escape hatch should be.
+ *
+ * The window is the field case: §4.7's client spends up to ~28 s on a bad radio (10 s
+ * timeout x 3 attempts, 2 s + 6 s backoff) against §5.4's 60 s poll, so roughly half of
+ * all Refresh taps on an unfilled row land while the queue's request is still out.
+ */
+async function setAttempts(vin: string, attempts: number): Promise<void> {
+  const row = await db.vehicles.get(vin);
+  if (!row) throw new Error(`no row for ${vin}`);
+  await db.vehicles.put({
+    ...row,
+    decode: { ...row.decode, status: "pending", attempts, lastError: "connection refused" },
+  });
+}
+
+describe("[R5-Q] Refresh resets §5.4's attempts on the join path too", () => {
+  it("is not the tap that writes the row off as failed", async () => {
+    // One short of §5.4's ten: the next charged attempt is terminal.
+    await setAttempts(VIN_A, DECODE_MAX_ATTEMPTS - 1);
+
+    const network = gatedFetch(() => {
+      throw new Error("connection refused");
+    });
+    const deps = { fetchImpl: network.impl, sleep: noSleep };
+
+    // §5.4's poll has this row's request out and held, the way a dead radio holds it.
+    const passed = runDecodeQueueOnce(deps);
+    await settle();
+    expect(network.vins).toEqual([VIN_A]);
+
+    // The user, looking at a sheet that has not filled, taps "Refresh details" — §4.7's
+    // one sanctioned re-fetch. It joins the request already out (§4.7 budgets one per
+    // VIN), which is right; what it must not do is skip the arming that reset exists for.
+    const refreshed = refreshDecode(VIN_A, deps);
+    await settle();
+
+    network.release();
+    await passed;
+    await refreshed;
+    await settle(20);
+
+    const decode = (await db.vehicles.get(VIN_A))!.decode;
+    // FAILS before the fix: status "failed", attempts 10. The tap the user made to retry
+    // is the tap that takes the row out of §5.4's automatic queue.
+    expect(decode.status).toBe("pending");
+    // 1, not 10 and not 2: the reset ran, and the join still spent §4.7's single request
+    // once — a second request would have charged a second attempt.
+    expect(decode.attempts).toBe(1);
+  });
+
+  it("puts a row already written off back in §5.4's automatic queue", async () => {
+    // §5.4: a `failed` row is "still retried on manual Refresh details" — and Refresh is
+    // reached from the sheet at any moment, including while the queue holds another VIN.
+    await setAttempts(VIN_A, DECODE_MAX_ATTEMPTS);
+    const row = (await db.vehicles.get(VIN_A))!;
+    await db.vehicles.put({ ...row, decode: { ...row.decode, status: "failed" } });
+
+    const network = gatedFetch(() => OK_BODY);
+    const deps = { fetchImpl: network.impl, sleep: noSleep };
+
+    const refreshed = refreshDecode(VIN_A, deps);
+    await settle();
+    expect(network.vins).toEqual([VIN_A]);
+
+    // A second tap while the first is out: it joins, and arming is idempotent apart from
+    // the one field that matters.
+    const second = refreshDecode(VIN_A, deps);
+    await settle();
+    expect(network.vins).toEqual([VIN_A]);
+
+    network.release();
+    await Promise.all([refreshed, second]);
+    await settle();
+
+    const decode = (await db.vehicles.get(VIN_A))!.decode;
+    expect(decode.status).toBe("ok");
+    expect(decode.attempts).toBe(0);
   });
 });

@@ -211,20 +211,23 @@ export async function kickDecodeQueue(deps: VpicDeps = {}): Promise<void> {
 
 /**
  * The sheet's "Refresh details" (§4.7). The one path allowed to re-request a VIN, whatever
- * its current status — `ok` and `failed` included. Attempts reset first so a transient
- * failure puts the row back in the normal queue instead of leaving it failed on one miss.
- * Existing fields stay on screen while the request is out; only the status moves.
+ * its current status — `ok` and `failed` included. Attempts reset first, on every path,
+ * so a transient failure puts the row back in the normal queue instead of leaving it
+ * failed on one miss (§5.4's ten). Existing fields stay on screen while the request is
+ * out; only the status moves.
  */
 export async function refreshDecode(vin: string, deps: VpicDeps = {}): Promise<void> {
-  // A request for this VIN is already out — the queue's, or a tap that beat this one.
-  // Join it: §4.7 budgets one request per VIN, and the answer in the air is the answer a
-  // second one would fetch. The tap is not swallowed by that, which is the point — this
-  // resolves when that answer lands, so the button stays busy and the sheet fills in front
-  // of the user (P7). Nothing is armed on this path: the reset below exists to put a
-  // `failed` row back in §5.4's queue, and a VIN with a request out is either already
-  // `pending` in that queue or was armed by the tap that issued the request.
-  if (vinsInFlight.has(vin)) return decodeOnce(vin, deps);
-
+  // Arm unconditionally, *then* let `decodeOnce` decide whether to issue or join. The
+  // order matters: a request for this VIN may already be out — the queue's, or a tap that
+  // beat this one — and joining before arming skipped the reset in exactly the case it is
+  // needed. §4.7's client spends up to ~28 s on a bad radio (10 s timeout, 3 attempts,
+  // 2 s + 6 s backoff) against §5.4's 60 s poll, so a large share of Refresh taps land
+  // inside that window; the joined request's failure would then charge the row an attempt
+  // instead of clearing the counter, and on a row at nine the tap made to *retry* would be
+  // the tap that flips it to `failed` and out of §5.4's automatic queue — the queue §5.4
+  // says Refresh is the way back into. Arming a row that is already in flight is otherwise
+  // a no-op (it is `pending` by definition), and §4.7's one request is still spent once
+  // because `decodeOnce` hands back the promise already out rather than opening a second.
   const armed = await db.transaction("rw", db.vehicles, async () => {
     const existing = await db.vehicles.get(vin);
     if (!existing) return false;
@@ -236,6 +239,9 @@ export async function refreshDecode(vin: string, deps: VpicDeps = {}): Promise<v
   });
   if (!armed) return;
 
+  // Issue, or join the one already out. Either way this resolves when the answer lands, so
+  // the tap is never silently swallowed: the button stays busy and the sheet fills in front
+  // of the user (P7).
   await decodeOnce(vin, deps);
 }
 
