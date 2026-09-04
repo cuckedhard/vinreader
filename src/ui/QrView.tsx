@@ -100,6 +100,46 @@ export function QrView({ value, vin, note, onClose }: QrViewProps) {
     const canvas = canvasRef.current;
     if (canvas === null) return;
     let cancelled = false;
+
+    /**
+     * The backing store is `size × DPR` so the module edges stay hard on a phone; the CSS box
+     * has to stay `size`. `qrcode`'s canvas renderer ends every draw with
+     * `canvas.width = px; canvas.style.width = px + "px"` (`renderer/canvas.js`, `clearCanvas`)
+     * — it assumes the backing store it was handed *is* the CSS size, which is true only at
+     * DPR 1. So its inline style replaces the box React set, and at DPR 3 a 237 px code becomes
+     * a 711 px one: measured on a 320 × 658 phone at x = −195.5, clipped by the viewport on both
+     * sides, with Close pushed to y = 727 below the fold. A cropped QR does not decode, and
+     * §9-S3's whole flow is "show QR, scan QR". Desktop is DPR 1, which is why it never showed.
+     *
+     * Put the box back. Not by dropping the multiply above — that trades an overflow for a
+     * blurry code on every phone, which is the same §9-S3 failure one step further away.
+     *
+     * Race-free in all four directions:
+     * - **vs. paint.** `toCanvas` renders synchronously inside its own Promise executor
+     *   (`browser.js`), so the library's write lands during this effect and this handler runs on
+     *   the microtask that follows it. A frame cannot be painted between a task and its
+     *   microtask checkpoint, so the oversized box never reaches the screen. If the library ever
+     *   went async, the handler still runs immediately after the write it has to undo.
+     * - **vs. React.** React writes `style.width` only when the prop changes — which happens
+     *   only when `size` changes, which is exactly when this effect re-runs and writes last.
+     *   A re-render at the same `size` (the `failed` toggle below) diffs to no style write at
+     *   all, so the restored box survives it.
+     * - **vs. a second resize.** A resize that changes `size` re-runs this effect: cleanup
+     *   cancels the old draw, the new one restores the new size. A resize that computes the same
+     *   `size` does not re-render, so the library is never re-run and there is nothing to undo.
+     * - **vs. cancellation.** Skipping the restore when `cancelled` cannot strand a pixel-sized
+     *   box: the only ways to cancel are a `value`/`size` change, whose replacement draw
+     *   restores, and unmount.
+     *
+     * The rejection path restores too. `QRCode.create` throws before the renderer runs, so
+     * today there is nothing to undo there — but the restore is what makes that a fact about
+     * this component rather than one about the library's throw site.
+     */
+    const restoreCssSize = () => {
+      canvas.style.width = `${size}px`;
+      canvas.style.height = `${size}px`;
+    };
+
     void toCanvas(canvas, value, {
       // §2, locked: error correction level M.
       errorCorrectionLevel: "M",
@@ -108,10 +148,14 @@ export function QrView({ value, vin, note, onClose }: QrViewProps) {
       color: { dark: INK, light: PAPER },
     }).then(
       () => {
-        if (!cancelled) setFailed(false);
+        if (cancelled) return;
+        restoreCssSize();
+        setFailed(false);
       },
       () => {
-        if (!cancelled) setFailed(true);
+        if (cancelled) return;
+        restoreCssSize();
+        setFailed(true);
       },
     );
     return () => {
