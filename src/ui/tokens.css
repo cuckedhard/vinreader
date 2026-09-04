@@ -11,6 +11,12 @@
   --warn: #fbbf24;
   --danger: #ff8a8a; /* §6.1 body text: 8.47:1 on --bg, 7.48:1 on --bg-elev */
   --border: #2a3642;
+  /* Disabled controls. §6.1 grants no exemption, so the label clears 7:1 on the fill it is
+     actually painted on; "unavailable" is carried by colour, fill and edge instead of by
+     fading the label. Why these three tokens exist rather than an opacity: Button.tsx. */
+  --disabled-bg: #070a0e; /* recess: 1.03:1 on --bg, 1.17:1 on --bg-elev */
+  --disabled-fg: #aab8c4; /* 9.79:1 on --disabled-bg — one step below --fg-muted */
+  --disabled-border: #3f4d5b; /* 2.22:1 on --bg, 1.96:1 on --bg-elev */
   --radius: 12px;
   --tap: 48px;
   --tap-lg: 56px;
@@ -30,4 +36,10 @@
   --warn: #734800; /* 7.91:1, 7.16:1 */
   --danger: #9c211a; /* 7.94:1, 7.19:1 — and the danger button's ground */
   --border: #c9d2db;
+  /* Disabled controls, same reasoning as the dark block. The fill moves the same way in
+     both themes — away from the page, toward the grey end — so "off" looks like one thing. */
+  --disabled-bg: #e2e7ec; /* recess: 1.24:1, 1.13:1 */
+  /* 10.06:1, 9.12:1 — and 8.09:1 on --disabled-bg, which is the ground it actually sits on */
+  --disabled-fg: #39434e;
+  --disabled-border: #a3adb8; /* 2.28:1, 2.06:1 */
 }
