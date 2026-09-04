@@ -1,6 +1,7 @@
 import { useEffect, useId, useState } from "react";
 import type { ReactNode } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
+import { Link } from "react-router";
 import { version } from "../../../package.json";
 import { db } from "../../lib/storage/db";
 import {
@@ -10,10 +11,51 @@ import {
   updateSettings,
 } from "../../lib/storage/settings";
 import type { StoredSettings, Theme } from "../../lib/storage/settings";
+import { getSyncEngine } from "../../lib/sync/engine";
+import type { SyncStatus } from "../../lib/vin/types";
 import { Banner } from "../../ui/Banner";
 import { Button } from "../../ui/Button";
+import { useSyncSnapshot } from "../../ui/SyncChip";
 
 const CONFIRM_WORD = "DELETE";
+
+/**
+ * §6.4 writes no copy for Settings, so every sentence this screen adds for S4 is supplied
+ * and named here rather than left in JSX — §0 rule 4, and the same discipline the Account
+ * screen's `strings.ts` follows. Each one is listed in the session report.
+ */
+const ACCOUNT_LINK_LABEL = "Account";
+/**
+ * Shown to a device with no account, which includes a build with no Supabase at all: the
+ * Account screen says so in its own words, and promising sign-in from here would be a
+ * guess about a build this screen cannot inspect (N2). It never implies anything is
+ * missing without one (N7).
+ */
+const ACCOUNT_SIGNED_OUT_HINT =
+  "Sign in to see this history on your other devices. Optional — everything here works without it.";
+/** Signed in: the screen this points at is where the account's own deletes live (§6.2). */
+const ACCOUNT_SIGNED_IN_HINT =
+  "Signed in. Sync status, sign out, and deleting your cloud data or your account are all here.";
+
+/**
+ * The truth a signed-in device owes the user *before* they type DELETE. "Clear all data"
+ * empties this phone; the account keeps its copy and sync downloads it again within
+ * seconds, which looks exactly like the button not having worked. §9-S4 has the two
+ * commands that mean something else, and both are one tap away on the Account screen.
+ */
+const CLEAR_ACCOUNT_NOTE =
+  "You’re signed in, so your account keeps its own copy and this phone will download it " +
+  "again. To empty the account, use Delete my cloud data on the Account screen.";
+const CLEARED_ACCOUNT_NOTE = "What’s in your account will download again.";
+
+/**
+ * §4.10 has six sync statuses and only one of them says "no account on this device".
+ * Everything else — offline, error, syncing, pending, synced — is a signed-in phone, and
+ * an offline one still has an account that will refill it (N2).
+ */
+export function accountIsLinked(status: SyncStatus): boolean {
+  return status !== "signed_out";
+}
 
 /** The device label rides along in handoff payloads (§4.9 `by`), so keep it short. */
 const DEVICE_LABEL_MAX = 40;
@@ -137,6 +179,39 @@ function ThemeRow({ value, onChange }: ThemeRowProps) {
   );
 }
 
+/**
+ * §6.2's "Account (S4)" entry, and the only way into `/#/account`: the bottom nav is Scan ·
+ * History · Settings and S4 does not widen it.
+ *
+ * It is a plain `Link`, and deliberately reads nothing from `src/lib/auth/` — the account
+ * screen is lazily loaded so that `@supabase/supabase-js` stays out of the first-paint
+ * bundle (`router.tsx`), and importing the auth client here to label one row would undo
+ * that for every user who never signs in. The sync engine's snapshot already knows whether
+ * this device has an account, costs nothing, and is the same store the §6.4 chip reads.
+ */
+function AccountRow({ linked }: { linked: boolean }) {
+  return (
+    <Link
+      to="/account"
+      className={
+        "flex min-h-[var(--tap-lg)] w-full items-center justify-between gap-4 " +
+        "rounded-[var(--radius)] border border-border bg-bg-elev px-4 py-3 active:opacity-80 " +
+        "focus-visible:outline-[3px] focus-visible:outline-offset-2 focus-visible:outline-accent"
+      }
+    >
+      <span className="flex flex-col gap-1">
+        <span className="text-base font-bold text-fg">{ACCOUNT_LINK_LABEL}</span>
+        <span className="text-sm leading-snug text-fg-muted">
+          {linked ? ACCOUNT_SIGNED_IN_HINT : ACCOUNT_SIGNED_OUT_HINT}
+        </span>
+      </span>
+      <span className="shrink-0 text-lg font-bold text-fg-muted" aria-hidden="true">
+        ›
+      </span>
+    </Link>
+  );
+}
+
 export function SettingsScreen() {
   const uid = useId();
   const deviceLabelId = `${uid}-device-label`;
@@ -147,6 +222,9 @@ export function SettingsScreen() {
   // opens one to seed the row, so the seeding runs once on mount and the screen reads
   // the stored row directly from then on.
   const stored = useLiveQuery(() => db.settings.get("settings"));
+  // Whether this device has an account, from the one store that already knows. Read
+  // before the loading return below, because a hook cannot be conditional.
+  const linked = accountIsLinked(useSyncSnapshot().status);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -193,11 +271,37 @@ export function SettingsScreen() {
       .catch((cause: unknown) => setError(describe(cause)));
   }
 
+  /**
+   * The wipe, with the S4 ordering every destructive path in this slice follows
+   * (`signOut.ts`): stop the sync engine first, then touch storage.
+   *
+   * A cycle running through the wipe would be pushing rows out of a queue that is being
+   * emptied underneath it and applying pulled rows into tables that are being cleared —
+   * and it would spend §5.7 attempts doing it. The engine is started again either way,
+   * because a phone left silently unsynced is a worse outcome than the one the user asked
+   * for; on a signed-in device that restart is also what downloads the account's copy
+   * back, which is what `CLEAR_ACCOUNT_NOTE` says before the button is even enabled.
+   */
+  async function clearEverything(): Promise<void> {
+    const engine = getSyncEngine();
+    engine?.stop();
+    try {
+      await clearAllData();
+    } catch (cause) {
+      // The records are still here and the session is untouched, so sync goes back to
+      // work before the failure is reported (P7 — no silent catch, and never a silently
+      // dead engine either).
+      engine?.start();
+      throw cause;
+    }
+    engine?.start();
+  }
+
   function handleClear(): void {
     if (!canClear || clearing) return;
     setClearing(true);
     setError(null);
-    clearAllData()
+    clearEverything()
       .then(() => {
         setConfirmText("");
         setLabelDraft(null);
@@ -276,11 +380,19 @@ export function SettingsScreen() {
         />
       </Section>
 
+      {/* §6.2 lists Account between the toggles and Clear all data, and the order matters
+          here: the account-level deletes are through this link, so a user heading for
+          "delete everything" meets them before the button that only clears the phone. It
+          carries no heading of its own — the row is the item, and a heading reading
+          "Account" above a row reading "Account" is a word twice, not a structure. */}
+      <AccountRow linked={linked} />
+
       <Section title="Clear all data">
         <p className="text-base leading-snug text-fg">
           Removes every vehicle, scan and setting from this phone. It can’t be undone, and nothing
           here is backed up.
         </p>
+        {linked ? <p className="text-base leading-snug text-fg">{CLEAR_ACCOUNT_NOTE}</p> : null}
         <label htmlFor={confirmId} className="text-base font-bold text-fg">
           Type {CONFIRM_WORD} to turn on the button
         </label>
@@ -312,7 +424,11 @@ export function SettingsScreen() {
         </Button>
         {cleared ? (
           <Banner tone="ok" title="All data cleared">
+            {/* N2: on a signed-in phone the records are about to reappear, and a banner
+                that stopped at "gone" would be describing a device state that lasts
+                seconds. */}
             Every vehicle, scan and setting on this phone is gone.
+            {linked ? ` ${CLEARED_ACCOUNT_NOTE}` : null}
           </Banner>
         ) : null}
       </Section>
