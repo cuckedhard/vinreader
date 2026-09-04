@@ -7,11 +7,16 @@
  * scanner confirmed a 17-character string nobody printed. Zach resolved it (ledger Z1)
  * by requiring the chosen window to be the only distinct VIN that validates, so they now
  * assert the hazard is CLOSED. They are the regression guard for it.
+ *
+ * The tests marked [R2-F] pin a SECOND straddle that Z1's rule cannot reach, found in
+ * round 2 and open on the NEEDS-ZACH list as Z6. They assert the current, wrong
+ * behaviour on purpose, so the defect is executable and so they fail the moment §4.2 is
+ * corrected. Read the block comment above them before touching them.
  */
 
 import { describe, expect, it } from "vitest";
 
-import { expectedCheckDigit } from "./checkDigit";
+import { checkDigitApplies, expectedCheckDigit, isCheckDigitValid } from "./checkDigit";
 import { extractVin } from "./extractVin";
 
 const VIN = "1HGCM82633A004352";
@@ -83,6 +88,75 @@ describe("[A-01] §4.2 refuses a run that holds more than one plausible VIN", ()
     // U+FB05 uppercases to "ST": two characters, and this VIN's straddle fails the check
     // digit, so the run holds exactly one plausible VIN and it still reads.
     expect(extractVin(`ﬅ${VIN}`)?.vin).toBe(VIN);
+  });
+});
+
+/**
+ * [R2-F] CHARACTERISATION, NOT APPROVAL. These tests assert what §4.2 does TODAY, and the
+ * behaviour they pin is a defect: ledger Z6, severity S1, open on the NEEDS-ZACH list.
+ *
+ * Z1 closed the straddle for identifiers that carry a check digit, because a real VIN
+ * validates and therefore competes — two distinct valid VINs make the run ambiguous and
+ * step 4(a) refuses. An off-highway machine PIN carries no ISO 3779 check digit at all
+ * (§4.3 `checkDigitApplies`, §4.7 puts those vehicles in scope), so it can never enter
+ * that contest. Exactly one window validates, that window is not the identifier, and
+ * step 4(a) returns it as fact with `checkDigitValid: true`. Step 4(b) never runs.
+ *
+ * §4.2's own prose already states the intended behaviour — "an identifier carrying no
+ * check digit [yields NO_VIN] unless it is a run of its own" — and step 4(a), which
+ * fires first, does not implement it. Closing that gap changes a §4 constant, so no
+ * agent may do it (CLAUDE.md rule 2). These tests exist so the hazard is executable
+ * rather than a paragraph, and so THEY FAIL THE MOMENT §4.2 IS CORRECTED. When Zach
+ * picks an option in Z6, flip them to assert the refusal, as [A-01] was flipped.
+ */
+describe("[R2-F] §4.2 replaces a no-check-digit identifier with a straddling window (Z6, OPEN)", () => {
+  // Position 9 is "C", so §4.3 says this identifier carries no check digit at all.
+  const PIN = "JCB4CX00CJ2345678";
+
+  it("carries no check digit, so it can never win step 4(a) on its own merits", () => {
+    expect(checkDigitApplies(PIN)).toBe(false);
+    expect(isCheckDigitValid(PIN)).toBe(false);
+    // Alone, it is a run of its own: exactly one window, so step 4(b) returns it.
+    expect(extractVin(PIN)).toEqual({ vin: PIN, raw: PIN, checkDigitValid: false });
+  });
+
+  it("is replaced by a VIN nobody printed as soon as one field precedes it", () => {
+    const got = extractVin(`PIN ${PIN}`);
+    // The defect, stated as an assertion: not null, not the PIN, and marked valid.
+    expect(got).not.toBeNull();
+    expect(got?.vin).not.toBe(PIN);
+    expect(got?.vin).toBe("NJCB4CX00CJ234567");
+    expect(got?.checkDigitValid).toBe(true);
+  });
+
+  it("does it often enough to matter: 5% of prefixed off-highway reads", () => {
+    // Deterministic LCG, same shape as the [A-01] measurement above, so the rate in the
+    // Z6 ledger entry is reproducible from the suite rather than from a scratch script.
+    let seed = 0x2c6b;
+    const rng = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
+    const pick = <T>(from: readonly T[]) => from[Math.floor(rng() * from.length)]!;
+    const pickChar = (s: string) => s[Math.floor(rng() * s.length)]!;
+    // "X" excluded: it is a legal check character, so a PIN ending its ninth position
+    // with X would carry a check digit and belong to the class Z1 already closed.
+    const NO_CHECK = ALPHABET.replace(/[0-9X]/g, "");
+    const PREFIXES = ["PIN ", "UNIT B ", "SN ", "P/N ", "ID: ", "A ", "MDL 4CX "];
+
+    let fabricated = 0;
+    const N = 2000;
+    for (let i = 0; i < N; i += 1) {
+      let id = "";
+      for (let j = 0; j < 17; j += 1) id += j === 8 ? pickChar(NO_CHECK) : pickChar(ALPHABET);
+      const got = extractVin(pick(PREFIXES) + id);
+      if (got !== null && got.vin !== id) fabricated += 1;
+    }
+    // Measured: 103 of 2000, 5.1%. A field printed AFTER the identifier as well as before
+    // roughly doubles it, to 11.1% over 5000 (recorded in ledger Z6) — every extra
+    // character adds another window and another one-in-eleven chance to validate.
+    //
+    // The assertion is a floor well under that, not the measurement itself: a floor keeps
+    // a partial fix from reading as a full one without making the test brittle about a
+    // number no rule depends on. §13.6 criterion 4 wants this at zero.
+    expect(fabricated).toBeGreaterThan(50);
   });
 });
 
