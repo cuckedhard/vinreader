@@ -159,11 +159,17 @@ My recommendation is **(a)**, for the same reason (b) won Z1: it converts a gues
 
 This is §6.4 being under-specified for the manual variant rather than the code deviating, which is why no agent should touch it either way. Either §6.4 gains a manual-path line, or the code changes. Smallest reasonable answer: add the line, keep **Edit**.
 
+**RESOLVED — Zach approved the list; the line is in §6.4.** No code changed: `ManualEntry.tsx` was already right and the spec was the thing that was short. The §6.4 entry now reads that on the typed path the banner is the same and the primary button is **Edit**, because there is no scan to repeat and the field the user typed into is still on screen.
+
 ### Z8 (S3) — §6.6's wide layout does not exist
 
 Measured at 1280×900: `"/"` resolves to `#/scan`, though §6.6 makes History the default at ≥ 900 px; `document.querySelectorAll("table").length` is **0**; History's container is 672 px wide on a 1280 px viewport (`max-w-2xl`), with no right-hand Sheet pane, and the Sheet is still a separate route.
 
 Keyboard reachability and focus rings are fine — this is the layout itself. It is a missing prior-slice feature, not an S1 regression, so §13.1 puts it on this list rather than in front of the fixer. Build it, or record it as deferred; either is fine, but it should not keep being discovered.
+
+**RESOLVED — deferred, and it was never late.** §6.6 is **S4 scope by the spec's own slice list**: §9/S4 carries the line *"**Wide layout** (§6.6): table + side pane, keyboard-reachable; History is the default route at ≥ 900 px"*. Nothing before S4 was ever supposed to build it, so the auditors that keep finding it are measuring an S4 deliverable against an S1 tree. Building it now would be starting S4 without a `start S4` trigger, which CLAUDE.md rule 1 forbids and rule 3 puts in its own session.
+
+This entry exists so the next round's auditors stop rediscovering it. §6.6 is not a defect until S4. Zach approved the NEEDS-ZACH list wholesale and this is the resolution that list itself offered as the alternative to building it — say `start S4` and it gets built with the rest of that slice.
 
 ### Z9 (S3) — §6.3's `candidate` never lapses
 

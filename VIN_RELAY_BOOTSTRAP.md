@@ -468,6 +468,7 @@ Bottom nav: Scan · History · Settings. Sheet and Import are pushed screens.
 - Candidate: *"Reading… hold steady."*
 - Confirmed: *"Got it ✓"*
 - Check digit: *"Check digit doesn't match. Usually a misread — try again."* Buttons: **Rescan** / **Use as-is**
+  - On the **typed** path the same banner reads the same, but the primary button is **Edit**, not Rescan: there is no scan to repeat, and the field the user typed into is still on screen. (Z7, approved.)
 - Check digit not applicable: *"This number doesn't use a check digit."* Neutral note on the sheet, never a banner.
 - Permission denied: *"Camera is blocked. Allow camera for this site in your browser settings, or type the VIN."*
 - Insecure context: *"Camera needs a secure (https) connection."*
