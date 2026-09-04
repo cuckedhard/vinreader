@@ -31,7 +31,7 @@ import { isPayloadCarrier } from "../src/lib/payload/carrier";
 import { extractVin } from "../src/lib/vin/extractVin";
 import { BENCH_SYMBOLOGIES, buildCorpus } from "./corpus";
 import type { BenchSymbology, CorpusItem } from "./corpus";
-import { BENCH_FORMAT_NAMES, decodeImage, suppressedWarnings } from "./decode";
+import { BENCH_FORMAT_NAMES, BENCH_HINT_NAMES, decodeImage, suppressedWarnings } from "./decode";
 import { SEVERE_EXTRAS, SEVERE_EXTRAS_DRAWN, TIERS, degrade, severeExtrasFor } from "./degrade";
 import type { SevereExtra, Tier } from "./degrade";
 
@@ -581,7 +581,9 @@ function markdownReport(
   out.push(`| Symbologies | ${options.symbologies.join(", ")} |`);
   out.push(`| Tiers | ${options.tiers.join(", ")} |`);
   out.push(`| Attempts | ${attempts.length} |`);
-  out.push(`| Decoder hints (§4.6) | ${BENCH_FORMAT_NAMES.join(", ")}; TRY_HARDER |`);
+  out.push(
+    `| Decoder hints (§4.6) | ${BENCH_FORMAT_NAMES.join(", ")}; ${BENCH_HINT_NAMES.join(", ")} |`,
+  );
   out.push(`| Severe extras (Z5) | ${severeDraw(options)} |`);
   out.push(`| ZXing per-reader warnings swallowed | ${suppressedWarnings()} |`);
   out.push("");

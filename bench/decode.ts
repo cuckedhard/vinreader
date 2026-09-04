@@ -26,6 +26,7 @@ import {
   BarcodeFormat,
   BinaryBitmap,
   ChecksumException,
+  DecodeHintType,
   FormatException,
   HybridBinarizer,
   MultiFormatReader,
@@ -33,10 +34,15 @@ import {
   RGBLuminanceSource,
 } from "@zxing/library";
 import type { Result } from "@zxing/library";
-import { SCAN_FORMATS, buildScanHints } from "../src/lib/vin/symbologies";
+import { SCAN_FORMATS, buildScanHints, stripAimIdentifier } from "../src/lib/vin/symbologies";
 
 export interface DecodeOutcome {
-  /** Exactly what the decoder read, unnormalised. `null` when nothing decoded. */
+  /**
+   * The label's own bytes, exactly as the app's scan path sees them: what the decoder read,
+   * less the AIM symbology identifier ZXing prepends to its own result
+   * (`stripAimIdentifier`, §4.6). Nothing else is normalised — §4.2 does the rest.
+   * `null` when nothing decoded.
+   */
   text: string | null;
   /** ZXing's `BarcodeFormat` name, e.g. `"CODE_39"`. `null` when nothing decoded. */
   format: string | null;
@@ -50,6 +56,17 @@ export const BENCH_FORMAT_NAMES: readonly string[] = SCAN_FORMATS.map(
 );
 
 const HINTS = buildScanHints();
+
+/**
+ * The non-format hints this run actually decoded with, named from the live map rather than
+ * described in prose, so the report can never claim a configuration the run did not use.
+ * The header hard-coded "TRY_HARDER" through R1–R4 and would have gone on saying exactly
+ * that after §4.6 gained `ASSUME_GS1` — a bench whose header misstates its own hints is
+ * how a decode rate gets attributed to the wrong program.
+ */
+export const BENCH_HINT_NAMES: readonly string[] = [...HINTS.keys()]
+  .filter((hint) => hint !== DecodeHintType.POSSIBLE_FORMATS)
+  .map((hint) => DecodeHintType[hint]);
 
 /**
  * One reader for the whole run. `MultiFormatReader.decode` is fully synchronous and
@@ -167,7 +184,14 @@ export async function decodeImage(png: Buffer): Promise<DecodeOutcome> {
   try {
     const result = decodeQuietly(bitmap);
     const ms = performance.now() - started;
-    return { text: result.getText(), format: BarcodeFormat[result.getBarcodeFormat()], ms };
+    // The same §4.6 strip the scan path applies, on the same side of `extractVin`: a bench
+    // that fed §4.2 the decoder's own metadata would measure a program the app is not.
+    const format = result.getBarcodeFormat();
+    return {
+      text: stripAimIdentifier(result.getText(), format),
+      format: BarcodeFormat[format],
+      ms,
+    };
   } catch (error) {
     const ms = performance.now() - started;
     if (isNoRead(error)) return { text: null, format: null, ms };

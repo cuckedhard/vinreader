@@ -3,8 +3,14 @@
  *
  * Produces the ground truth the bench measures against: every §4.11 fixture plus
  * synthetic §4.1-grammar-valid VINs, each rendered as a barcode at door-jamb-label
- * proportions in the four §4.6 symbologies (plus the ANSI MH10.8.2 `I` data-identifier
- * variant of Code 39 that §9-S1 calls out).
+ * proportions in the four §4.6 symbologies, plus three encoding variants real label
+ * printers emit: the ANSI MH10.8.2 `I` data identifier that §9-S1 calls out (`code_39_i`),
+ * the optional ISO/IEC 16388 mod-43 check character (`code_39_check`, R5), and an
+ * FNC1-separated two-field MH10.8.2 payload (`code_128_fnc1`, R5).
+ *
+ * A variant is a row here rather than a paragraph in a report because it is a *rate*: how
+ * often that shape survives ZXing and §4.2 is a number that moves with the VIN and with the
+ * degradation tier, and §13.4 exists so those numbers are measured rather than assumed.
  *
  * Everything here is DETERMINISTIC: one fixed seed, a PRNG written out below, no clock
  * reads, no `Math.random`. The bench is a gate — a corpus that shifts between runs makes
@@ -19,17 +25,27 @@ import process from "node:process";
 import { toBuffer } from "bwip-js/node";
 import { expectedCheckDigit, isCheckDigitValid } from "../src/lib/vin/checkDigit";
 import { isVinGrammarValid, VIN_LENGTH } from "../src/lib/vin/grammar";
+import { code39CheckChar } from "../src/lib/vin/symbologies";
 
-export type BenchSymbology = "code_39" | "code_39_i" | "code_128" | "data_matrix" | "qr_code";
+export type BenchSymbology =
+  | "code_39"
+  | "code_39_i"
+  | "code_39_check"
+  | "code_128"
+  | "code_128_fnc1"
+  | "data_matrix"
+  | "qr_code";
 
 /**
- * §4.6 priority order — CODE_39, CODE_128, DATA_MATRIX, QR_CODE — with the `I`-prefixed
- * Code 39 variant next to the plain one it varies.
+ * §4.6 priority order — CODE_39, CODE_128, DATA_MATRIX, QR_CODE — with each encoding
+ * variant next to the plain symbology it varies.
  */
 export const BENCH_SYMBOLOGIES: readonly BenchSymbology[] = [
   "code_39",
   "code_39_i",
+  "code_39_check",
   "code_128",
+  "code_128_fnc1",
   "data_matrix",
   "qr_code",
 ];
@@ -185,12 +201,22 @@ const MATRIX_TARGET_PX = 500;
 const MATRIX_MIN_PX = 400;
 const MATRIX_MAX_PX = 600;
 
+/**
+ * The second field of the `code_128_fnc1` row: an ANSI MH10.8.2 `1P` part number. Its
+ * content is irrelevant to the measurement — what matters is that a second field exists,
+ * so the FNC1 between them has something to separate. Ten characters, well short of a
+ * §4.1 window, so it can never itself look like a VIN.
+ */
+const MH10_SECOND_FIELD = "1P84203911";
+
 interface RenderSpec {
   /** bwip-js `bcid`. */
   bcid: string;
   /** What actually gets encoded, which is not always the VIN. */
   encode: (vin: string) => string;
   kind: "linear" | "matrix";
+  /** bwip-js `parsefnc`, so `^FNC1` in `encode`'s output becomes a real FNC1 codeword. */
+  parsefnc?: boolean;
   /**
    * Quiet zone per side, in bwip-js padding units (1 module for 1D symbols, half a module
    * for 2D symbols). A symbol rendered flush to its edge fails to decode for reasons that
@@ -208,7 +234,48 @@ const RENDER_SPECS: Readonly<Record<BenchSymbology, RenderSpec>> = {
    * proves it happens.
    */
   code_39_i: { bcid: "code39", encode: (vin) => `I${vin}`, kind: "linear", quiet: 12 },
+  /**
+   * R5 / §4.2 "Known limit": the optional ISO/IEC 16388 mod-43 check character, which some
+   * label printers append and ZXing does not strip (`ASSUME_CODE_39_CHECK_DIGIT` is off,
+   * and must stay off — see `buildScanHints`). Ground truth stays the bare VIN, so this row
+   * measures how often such a label reaches §4.2 as a VIN at all. It is expected to sit
+   * near 23%: the check character is one of 43, and only the 10 that fall outside the §4.1
+   * alphabet split off as separators under §4.2 step 2. The other 33 fuse into an
+   * 18-character run with two windows, which R4-A refuses. The rate is measured here rather
+   * than assumed.
+   */
+  code_39_check: {
+    bcid: "code39",
+    encode: (vin) => `${vin}${code39CheckChar(vin) ?? ""}`,
+    kind: "linear",
+    quiet: 12,
+  },
   code_128: { bcid: "code128", encode: (vin) => vin, kind: "linear", quiet: 12 },
+  /**
+   * R5 / §4.6: a two-field label separated by FNC1, which is how ANSI MH10.8.2 over Code
+   * 128 delimits fields — Code Set B, where the data is alphanumeric, cannot encode ASCII
+   * GS at all. This row is the reason `ASSUME_GS1` is in the hints: without it ZXing drops
+   * every FNC1, the two fields arrive concatenated as one 27-character run, and R4-A
+   * refuses a correctly-delimited label as undelimited. Ground truth stays the bare VIN.
+   *
+   * No *leading* FNC1: that additionally emits the AIM identifier `]C1`, which fuses onto
+   * the first field and is a §4.2 limit rather than a rate (see `buildScanHints`).
+   *
+   * **Read this row's `severe` number as geometry, not as FNC1 handling.** Two fields need
+   * 310 modules where a bare VIN needs 200, and the width band above fixes *physical*
+   * width, so this symbol renders at 3 px per module against plain `code_128`'s 5 — which
+   * is what a label really does when it prints two fields across the same 60 mm. Halve that
+   * again at `severe` and Code 128, a four-width symbology that must measure bar widths
+   * rather than merely sort them into narrow and wide, has 1.5 px to do it in. The Code 39
+   * rows sit at the same 3 px per module and survive far better for exactly that reason.
+   */
+  code_128_fnc1: {
+    bcid: "code128",
+    encode: (vin) => `${vin}^FNC1${MH10_SECOND_FIELD}`,
+    kind: "linear",
+    parsefnc: true,
+    quiet: 12,
+  },
   /** DataMatrix asks 2 modules of quiet zone; 4 padding units is 2 modules. */
   data_matrix: { bcid: "datamatrix", encode: (vin) => vin, kind: "matrix", quiet: 4 },
   /** QR asks 4 modules of quiet zone; 8 padding units is 4 modules. */
@@ -218,6 +285,7 @@ const RENDER_SPECS: Readonly<Record<BenchSymbology, RenderSpec>> = {
 interface BwipOptions {
   bcid: string;
   text: string;
+  parsefnc?: boolean;
   scaleX: number;
   scaleY: number;
   height?: number;
@@ -232,6 +300,7 @@ function baseOptions(spec: RenderSpec, vin: string): Omit<BwipOptions, "scaleX" 
   return {
     bcid: spec.bcid,
     text: spec.encode(vin),
+    ...(spec.parsefnc === true ? { parsefnc: true } : {}),
     ...(spec.kind === "linear" ? { height: LINEAR_BAR_HEIGHT_MM } : {}),
     /** No human-readable line: the decoder must not be able to cheat by reading OCR text. */
     includetext: false,
