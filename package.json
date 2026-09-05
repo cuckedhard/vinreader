@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite --host",
     "build": "tsc --noEmit && vite build",
+    "pages:build": "tsc --noEmit && vite build --config vite.pages.config.ts",
     "preview": "vite preview --host",
+    "demo:build": "PWA_DISABLED=1 bun run scripts/build-demo.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "format": "prettier --write .",

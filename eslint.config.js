@@ -4,7 +4,18 @@ import tseslint from "typescript-eslint";
 import reactHooks from "eslint-plugin-react-hooks";
 
 export default tseslint.config(
-  { ignores: ["dist", "dev-dist", "coverage", "node_modules", ".stryker-tmp", "reports"] },
+  {
+    ignores: [
+      "dist",
+      "dist-demo",
+      "docs",
+      "dev-dist",
+      "coverage",
+      "node_modules",
+      ".stryker-tmp",
+      "reports",
+    ],
+  },
   js.configs.recommended,
   tseslint.configs.recommended,
   reactHooks.configs.flat["recommended-latest"],
