@@ -32,7 +32,8 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { nowIso } from "./db";
+import { currentYear, nowIso } from "./db";
+import { modelYearFromVin } from "../vin/modelYear";
 
 /** §5.1: date, time to milliseconds, and a numeric offset. Never `Z`, never a bare date. */
 const ISO_WITH_OFFSET = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}[+-]\d{2}:\d{2}$/;
@@ -191,5 +192,56 @@ describe("nowIso — §5.1 ISO 8601 with offset", () => {
 
     expect(Date.parse(chicago)).toBeGreaterThan(Date.parse(chatham));
     expect(chicago < chatham).toBe(true);
+  });
+});
+
+/**
+ * [G4] `currentYear` — the argument §4.4 step 0 caps against, and the one place the app
+ * decides it (§7 item 5). §4.4 takes the current year as an explicit input; every caller
+ * used to read it straight off the device clock, and a clock that lost years turns the cap
+ * written to refuse a *future* year into one that refuses the real one.
+ */
+describe("currentYear — §4.4 step 0's argument", () => {
+  /** Position 10 `P` → 1993 / 2023, position 7 a letter → §4.4 step 1 resolves the late one. */
+  const TRUCK = "1FUJGLDR0PLBT1234";
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  function atClock(iso: string): number {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(iso));
+    return currentYear();
+  }
+
+  it("is injected with a plausible build year", () => {
+    // The floor is only worth anything if the value reaching it is a real year. It is the
+    // commit year of the build, so it cannot be before this project existed.
+    expect(Number.isInteger(__BUILD_YEAR__)).toBe(true);
+    expect(__BUILD_YEAR__).toBeGreaterThanOrEqual(2025);
+  });
+
+  it("takes the clock when the clock is at or ahead of the build", () => {
+    expect(atClock(`${__BUILD_YEAR__}-06-01T12:00:00.000Z`)).toBe(__BUILD_YEAR__);
+    expect(atClock(`${__BUILD_YEAR__ + 4}-01-01T12:00:00.000Z`)).toBe(__BUILD_YEAR__ + 4);
+  });
+
+  it("never reads earlier than the build, whatever the clock says", () => {
+    // A handset that lost its RTC, was left flat in the cold, or was factory-reset with no
+    // signal to fetch time from. It cannot be running before it was built.
+    expect(atClock("2016-05-01T09:00:00.000Z")).toBe(__BUILD_YEAR__);
+    expect(atClock("1970-01-01T00:00:00.000Z")).toBe(__BUILD_YEAR__);
+  });
+
+  it("keeps §4.4 off a wrong year stated as a fact (N2)", () => {
+    // The whole point of the floor: on the 2016 clock this truck resolved to 1993 —
+    // one year, certain, wrong by thirty. The cap still refuses a genuinely future
+    // candidate, because the floor only ever moves the year up.
+    expect(modelYearFromVin(TRUCK, atClock("2016-05-01T09:00:00.000Z"))).toEqual({
+      candidates: [1993, 2023],
+      resolved: 2023,
+    });
+    expect(modelYearFromVin(TRUCK, 1970)).toEqual({ candidates: [], resolved: null });
   });
 });

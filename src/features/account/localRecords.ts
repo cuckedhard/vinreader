@@ -5,7 +5,7 @@
  * No React, no auth, no client — the Account screen calls these, and every one of them is a
  * plain Dexie operation that a node test can drive (`localRecords.test.ts`).
  */
-import { db } from "../../lib/storage/db";
+import { currentYear, db } from "../../lib/storage/db";
 import { normalizeVehicle } from "../../lib/storage/normalize";
 import { appendOutbox, vehicleMetaRow } from "../../lib/storage/outbox";
 import { getSettings, updateSettings } from "../../lib/storage/settings";
@@ -80,7 +80,7 @@ export async function declineUpload(): Promise<void> {
  * Returns how many rows were queued, so the screen can say something true afterwards.
  */
 export async function addLocalRecords(): Promise<number> {
-  const currentYear = new Date().getFullYear();
+  const year = currentYear();
 
   const queued = await db.transaction("rw", db.vehicles, db.outbox, async () => {
     const pending = await db.outbox.where("kind").equals("vehicle_meta").toArray();
@@ -93,7 +93,7 @@ export async function addLocalRecords(): Promise<number> {
       // P7: a row an older build or a partial pull left unreadable costs that row, not the
       // whole upload. `normalizeVehicle` rebuilds §4.1–§4.5 and returns null for a VIN that
       // is not one.
-      const normalized = normalizeVehicle(record, currentYear);
+      const normalized = normalizeVehicle(record, year);
       if (normalized === null) return;
       rows.push(vehicleMetaRow(normalized));
     });

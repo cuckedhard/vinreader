@@ -1,6 +1,10 @@
 import { defineConfig } from "vitest/config";
+import { buildYear } from "./scripts/build-year";
 
 export default defineConfig({
+  // The app reads §4.4 step 0's floor from this (`currentYear` in `src/lib/storage/db.ts`),
+  // so the unit tests have to be given the same value the two vite builds inject.
+  define: { __BUILD_YEAR__: buildYear() },
   test: {
     environment: "node",
     include: ["src/**/*.test.ts", "src/**/*.test.tsx"],

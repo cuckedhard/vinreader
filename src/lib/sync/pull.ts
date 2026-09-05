@@ -15,7 +15,7 @@
  * behind the cursor.
  */
 import { advanceCursors, getSyncState, updateSyncState } from "../storage/syncState";
-import { db, nowIso } from "../storage/db";
+import { currentYear, db, nowIso } from "../storage/db";
 import type { ScanEvent, VehicleRecord } from "../vin/types";
 import { NO_PENDING, mergeVehicle, type PendingLocal } from "./merge";
 import { parseRemoteScanEvent, parseRemoteVehicle, toLocalScanEvent } from "./remoteRows";
@@ -212,7 +212,7 @@ async function pullTable<T>(
  * the events first would show a log that is briefly ahead of the record it belongs to.
  */
 export async function pullOnce(context: PullContext): Promise<PullResult> {
-  const currentYear = context.currentYear ?? new Date().getFullYear();
+  const year = context.currentYear ?? currentYear();
   const state = await getSyncState();
 
   const vehicles = await pullTable<RemoteVehicle>(
@@ -223,7 +223,7 @@ export async function pullOnce(context: PullContext): Promise<PullResult> {
       cursorField: "vehiclesCursor",
       parse: parseRemoteVehicle,
       key: (row) => row.vin,
-      apply: async (rows) => (await applyPulled({ vehicles: rows }, currentYear)).vehicles,
+      apply: async (rows) => (await applyPulled({ vehicles: rows }, year)).vehicles,
     },
     state.vehiclesCursor,
   );
@@ -239,7 +239,7 @@ export async function pullOnce(context: PullContext): Promise<PullResult> {
             cursorField: "eventsCursor",
             parse: parseRemoteScanEvent,
             key: (row) => row.id,
-            apply: async (rows) => (await applyPulled({ events: rows }, currentYear)).events,
+            apply: async (rows) => (await applyPulled({ events: rows }, year)).events,
           },
           state.eventsCursor,
         );

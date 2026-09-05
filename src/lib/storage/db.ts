@@ -74,6 +74,37 @@ export function newId(): string {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
+/**
+ * [G4] The year §4.4 step 0 caps against: the device clock, floored at the year this build
+ * was made (`__BUILD_YEAR__`, from `scripts/build-year.ts`).
+ *
+ * §4.4 takes the current year as an explicit argument and never reads a clock inside
+ * itself, so this is where the argument is decided, once, for every caller (§7 item 5) —
+ * `upsertVehicle`, `normalizeVehicle` on the Sheet and History, the §4.12 pull and the
+ * account's "add these local records".
+ *
+ * A bare `new Date().getFullYear()` is not the current year, it is what the clock says,
+ * and the two part company on exactly the phones this app is for: an Android that lost its
+ * RTC, a handset left flat in the cold, a factory reset with no signal to fetch time from.
+ * §4.4 step 0 drops "any candidate greater than the current year + 1" so that a *future*
+ * year is never shown; hand it a clock reading 2016 and it drops the real year instead.
+ * `1FUJGLDR0PLBT1234` — position 10 `P`, position 7 a letter — is a 2023 truck on any
+ * correct clock and resolved to **1993** on that phone: one year, stated as certain, no
+ * "1993 or 2023", wrong by thirty years while the user stands next to the truck (N2). It
+ * was written to the §5.1 record and queued in §5.7's `vehicle_meta` as well.
+ *
+ * The device cannot learn the date offline, but it cannot be running before it was built,
+ * so the build year is a lower bound on "now" that no clock can drag below. Flooring at it
+ * makes a stale clock behave exactly as a correct one, and it can never do the opposite:
+ * `Math.max` only ever moves the year up, so a clock that is correct — or ahead of the
+ * build, which is every device after the build's own year — is used unchanged and the cap
+ * still refuses a genuinely future candidate. Nothing in §4.4 moved; this is the argument
+ * §4.4 asked its caller for.
+ */
+export function currentYear(): number {
+  return Math.max(new Date().getFullYear(), __BUILD_YEAR__);
+}
+
 function pad(value: number, width = 2): string {
   return String(value).padStart(width, "0");
 }

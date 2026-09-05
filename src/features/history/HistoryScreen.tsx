@@ -5,7 +5,7 @@ import { Link, useNavigate } from "react-router";
 import { FailureNotice } from "../../app/ErrorBoundary";
 import { useStorageFailure } from "../../app/useStorageFailure";
 import { buildExportBundle, toCsv } from "../../lib/payload/exportBundle";
-import { db, nowIso } from "../../lib/storage/db";
+import { currentYear, db, nowIso } from "../../lib/storage/db";
 import { normalizeVehicle } from "../../lib/storage/normalize";
 import type { VehicleRecord } from "../../lib/vin/types";
 import { Button } from "../../ui/Button";
@@ -311,7 +311,7 @@ export default function HistoryScreen() {
     // `deletedAt` index and "not deleted" can only be a JS filter.
     // §4.12 rows can arrive with empty structural/decode blocks. One unreadable row must
     // cost that row, never the whole route (P7).
-    const year = new Date().getFullYear();
+    const year = currentYear();
     const live = rows
       .filter((row) => row.deletedAt === null)
       .map((row) => normalizeVehicle(row, year))

@@ -15,7 +15,7 @@
 import { buildStructural } from "../vin/structural";
 import type { ScanEvent, Symbology, VehicleDecode, VehicleRecord } from "../vin/types";
 import { META_NEVER_EDITED } from "../vin/types";
-import { db, newId, nowIso } from "./db";
+import { currentYear, db, newId, nowIso } from "./db";
 import { appendOutbox, scanEventRow, vehicleDeleteRow, vehicleMetaRow } from "./outbox";
 import { withCachedManufacturer } from "./wmiCache";
 
@@ -79,7 +79,8 @@ export async function upsertVehicle(input: UpsertInput): Promise<VehicleRecord> 
   const at = input.at ?? nowIso();
   const incomingUnit = meaningful(input.unit);
   const incomingNotes = meaningful(input.notes);
-  const currentYear = new Date().getFullYear();
+  // [G4] §4.4 step 0 caps against this, so it is the floored year and not the raw clock.
+  const year = currentYear();
 
   // §4.12: the outbox is in scope because the rows it takes are part of this write, not a
   // follow-up to it. A scan that commits without its outbox rows is a scan that never
@@ -90,7 +91,7 @@ export async function upsertVehicle(input: UpsertInput): Promise<VehicleRecord> 
     // rather than in `buildStructural` because P3 keeps `src/lib/vin/` free of I/O, and
     // it is inside the transaction so the row a scan is written with is the row the
     // cache held when it was written.
-    const structural = await withCachedManufacturer(buildStructural(input.vin, currentYear));
+    const structural = await withCachedManufacturer(buildStructural(input.vin, year));
     const unit = incomingUnit ?? existing?.unit ?? null;
     const notes = incomingNotes ?? existing?.notes ?? null;
     // D11: the LWW clock moves only when this write actually lands unit or notes — a

@@ -3,7 +3,7 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { useNavigate, useParams } from "react-router";
 import { FailureNotice } from "../../app/ErrorBoundary";
 import { useStorageFailure } from "../../app/useStorageFailure";
-import { db } from "../../lib/storage/db";
+import { currentYear, db } from "../../lib/storage/db";
 import { normalizeVehicle } from "../../lib/storage/normalize";
 import { refreshDecode } from "../../lib/storage/decodeQueue";
 import { setVehicleMeta } from "../../lib/storage/upsert";
@@ -261,7 +261,7 @@ export default function SheetScreen({ vin: vinProp, onDeleted }: SheetScreenProp
     const row = await db.vehicles.get(vin);
     // A row synced from §4.12 can arrive with empty structural/decode blocks; the sheet
     // rebuilds rather than crashes on them.
-    return row ? normalizeVehicle(row, new Date().getFullYear()) : null;
+    return row ? normalizeVehicle(row, currentYear()) : null;
   }, [vin]);
 
   // `undefined` still means "no answer yet" and renders nothing while the query is in

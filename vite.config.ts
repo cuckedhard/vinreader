@@ -4,6 +4,7 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import basicSsl from "@vitejs/plugin-basic-ssl";
 import { VitePWA } from "vite-plugin-pwa";
+import { buildYear } from "./scripts/build-year";
 
 // HTTPS in dev is required for camera (S1) and share (S3) on a real phone (N4).
 // See README.md for the basic-ssl and tunnel options.
@@ -21,7 +22,8 @@ function buildStamp(): string {
 }
 
 export default defineConfig({
-  define: { __BUILD_STAMP__: JSON.stringify(buildStamp()) },
+  // `__BUILD_YEAR__` is §4.4 step 0's floor under the device clock — see `buildYear`.
+  define: { __BUILD_STAMP__: JSON.stringify(buildStamp()), __BUILD_YEAR__: buildYear() },
   plugins: [
     react(),
     tailwindcss(),

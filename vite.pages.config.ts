@@ -5,6 +5,7 @@ import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { VitePWA } from "vite-plugin-pwa";
+import { buildYear } from "./scripts/build-year";
 
 /**
  * GitHub Pages build. **Additive** — `vite.config.ts` is untouched and remains the
@@ -60,7 +61,8 @@ function nojekyll(): Plugin {
 
 export default defineConfig({
   base: BASE,
-  define: { __BUILD_STAMP__: JSON.stringify(buildStamp()) },
+  // The same two values the root build injects; `__BUILD_YEAR__` is §4.4 step 0's floor.
+  define: { __BUILD_STAMP__: JSON.stringify(buildStamp()), __BUILD_YEAR__: buildYear() },
   build: {
     outDir: "docs",
     emptyOutDir: true,
