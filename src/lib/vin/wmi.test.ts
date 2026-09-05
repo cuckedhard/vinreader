@@ -6,6 +6,7 @@ import {
   REGION_RANGES,
   regionFromVin,
   wmiFromVin,
+  wmiSeedRows,
 } from "./wmi";
 
 // The committed seed is `{}` until `bun run seed:wmi` runs on a host that can reach
@@ -142,6 +143,15 @@ describe("wmiFromVin", () => {
   it("returns what is there when the string is shorter than the WMI", () => {
     expect(wmiFromVin("1H")).toBe("1H");
     expect(wmiFromVin("")).toBe("");
+  });
+});
+
+describe("wmiSeedRows", () => {
+  it("flattens the compiled seed into the rows §5.5 seeds its table from", () => {
+    expect(wmiSeedRows()).toEqual([
+      { wmi: "1FT", manufacturer: "FORD MOTOR COMPANY, USA", make: "FORD" },
+      { wmi: "1HG", manufacturer: "HONDA MFG OF INDIANA, LLC", make: null },
+    ]);
   });
 });
 
