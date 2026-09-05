@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { Link } from "react-router";
 import { version } from "../../../package.json";
+import { FailureNotice } from "../../app/ErrorBoundary";
 import { db } from "../../lib/storage/db";
 import {
   clearAllData,
@@ -226,9 +227,18 @@ export function SettingsScreen() {
   // before the loading return below, because a hook cannot be conditional.
   const linked = accountIsLinked(useSyncSnapshot().status);
   const [error, setError] = useState<string | null>(null);
+  // G5: the same failure, kept as the value rather than only as a sentence. The catch below
+  // already knew why this screen was empty and the loading gate returned above the banner
+  // that would have said it, so "Loading…" stood for the rest of the session over a
+  // database that had already refused. Wrapped, because a rejection may carry no reason and
+  // "no reason" is not "storage is fine" (`probeStorage`).
+  const [unreadable, setUnreadable] = useState<{ cause: unknown } | null>(null);
 
   useEffect(() => {
-    getSettings().catch((cause: unknown) => setError(describe(cause)));
+    getSettings().catch((cause: unknown) => {
+      setError(describe(cause));
+      setUnreadable({ cause });
+    });
   }, []);
 
   const [labelDraft, setLabelDraft] = useState<string | null>(null);
@@ -241,7 +251,21 @@ export function SettingsScreen() {
     return (
       <div className="mx-auto w-full max-w-md p-4">
         <h1 className="text-2xl leading-tight font-bold text-fg">Settings</h1>
-        <p className="mt-4 text-base text-fg-muted">Loading…</p>
+        {/*
+         * P7. `getSettings` is this screen's only storage read, so a rejection from it is
+         * storage saying no — not an inference (N2, `FailureNotice.fromStorage`). Until it
+         * answers, "Loading…" is still the honest word; after it refuses, the live query is
+         * never going to emit either, because Dexie filters `DatabaseClosedError` out of
+         * `liveQuery`. Settings is where "Clear all data" lives — the one recovery from a
+         * wedged database — so this is the screen that most owes the reason.
+         */}
+        {unreadable === null ? (
+          <p className="mt-4 text-base text-fg-muted">Loading…</p>
+        ) : (
+          <div className="-mx-4 mt-4">
+            <FailureNotice error={unreadable.cause} fromStorage />
+          </div>
+        )}
       </div>
     );
   }

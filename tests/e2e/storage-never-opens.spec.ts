@@ -20,7 +20,12 @@ import { expect, test } from "@playwright/test";
  * they were sent to.
  *
  * This is not F1-b. F1-b needs a probe that does not exist; this one has the probe and
- * discards its answer, and the fix is to render `error` above the loading line.
+ * discards its answer, and the fix is to render what it caught above the loading line.
+ *
+ * [F1-b] **The Sheet and History render an empty frame instead of a reason.** Same fault,
+ * a different gap: no probe at all on those two routes, so `useLiveQuery` returning
+ * `undefined` forever was read as "still loading" forever. `useStorageFailure` is the
+ * signal; the four cases below are the floor under it.
  *
  * The two faults below are the two ways IndexedDB refuses at the door, copied from
  * `storage-unavailable.spec.ts` so both specs describe the same platform behaviour.
@@ -82,9 +87,13 @@ for (const [name, script] of [
 
     await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
 
-    // TODAY: this is what the screen shows, permanently. The assertion is written as the
-    // thing that must stop being true rather than as the thing that must be true, so it
-    // cannot pass by the wording of the replacement happening to differ.
+    // WAS: this, permanently. The assertion is written as the thing that must stop being
+    // true rather than as the thing that must be true, so it cannot pass by the wording of
+    // the replacement happening to differ.
     await expect(page.getByText("Loading…")).toHaveCount(0, { timeout: 10_000 });
+
+    // And the replacement is the reason, not an empty screen: the same §6.4-tone notice the
+    // Sheet and History now show, over the failure `getSettings()` had already caught.
+    await expect(page.getByRole("alert").filter({ hasText: STORAGE_TITLE })).toBeVisible();
   });
 }
