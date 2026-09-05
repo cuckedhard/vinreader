@@ -36,7 +36,7 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { isPayloadCarrier } from "../src/lib/payload/carrier";
 import { extractVin } from "../src/lib/vin/extractVin";
-import { BENCH_SYMBOLOGIES, buildCorpus } from "./corpus";
+import { BENCH_SYMBOLOGIES, buildCorpus, renderBarcode } from "./corpus";
 import type { BenchSymbology, CorpusItem } from "./corpus";
 import { openBrowserDecoder } from "./browser-decode";
 import type { BrowserDecoder } from "./browser-decode";
@@ -164,6 +164,187 @@ const QUICK_REPORT_PATH = fileURLToPath(new URL("report.quick.md", import.meta.u
 /** Same split for the JSON: `bench` hardcodes --json, so --quick would otherwise overwrite
  *  the tracked full-corpus artifact through the flag rather than the report path. */
 const QUICK_JSON_SUFFIX = ".quick.json";
+
+// ---------------------------------------------------------------------------
+// Quoted results (SB-11)
+// ---------------------------------------------------------------------------
+
+/**
+ * The configuration axes that decide what a decode rate or a false-accept count *means*.
+ * Two runs that agree on every one of these measured the same thing; two that do not are
+ * not comparable, and a number carried across from one to the other is a number about
+ * something else.
+ */
+interface Fingerprint {
+  layout: Layout;
+  /** The path the verdict comes from. The others cannot change it (B2). */
+  appPath: DecodePath;
+  /** VINs per run. */
+  count: number;
+  tiers: readonly string[];
+  symbologies: readonly string[];
+  /** §4.6 `POSSIBLE_FORMATS` and the non-format hints, as the run itself names them. */
+  formats: readonly string[];
+  hints: readonly string[];
+  /** `severeDraw`'s own words (Z5). */
+  severeDraw: string;
+}
+
+/**
+ * A result this report **quotes** rather than takes (SB-11).
+ *
+ * The five-seed sweep below used to be a paragraph of prose in `markdownReport`: true when
+ * it was written, printed unchanged by every run afterwards, and structurally unable to
+ * become false, because nothing recomputed it and nothing checked that it still described
+ * the same bench. That is the same defect class this ledger records at R4-H′, F1-a and
+ * TA2 — a claim no run can falsify.
+ *
+ * So a quote now carries the configuration it was taken under, and every run compares that
+ * to its own. A quote whose fingerprint no longer matches is printed as **stale**, with the
+ * axes that moved, instead of being printed as a fact. What the check cannot see is stated
+ * in the report beside it: a change inside `src/lib`, `bwip-js`, `sharp` or ZXing moves
+ * decodes without moving any axis here, and only re-taking the measurement covers that.
+ */
+interface Quoted {
+  /** What was measured, in one line. */
+  result: string;
+  /** The exact command that re-takes it. */
+  command: string;
+  /** Where it was taken and by whom, so it can be found again. */
+  taken: string;
+  config: Fingerprint;
+}
+
+interface RecordedSweep extends Quoted {
+  seeds: readonly number[];
+  attempts: number;
+  falseAccepts: number;
+  /** The widest per-cell spreads the sweep measured, quoted by `seedNoiseSection`. */
+  spreads: readonly { cell: string; low: number; high: number }[];
+  /** The next widest cells, as one phrase. */
+  alsoWide: string;
+  /** What the same sweep measured on the pre-SB-2 crop layout, in percentage points. */
+  cropWidest: string;
+}
+
+/**
+ * The five-seed sweep. 21,000 attempts is 75 minutes of Chromium, which is why it is not
+ * taken every round — and exactly why it has to say so where it is read.
+ */
+const RECORDED_SWEEP: RecordedSweep = {
+  result: "0 false accepts in 21,000 attempts",
+  command: "bun run bench/run.ts --seed <s> --paths canvas",
+  taken:
+    "`harden S1` round 2, re-taken after SB-2 moved the bench onto the app's frame; ledger rows SB-1 and SB-7",
+  seeds: [0x5eed_1a7c, 0x1111_1111, 0x2bad_5eed, 0x7f3a_c91d, 0xdeca_fbad],
+  attempts: 21_000,
+  falseAccepts: 0,
+  spreads: [
+    { cell: "`code_128` moderate", low: 0.75, high: 0.835 },
+    { cell: "`qr_code` severe", low: 0.375, high: 0.46 },
+  ],
+  alsoWide: "`code_128` severe and `data_matrix` severe at 8.0 pp",
+  cropWidest: "`code_128` severe at 11.5 pp",
+  config: {
+    layout: "frame",
+    appPath: "canvas",
+    count: 200,
+    tiers: ["clean", "moderate", "severe"],
+    symbologies: [
+      "code_39",
+      "code_39_i",
+      "code_39_check",
+      "code_128",
+      "code_128_fnc1",
+      "data_matrix",
+      "qr_code",
+    ],
+    formats: ["CODE_39", "CODE_128", "DATA_MATRIX", "QR_CODE"],
+    hints: ["TRY_HARDER", "ASSUME_GS1"],
+    severeDraw: "2 of warp, glare, low_light, jpeg, drawn per frame from the seed",
+  },
+};
+
+/** This run's own fingerprint, read off the live configuration rather than described. */
+function fingerprintOf(options: Options): Fingerprint {
+  return {
+    layout: options.layout,
+    appPath: options.paths[0],
+    count: options.count,
+    tiers: options.tiers,
+    symbologies: options.symbologies,
+    formats: BENCH_FORMAT_NAMES,
+    hints: BENCH_HINT_NAMES,
+    severeDraw: severeDraw(options),
+  };
+}
+
+/** Every axis on which this run differs from the run a quote was taken on. Empty = comparable. */
+function drift(quoted: Fingerprint, options: Options): string[] {
+  const live = fingerprintOf(options);
+  const out: string[] = [];
+  const compare = (label: string, was: string, now: string): void => {
+    if (was !== now) out.push(`${label}: recorded \`${was}\`, this run \`${now}\``);
+  };
+  compare("layout", quoted.layout, live.layout);
+  compare("verdict path", quoted.appPath, live.appPath);
+  compare("VINs", String(quoted.count), String(live.count));
+  compare("tiers", quoted.tiers.join(","), live.tiers.join(","));
+  compare("symbologies", quoted.symbologies.join(","), live.symbologies.join(","));
+  compare("§4.6 formats", quoted.formats.join(","), live.formats.join(","));
+  compare("§4.6 hints", quoted.hints.join(","), live.hints.join(","));
+  compare("severe draw (Z5)", quoted.severeDraw, live.severeDraw);
+  return out;
+}
+
+/**
+ * The Code 128 checksum collisions this slice has found. Both are mod-103-valid misreads —
+ * Code 128's own check cannot catch either — and both are open with Zach.
+ *
+ * They are replayed on **every** run, on that run's layout and decode path, because "neither
+ * survives the frame" is a claim about the program as it is now and not about the afternoon
+ * it was measured (SB-11). Two frames, two decodes: it costs about a second, and it is the
+ * part of the quoted sweep that can be recomputed cheaply.
+ */
+interface KnownCollision {
+  /** Ledger row id. */
+  id: string;
+  vin: string;
+  /** The wrong VIN §4.2 named from the misread. */
+  wrong: string;
+  symbology: BenchSymbology;
+  tier: Tier;
+  /**
+   * The seed of the frame that misread. Fixed, not derived from the run seed: this replays
+   * one recorded frame, so `--seed` and `--severe-extras` do not move it.
+   */
+  seed: number;
+}
+
+const KNOWN_COLLISIONS: readonly KnownCollision[] = [
+  {
+    id: "R4-F",
+    vin: "EH8U2YHX60HU8VGWD",
+    wrong: "EH8U2YHX60HU7VAWD",
+    symbology: "code_128",
+    tier: "severe",
+    seed: 0xc5d3_691c,
+  },
+  {
+    id: "SB-1",
+    vin: "KB7BWYDJ6TW0808Z3",
+    wrong: "KB7BWYDJ6TW0874Z3",
+    symbology: "code_128_fnc1",
+    tier: "severe",
+    seed: 0x55f2_df0a,
+  },
+];
+
+/** One replayed collision, classified by exactly the classifier an attempt gets. */
+interface Replay {
+  collision: KnownCollision;
+  attempt: Attempt;
+}
 
 // ---------------------------------------------------------------------------
 // Attempts
@@ -439,6 +620,57 @@ async function runAll(
     }
   }
   return attempts;
+}
+
+/**
+ * Replay every known collision on this run's instrument (SB-11).
+ *
+ * Same render, same degradation, same layout composite and the same `classify` an ordinary
+ * attempt gets — so a reproduced collision is a `false_accept` by the bench's own definition
+ * and not by a second one written here.
+ *
+ * These frames are *not* corpus attempts: their seeds are fixed rather than derived from the
+ * run seed, so they are reported beside the §13.6 count and never folded into it. Which
+ * frames §13.6 counts is §13.4's list, not the bench's to extend — the same line
+ * `orderingViolations` draws.
+ */
+async function replayCollisions(
+  options: Options,
+  browser: BrowserDecoder | null,
+): Promise<Replay[]> {
+  const app = options.paths[0];
+  const out: Replay[] = [];
+  for (const collision of KNOWN_COLLISIONS) {
+    const extras = severeExtrasFor(collision.seed);
+    const identity: FrameIdentity = {
+      vin: collision.vin,
+      symbology: collision.symbology,
+      tier: collision.tier,
+      seed: collision.seed,
+      severeExtras: extras,
+      fill: 1,
+    };
+    let frame: Frame;
+    try {
+      const png = await renderBarcode(collision.vin, collision.symbology);
+      const degraded = await degrade(png, collision.tier, collision.seed, extras);
+      if (options.layout === "crop") {
+        frame = { identity, png: degraded, error: null };
+      } else {
+        const framed = await composite(degraded);
+        frame = { identity: { ...identity, fill: framed.fill }, png: framed.png, error: null };
+      }
+    } catch (error) {
+      frame = {
+        identity,
+        png: null,
+        error: error instanceof Error ? `replay ${error.name}: ${error.message}` : String(error),
+      };
+    }
+    const [outcome] = await decodeChunk([frame], app, browser);
+    out.push({ collision, attempt: classify(frame.identity, app, outcome) });
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------------
@@ -1175,6 +1407,134 @@ function deltaSection(
 }
 
 /**
+ * The five-seed sweep, printed as a **quote** with its provenance and a staleness check
+ * (SB-11), because this run does not take it.
+ *
+ * The paragraph this replaces was a string literal: 21,000 attempts and two named collisions
+ * asserted by every run that produced no false accepts of its own, whether or not anything
+ * had measured them since. It could not become false. This can: change the layout, the
+ * verdict path, the corpus size, the symbology set, the §4.6 hints or the Z5 draw and the
+ * quote prints as stale, naming what moved.
+ */
+function quotedSweepSection(options: Options, seedRuns: readonly SeedRun[]): string[] {
+  const sweep = RECORDED_SWEEP;
+  const stale = drift(sweep.config, options);
+  const out: string[] = [];
+  out.push("### Quoted, not measured by this run (SB-11)");
+  out.push("");
+  out.push(
+    "Everything above this line is this run's own count over its own attempts. What follows " +
+      "is a **record of a measurement taken once and not re-taken here**: no part of this run " +
+      `recomputes those ${sweep.attempts.toLocaleString("en-US")} attempts, and this block ` +
+      "will go on printing until someone does.",
+  );
+  out.push("");
+  out.push("| | |");
+  out.push("|---|---|");
+  out.push(`| Quoted result | **${sweep.result}** |`);
+  out.push(
+    `| Seeds | ${sweep.seeds.map((seed) => `\`0x${seed.toString(16)}\``).join(", ")} — ` +
+      `${sweep.config.count} VINs each |`,
+  );
+  out.push(`| Taken at | ${sweep.taken} |`);
+  out.push(`| Re-take with | \`${sweep.command}\` |`);
+  out.push(
+    stale.length === 0
+      ? "| Still comparable? | **Yes** — this run matches the sweep's configuration on layout, " +
+          "verdict path, corpus size, symbology set, §4.6 formats and hints, and the Z5 severe " +
+          "draw. |"
+      : `| Still comparable? | **NO — STALE.** ${stale.join("; ")}. The quoted number describes ` +
+          "a different measurement and is not evidence about this one; re-take it before " +
+          "anyone leans on it. |",
+  );
+  out.push("");
+  out.push(
+    "**What that check cannot see.** It compares the bench's configuration, not the program: " +
+      "a change inside `src/lib/vin`, in `bwip-js`'s rendering, in `sharp`'s degradations or " +
+      "in ZXing itself moves decodes without moving a single axis above. Nothing short of " +
+      "re-running the command covers that, and a quote is never evidence that a **current** " +
+      "run is clean.",
+  );
+  out.push("");
+  if (seedRuns.length > 0) {
+    out.push(
+      `This run swept ${seedRuns.length + 1} seeds of its own (` +
+        `${[options.seed, ...seedRuns.map((r) => r.seed)].map((seed) => `\`0x${seed.toString(16)}\``).join(", ")}), ` +
+        "so its bands below are measured — but it is still not the sweep quoted here.",
+    );
+    out.push("");
+  }
+  return out;
+}
+
+/**
+ * The half of the quoted claim that **is** recomputed, every run (SB-11).
+ *
+ * "Neither collision survives the frame" was the load-bearing sentence in the old paragraph
+ * and the cheapest one to check: two frames, two decodes, on this run's layout and this
+ * run's decode path. If a future change — an ROI crop above all, SB-3/SB-10 — makes either
+ * frame decodable again, this table says so on the same page as the headline instead of
+ * leaving a stale sentence claiming otherwise.
+ */
+function replaySection(options: Options, replays: readonly Replay[]): string[] {
+  if (replays.length === 0) return [];
+  const out: string[] = [];
+  const reproduced = replays.filter((r) => r.attempt.verdict === "false_accept");
+  out.push("### Replayed by this run: the known Code 128 collisions (SB-11)");
+  out.push("");
+  out.push(
+    `Both mod-103-valid misreads this slice has found, re-decoded on this run's ` +
+      `\`${options.layout}\` layout through \`${options.paths[0]}\`. Fixed seeds, so ` +
+      "`--seed` and `--severe-extras` do not move them; they are recorded frames, not corpus " +
+      "attempts, and they are counted nowhere above.",
+  );
+  out.push("");
+  out.push(
+    "| Ledger | Expected VIN | Collision reads | Symbology | Drawn extras | This run | Decoded text |",
+  );
+  out.push("|---|---|---|---|---|---|---|");
+  for (const { collision, attempt } of replays) {
+    const verdict =
+      attempt.verdict === "false_accept"
+        ? `**REPRODUCES — \`${attempt.extracted ?? ""}\`**`
+        : attempt.verdict === "hit"
+          ? "reads correctly"
+          : attempt.verdict === "error"
+            ? `error: ${attempt.error ?? ""}`
+            : attempt.decoded === null
+              ? "reads nothing"
+              : "decodes, no VIN";
+    out.push(
+      `| ${collision.id} | \`${collision.vin}\` | \`${collision.wrong}\` | ` +
+        `${collision.symbology} | ${(attempt.severeExtras ?? []).join(" + ")} | ${verdict} | ` +
+        `${attempt.decoded === null ? "-" : `\`${attempt.decoded.replace(/\|/g, "\\|")}\``} |`,
+    );
+  }
+  out.push("");
+  if (reproduced.length === 0) {
+    out.push(
+      "Neither reads on this instrument, which is what the quoted sweep's explanation rests " +
+        "on: the frame changed which frames decode at all, and a decode that no longer happens " +
+        "cannot be wrong. **That is not a disproof.** The collisions are arithmetic in Code " +
+        "128's own check, not artefacts of a crop, and the quoted 21,000 attempts bound the " +
+        "rate at roughly 1 in 7,000 at 95% — which is not zero.",
+    );
+  } else {
+    out.push(
+      `**${reproduced.length} of ${replays.length} REPRODUCES ITS WRONG VIN on this run's ` +
+        "layout and decode path** — " +
+        reproduced.map((r) => r.collision.id).join(", ") +
+        ". The quoted sweep described a configuration in which these frames read as nothing; " +
+        "it does not describe this one, and the zero above is a count over the corpus that " +
+        "does not include them. Re-take the sweep before any headline here is believed, and " +
+        "read R4-F and SB-1 in the ledger first.",
+    );
+  }
+  out.push("");
+  return out;
+}
+
+/**
  * What the frame costs and what an ROI crop would buy back — SB-2 and SB-3, measured by
  * `bench/frame-probe.ts` and reproduced here because the next person to read this table will
  * reach for a crop, and one of the two obvious crops destroys 2D entirely.
@@ -1239,15 +1599,31 @@ function seedNoiseSection(
 
   out.push("## What a cell is worth (SB-7)");
   out.push("");
+  const sweep = RECORDED_SWEEP;
+  const stale = drift(sweep.config, options);
   out.push(
     `A cell above is ${moving[0]?.attempts ?? 0} frames at **one run seed**. Change the seed ` +
       "and every `moderate` and `severe` frame draws a different rotation, warp, glare, grain " +
-      "and JPEG quality, so the cell moves. Five full canvas runs at five seeds, on this " +
-      "layout, spread `code_128` moderate over 75.0-83.5% and `qr_code` severe over " +
-      "37.5-46.0% — 8.5 pp each — with `code_128` severe and `data_matrix` severe at 8.0. " +
-      "(On the pre-SB-2 crop layout the widest was `code_128` severe at 11.5 pp.) None of " +
-      "that was ever stated here, so a fixer who moved a moderate cell by 5 pp on one seed " +
-      "and called it a fix had measured noise.",
+      "and JPEG quality, so the cell moves.",
+  );
+  out.push("");
+  // Quoted, with its provenance and its staleness check, rather than asserted (SB-11): these
+  // spreads are the same recorded sweep the headline quotes, and nothing here re-measures them.
+  out.push(
+    `**Quoted, not measured by this run (SB-11).** The five-seed sweep recorded at ` +
+      `${sweep.taken} — ${sweep.config.count} VINs at ` +
+      `${sweep.seeds.map((seed) => `\`0x${seed.toString(16)}\``).join(", ")} — spread ` +
+      sweep.spreads.map((s2) => `${s2.cell} over ${pct(s2.low)}-${pct(s2.high)}`).join(" and ") +
+      ` — ${((sweep.spreads[0].high - sweep.spreads[0].low) * 100).toFixed(1)} pp each — with ` +
+      `${sweep.alsoWide}. (On the pre-SB-2 crop layout the widest was ${sweep.cropWidest}.) ` +
+      (stale.length === 0
+        ? "Its configuration still matches this run's, so those spreads describe these cells. "
+        : `**Its configuration no longer matches this run's — ${stale.join("; ")} — so those ` +
+          "spreads describe different cells and this run's own band is the one to use.** ") +
+      "Re-take it with `" +
+      sweep.command +
+      "`. None of it was ever stated here, so a fixer who moved a moderate cell by 5 pp on " +
+      "one seed and called it a fix had measured noise.",
   );
   out.push("");
   out.push(
@@ -1341,6 +1717,7 @@ function markdownReport(
   failures: readonly string[],
   diagnosticReasons: readonly string[],
   seedRuns: readonly SeedRun[],
+  replays: readonly Replay[],
 ): string {
   const app = options.paths[0];
   const others = options.paths.slice(1);
@@ -1442,20 +1819,6 @@ function markdownReport(
         "five-seed sweep, at 2 in 21,000. A clean headline here means this run produced none " +
         "— nothing more.",
     );
-    out.push("");
-    out.push(
-      "**Recorded, on this layout:** the five-seed sweep was re-run after SB-2 — " +
-        "`bun run bench/run.ts --seed <s> --paths canvas` for `0x5eed1a7c`, `0x11111111`, " +
-        "`0x2bad5eed`, `0x7f3ac91d`, `0xdecafbad`, 200 VINs each — and produced **0 false " +
-        "accepts in 21,000 attempts**. Both known Code 128 checksum collisions were found on " +
-        "the pre-SB-2 crop and neither survives the frame: R4-F (`EH8U2YHX60HU8VGWD` -> " +
-        "`EH8U2YHX60HU7VAWD`, seed `0xc5d3691c`) and SB-1 (`KB7BWYDJ6TW0808Z3` -> " +
-        "`KB7BWYDJ6TW0874Z3`, seed `0x55f2df0a`) both read as nothing at all on the framed " +
-        "version of their own frame. **That is not a disproof.** The collisions are " +
-        "arithmetic in Code 128's mod-103 check, not artefacts of the crop; the frame changed " +
-        "which frames decode at all, and a decode that no longer happens cannot be wrong. " +
-        "21,000 attempts bound the rate at roughly 1 in 7,000 at 95%, which is not zero.",
-    );
   } else {
     out.push(
       `**${falseAccepts.length} FALSE ACCEPT${falseAccepts.length === 1 ? "" : "S"}** ` +
@@ -1483,6 +1846,8 @@ function markdownReport(
     out.push("```");
   }
   out.push("");
+  out.push(...quotedSweepSection(options, seedRuns));
+  out.push(...replaySection(options, replays));
   if (offPathFalseAccepts.length > 0) {
     out.push(
       `Off the app's path, ${offPathFalseAccepts.length} further false accept` +
@@ -1669,6 +2034,7 @@ function jsonReport(
   failures: readonly string[],
   diagnosticReasons: readonly string[],
   seedRuns: readonly SeedRun[],
+  replays: readonly Replay[],
 ): string {
   const app = options.paths[0];
   const others = options.paths.slice(1);
@@ -1716,6 +2082,25 @@ function jsonReport(
       },
       cells,
       seedRuns: seedRuns.map((run) => ({ seed: run.seed, cells: run.cells })),
+      // Quoted, never taken by this run (SB-11): the record, plus whether this run's
+      // configuration still matches the one it was taken under.
+      quoted: {
+        sweep: RECORDED_SWEEP,
+        drift: drift(RECORDED_SWEEP.config, options),
+        thisRun: fingerprintOf(options),
+      },
+      // Taken by this run, on this run's instrument.
+      collisionReplay: replays.map(({ collision, attempt }) => ({
+        id: collision.id,
+        expected: collision.vin,
+        collisionReads: collision.wrong,
+        verdict: attempt.verdict,
+        extracted: attempt.extracted,
+        decoded: attempt.decoded,
+        layout: options.layout,
+        path: attempt.path,
+        seed: attempt.seed,
+      })),
       seedBands: cells
         .filter((c) => c.path === app)
         .map((c) => ({
@@ -1900,6 +2285,7 @@ async function main(): Promise<number> {
   // band a cell actually has instead of estimating it (SB-7). Same browser, same corpus, same
   // jobs — only the degradation seed moves, which is exactly the quantity being measured.
   const seedRuns: SeedRun[] = [];
+  let replays: Replay[];
   try {
     attempts = await runAll(
       jobs,
@@ -1927,6 +2313,9 @@ async function main(): Promise<number> {
       // attempts rather than summarised away — §13.6's zero is a count over everything seen.
       attempts.push(...extraAttempts.filter((a) => a.verdict === "false_accept"));
     }
+    // Two extra frames, on the same instrument, while it is still open: the recomputable
+    // half of the quoted sweep (SB-11).
+    replays = await replayCollisions(options, browser);
     // Read before `close()` disposes the pages that recorded them.
     pageErrors = browser?.pageErrors() ?? [];
   } finally {
@@ -1976,6 +2365,7 @@ async function main(): Promise<number> {
       failures,
       reasons,
       seedRuns,
+      replays,
     ),
     "utf8",
   );
@@ -1999,6 +2389,7 @@ async function main(): Promise<number> {
         failures,
         reasons,
         seedRuns,
+        replays,
       ),
       "utf8",
     );
@@ -2053,6 +2444,15 @@ async function main(): Promise<number> {
     lines.push(`      decoded ${JSON.stringify(a.decoded)} as ${a.format}`);
     lines.push(`      ${reproduce(a)}`);
   }
+  // The recomputed half of the quoted sweep (SB-11), in one line.
+  const reproduced = replays.filter((r) => r.attempt.verdict === "false_accept");
+  lines.push(
+    `  collision replay: ${replays.length - reproduced.length}/${replays.length} read as ` +
+      `nothing on ${options.layout}/${app}` +
+      (reproduced.length === 0
+        ? " (R4-F, SB-1 — recorded frames, not corpus attempts)"
+        : ` — ${reproduced.map((r) => r.collision.id).join(", ")} REPRODUCES A WRONG VIN`),
+  );
   // What the instrument change was worth, in one line, on the same frames.
   for (const path of options.paths.slice(1)) {
     const appHits = attempts.filter((a) => a.path === app && a.verdict === "hit").length;
