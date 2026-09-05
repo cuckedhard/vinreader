@@ -3,12 +3,18 @@ import { createRoot } from "react-dom/client";
 import { HashRouter } from "react-router";
 import "./index.css";
 import { AppRoutes } from "./app/router";
+import { ErrorBoundary, FailureNotice } from "./app/ErrorBoundary";
 
+// The last floor. `Shell` boundaries the palette and the routed screen separately, so this
+// one only ever sees a shell that could not render at all — and its job is that the user
+// reads a sentence instead of a white page.
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <HashRouter>
-      <AppRoutes />
-    </HashRouter>
+    <ErrorBoundary fallback={(error) => <FailureNotice error={error} />}>
+      <HashRouter>
+        <AppRoutes />
+      </HashRouter>
+    </ErrorBoundary>
   </StrictMode>,
 );
 
