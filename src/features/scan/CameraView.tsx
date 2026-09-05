@@ -226,13 +226,21 @@ export function CameraView({
   const sighting = state.kind === "candidate" || state.kind === "confirmed" ? state.sighting : null;
   // Whichever route forward exists gets the 56 px primary target (§6.1).
   const typeVariant = notice !== null && !notice.retry ? "primary" : "secondary";
-  // §6.3 stops the stream on `confirmed`, so what is left is a dead black box ~470 px tall
-  // that pushed the Rescan / Use as-is decision below the fold on every phone viewport. It
-  // is hidden rather than unmounted so `videoRef` still points at this element when Rescan
-  // returns the machine to `streaming`.
+  // §6.3 stops the stream on `confirmed`, and there is no stream at all in the states that
+  // carry a notice — `error`, and `idle` after the track dropped. What is left in every one
+  // of them is a dead black box ~470 px tall: it pushed the Rescan / Use as-is decision
+  // below the fold on `confirmed`, and in the error states it pushed §6.4's own escape
+  // routes off the screen (F7). At 320×658 neither Retry nor "Type VIN instead" had a
+  // single pixel inside `main` and a tap at their centres landed on the bottom nav, so the
+  // fallback out of a dead camera was unreachable because the camera was dead — which N1
+  // and P1 forbid. The first `idle` keeps the box: nothing has failed, the request is on
+  // its way, and hiding it there would only jump the layout on the way up.
+  //
+  // Hidden rather than unmounted so `videoRef` still points at this element when Retry or
+  // Rescan returns the machine to `streaming`.
   const previewClasses = [
     "relative w-full flex-1 overflow-hidden rounded-[var(--radius)] border border-border bg-black",
-    state.kind === "confirmed" ? "hidden" : "",
+    state.kind === "confirmed" || notice !== null ? "hidden" : "",
   ]
     .filter(Boolean)
     .join(" ");
