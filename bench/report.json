@@ -1,5 +1,7 @@
 {
   "spec": "§13.4 scan-robustness bench",
+  "canonical": true,
+  "nonCanonicalReasons": [],
   "config": {
     "seed": 1592597116,
     "seedHex": "0x5eed1a7c",
@@ -8,6 +10,12 @@
     "quick": false,
     "severeExtras": null,
     "severeExtrasDrawn": 2,
+    "layout": "frame",
+    "layoutNote": "the symbol composited unscaled and centred on a white 1920x1080 field — what `@zxing/browser` draws from the `<video>` (SB-2)",
+    "frame": {
+      "width": 1920,
+      "height": 1080
+    },
     "tiers": [
       "clean",
       "moderate",
@@ -49,7 +57,7 @@
         "ASSUME_GS1"
       ]
     },
-    "suppressedZxingWarnings": 7934
+    "suppressedZxingWarnings": 8232
   },
   "thresholds": {
     "decodeRate": {
@@ -62,9 +70,9 @@
   "totals": {
     "attempts": 12600,
     "appPathAttempts": 4200,
-    "hits": 2839,
-    "misses": 1360,
-    "falseAccepts": 1,
+    "hits": 2623,
+    "misses": 1577,
+    "falseAccepts": 0,
     "errors": 0,
     "aimIdentifiersStripped": 0
   },
@@ -110,16 +118,16 @@
       "symbology": "code_39",
       "tier": "severe",
       "attempts": 200,
-      "hits": 102,
-      "misses": 98,
+      "hits": 60,
+      "misses": 140,
       "falseAccepts": 0,
       "errors": 0,
-      "decodeRate": 0.51,
+      "decodeRate": 0.3,
       "threshold": 0.7,
       "pass": false,
       "missReasons": {
-        "no_decode": 94,
-        "no_vin": 4,
+        "no_decode": 140,
+        "no_vin": 0,
         "carrier": 0
       }
     },
@@ -164,16 +172,16 @@
       "symbology": "code_39_i",
       "tier": "severe",
       "attempts": 200,
-      "hits": 91,
-      "misses": 109,
+      "hits": 47,
+      "misses": 153,
       "falseAccepts": 0,
       "errors": 0,
-      "decodeRate": 0.455,
+      "decodeRate": 0.235,
       "threshold": 0.7,
       "pass": false,
       "missReasons": {
-        "no_decode": 103,
-        "no_vin": 6,
+        "no_decode": 153,
+        "no_vin": 0,
         "carrier": 0
       }
     },
@@ -218,16 +226,16 @@
       "symbology": "code_39_check",
       "tier": "severe",
       "attempts": 200,
-      "hits": 25,
-      "misses": 175,
+      "hits": 14,
+      "misses": 186,
       "falseAccepts": 0,
       "errors": 0,
-      "decodeRate": 0.125,
+      "decodeRate": 0.07,
       "threshold": 0.7,
       "pass": false,
       "missReasons": {
-        "no_decode": 92,
-        "no_vin": 83,
+        "no_decode": 138,
+        "no_vin": 48,
         "carrier": 0
       }
     },
@@ -254,15 +262,15 @@
       "symbology": "code_128",
       "tier": "moderate",
       "attempts": 200,
-      "hits": 162,
-      "misses": 38,
+      "hits": 161,
+      "misses": 39,
       "falseAccepts": 0,
       "errors": 0,
-      "decodeRate": 0.81,
+      "decodeRate": 0.805,
       "threshold": 0.9,
       "pass": false,
       "missReasons": {
-        "no_decode": 38,
+        "no_decode": 39,
         "no_vin": 0,
         "carrier": 0
       }
@@ -272,15 +280,51 @@
       "symbology": "code_128",
       "tier": "severe",
       "attempts": 200,
-      "hits": 118,
-      "misses": 81,
-      "falseAccepts": 1,
+      "hits": 50,
+      "misses": 150,
+      "falseAccepts": 0,
       "errors": 0,
-      "decodeRate": 0.59,
+      "decodeRate": 0.25,
       "threshold": 0.7,
       "pass": false,
       "missReasons": {
-        "no_decode": 80,
+        "no_decode": 150,
+        "no_vin": 0,
+        "carrier": 0
+      }
+    },
+    {
+      "path": "canvas",
+      "symbology": "code_128_fnc1",
+      "tier": "clean",
+      "attempts": 200,
+      "hits": 200,
+      "misses": 0,
+      "falseAccepts": 0,
+      "errors": 0,
+      "decodeRate": 1,
+      "threshold": 0.99,
+      "pass": true,
+      "missReasons": {
+        "no_decode": 0,
+        "no_vin": 0,
+        "carrier": 0
+      }
+    },
+    {
+      "path": "canvas",
+      "symbology": "code_128_fnc1",
+      "tier": "moderate",
+      "attempts": 200,
+      "hits": 142,
+      "misses": 58,
+      "falseAccepts": 0,
+      "errors": 0,
+      "decodeRate": 0.71,
+      "threshold": 0.9,
+      "pass": false,
+      "missReasons": {
+        "no_decode": 57,
         "no_vin": 1,
         "carrier": 0
       }
@@ -288,53 +332,17 @@
     {
       "path": "canvas",
       "symbology": "code_128_fnc1",
-      "tier": "clean",
-      "attempts": 200,
-      "hits": 200,
-      "misses": 0,
-      "falseAccepts": 0,
-      "errors": 0,
-      "decodeRate": 1,
-      "threshold": 0.99,
-      "pass": true,
-      "missReasons": {
-        "no_decode": 0,
-        "no_vin": 0,
-        "carrier": 0
-      }
-    },
-    {
-      "path": "canvas",
-      "symbology": "code_128_fnc1",
-      "tier": "moderate",
-      "attempts": 200,
-      "hits": 155,
-      "misses": 45,
-      "falseAccepts": 0,
-      "errors": 0,
-      "decodeRate": 0.775,
-      "threshold": 0.9,
-      "pass": false,
-      "missReasons": {
-        "no_decode": 45,
-        "no_vin": 0,
-        "carrier": 0
-      }
-    },
-    {
-      "path": "canvas",
-      "symbology": "code_128_fnc1",
       "tier": "severe",
       "attempts": 200,
-      "hits": 1,
-      "misses": 199,
+      "hits": 0,
+      "misses": 200,
       "falseAccepts": 0,
       "errors": 0,
-      "decodeRate": 0.005,
+      "decodeRate": 0,
       "threshold": 0.7,
       "pass": false,
       "missReasons": {
-        "no_decode": 199,
+        "no_decode": 200,
         "no_vin": 0,
         "carrier": 0
       }
@@ -380,15 +388,15 @@
       "symbology": "data_matrix",
       "tier": "severe",
       "attempts": 200,
-      "hits": 110,
-      "misses": 90,
+      "hits": 74,
+      "misses": 126,
       "falseAccepts": 0,
       "errors": 0,
-      "decodeRate": 0.55,
+      "decodeRate": 0.37,
       "threshold": 0.7,
       "pass": false,
       "missReasons": {
-        "no_decode": 90,
+        "no_decode": 126,
         "no_vin": 0,
         "carrier": 0
       }
@@ -416,15 +424,15 @@
       "symbology": "qr_code",
       "tier": "moderate",
       "attempts": 200,
-      "hits": 195,
-      "misses": 5,
+      "hits": 196,
+      "misses": 4,
       "falseAccepts": 0,
       "errors": 0,
-      "decodeRate": 0.975,
+      "decodeRate": 0.98,
       "threshold": 0.9,
       "pass": true,
       "missReasons": {
-        "no_decode": 5,
+        "no_decode": 4,
         "no_vin": 0,
         "carrier": 0
       }
@@ -434,15 +442,15 @@
       "symbology": "qr_code",
       "tier": "severe",
       "attempts": 200,
-      "hits": 87,
-      "misses": 113,
+      "hits": 86,
+      "misses": 114,
       "falseAccepts": 0,
       "errors": 0,
-      "decodeRate": 0.435,
+      "decodeRate": 0.43,
       "threshold": 0.7,
       "pass": false,
       "missReasons": {
-        "no_decode": 113,
+        "no_decode": 114,
         "no_vin": 0,
         "carrier": 0
       }
@@ -488,16 +496,16 @@
       "symbology": "code_39",
       "tier": "severe",
       "attempts": 200,
-      "hits": 101,
-      "misses": 99,
+      "hits": 60,
+      "misses": 140,
       "falseAccepts": 0,
       "errors": 0,
-      "decodeRate": 0.505,
+      "decodeRate": 0.3,
       "threshold": 0.7,
       "pass": false,
       "missReasons": {
-        "no_decode": 94,
-        "no_vin": 5,
+        "no_decode": 140,
+        "no_vin": 0,
         "carrier": 0
       }
     },
@@ -532,8 +540,8 @@
       "threshold": 0.9,
       "pass": false,
       "missReasons": {
-        "no_decode": 41,
-        "no_vin": 1,
+        "no_decode": 42,
+        "no_vin": 0,
         "carrier": 0
       }
     },
@@ -542,16 +550,16 @@
       "symbology": "code_39_i",
       "tier": "severe",
       "attempts": 200,
-      "hits": 92,
-      "misses": 108,
+      "hits": 47,
+      "misses": 153,
       "falseAccepts": 0,
       "errors": 0,
-      "decodeRate": 0.46,
+      "decodeRate": 0.235,
       "threshold": 0.7,
       "pass": false,
       "missReasons": {
-        "no_decode": 103,
-        "no_vin": 5,
+        "no_decode": 153,
+        "no_vin": 0,
         "carrier": 0
       }
     },
@@ -596,16 +604,16 @@
       "symbology": "code_39_check",
       "tier": "severe",
       "attempts": 200,
-      "hits": 24,
-      "misses": 176,
+      "hits": 14,
+      "misses": 186,
       "falseAccepts": 0,
       "errors": 0,
-      "decodeRate": 0.12,
+      "decodeRate": 0.07,
       "threshold": 0.7,
       "pass": false,
       "missReasons": {
-        "no_decode": 94,
-        "no_vin": 82,
+        "no_decode": 139,
+        "no_vin": 47,
         "carrier": 0
       }
     },
@@ -632,15 +640,15 @@
       "symbology": "code_128",
       "tier": "moderate",
       "attempts": 200,
-      "hits": 162,
-      "misses": 38,
+      "hits": 161,
+      "misses": 39,
       "falseAccepts": 0,
       "errors": 0,
-      "decodeRate": 0.81,
+      "decodeRate": 0.805,
       "threshold": 0.9,
       "pass": false,
       "missReasons": {
-        "no_decode": 38,
+        "no_decode": 39,
         "no_vin": 0,
         "carrier": 0
       }
@@ -650,16 +658,16 @@
       "symbology": "code_128",
       "tier": "severe",
       "attempts": 200,
-      "hits": 115,
-      "misses": 84,
-      "falseAccepts": 1,
+      "hits": 49,
+      "misses": 151,
+      "falseAccepts": 0,
       "errors": 0,
-      "decodeRate": 0.575,
+      "decodeRate": 0.245,
       "threshold": 0.7,
       "pass": false,
       "missReasons": {
-        "no_decode": 83,
-        "no_vin": 1,
+        "no_decode": 151,
+        "no_vin": 0,
         "carrier": 0
       }
     },
@@ -686,15 +694,15 @@
       "symbology": "code_128_fnc1",
       "tier": "moderate",
       "attempts": 200,
-      "hits": 155,
-      "misses": 45,
+      "hits": 144,
+      "misses": 56,
       "falseAccepts": 0,
       "errors": 0,
-      "decodeRate": 0.775,
+      "decodeRate": 0.72,
       "threshold": 0.9,
       "pass": false,
       "missReasons": {
-        "no_decode": 45,
+        "no_decode": 56,
         "no_vin": 0,
         "carrier": 0
       }
@@ -704,16 +712,16 @@
       "symbology": "code_128_fnc1",
       "tier": "severe",
       "attempts": 200,
-      "hits": 1,
-      "misses": 199,
+      "hits": 0,
+      "misses": 200,
       "falseAccepts": 0,
       "errors": 0,
-      "decodeRate": 0.005,
+      "decodeRate": 0,
       "threshold": 0.7,
       "pass": false,
       "missReasons": {
-        "no_decode": 198,
-        "no_vin": 1,
+        "no_decode": 200,
+        "no_vin": 0,
         "carrier": 0
       }
     },
@@ -758,15 +766,15 @@
       "symbology": "data_matrix",
       "tier": "severe",
       "attempts": 200,
-      "hits": 111,
-      "misses": 89,
+      "hits": 74,
+      "misses": 126,
       "falseAccepts": 0,
       "errors": 0,
-      "decodeRate": 0.555,
+      "decodeRate": 0.37,
       "threshold": 0.7,
       "pass": false,
       "missReasons": {
-        "no_decode": 89,
+        "no_decode": 126,
         "no_vin": 0,
         "carrier": 0
       }
@@ -812,15 +820,15 @@
       "symbology": "qr_code",
       "tier": "severe",
       "attempts": 200,
-      "hits": 88,
-      "misses": 112,
+      "hits": 87,
+      "misses": 113,
       "falseAccepts": 0,
       "errors": 0,
-      "decodeRate": 0.44,
+      "decodeRate": 0.435,
       "threshold": 0.7,
       "pass": false,
       "missReasons": {
-        "no_decode": 112,
+        "no_decode": 113,
         "no_vin": 0,
         "carrier": 0
       }
@@ -866,16 +874,16 @@
       "symbology": "code_39",
       "tier": "severe",
       "attempts": 200,
-      "hits": 102,
-      "misses": 98,
+      "hits": 60,
+      "misses": 140,
       "falseAccepts": 0,
       "errors": 0,
-      "decodeRate": 0.51,
+      "decodeRate": 0.3,
       "threshold": 0.7,
       "pass": false,
       "missReasons": {
-        "no_decode": 94,
-        "no_vin": 4,
+        "no_decode": 140,
+        "no_vin": 0,
         "carrier": 0
       }
     },
@@ -920,16 +928,16 @@
       "symbology": "code_39_i",
       "tier": "severe",
       "attempts": 200,
-      "hits": 91,
-      "misses": 109,
+      "hits": 47,
+      "misses": 153,
       "falseAccepts": 0,
       "errors": 0,
-      "decodeRate": 0.455,
+      "decodeRate": 0.235,
       "threshold": 0.7,
       "pass": false,
       "missReasons": {
-        "no_decode": 103,
-        "no_vin": 6,
+        "no_decode": 153,
+        "no_vin": 0,
         "carrier": 0
       }
     },
@@ -974,16 +982,16 @@
       "symbology": "code_39_check",
       "tier": "severe",
       "attempts": 200,
-      "hits": 25,
-      "misses": 175,
+      "hits": 14,
+      "misses": 186,
       "falseAccepts": 0,
       "errors": 0,
-      "decodeRate": 0.125,
+      "decodeRate": 0.07,
       "threshold": 0.7,
       "pass": false,
       "missReasons": {
-        "no_decode": 92,
-        "no_vin": 83,
+        "no_decode": 138,
+        "no_vin": 48,
         "carrier": 0
       }
     },
@@ -1010,15 +1018,15 @@
       "symbology": "code_128",
       "tier": "moderate",
       "attempts": 200,
-      "hits": 162,
-      "misses": 38,
+      "hits": 161,
+      "misses": 39,
       "falseAccepts": 0,
       "errors": 0,
-      "decodeRate": 0.81,
+      "decodeRate": 0.805,
       "threshold": 0.9,
       "pass": false,
       "missReasons": {
-        "no_decode": 38,
+        "no_decode": 39,
         "no_vin": 0,
         "carrier": 0
       }
@@ -1028,15 +1036,51 @@
       "symbology": "code_128",
       "tier": "severe",
       "attempts": 200,
-      "hits": 118,
-      "misses": 81,
-      "falseAccepts": 1,
+      "hits": 50,
+      "misses": 150,
+      "falseAccepts": 0,
       "errors": 0,
-      "decodeRate": 0.59,
+      "decodeRate": 0.25,
       "threshold": 0.7,
       "pass": false,
       "missReasons": {
-        "no_decode": 80,
+        "no_decode": 150,
+        "no_vin": 0,
+        "carrier": 0
+      }
+    },
+    {
+      "path": "rgb",
+      "symbology": "code_128_fnc1",
+      "tier": "clean",
+      "attempts": 200,
+      "hits": 200,
+      "misses": 0,
+      "falseAccepts": 0,
+      "errors": 0,
+      "decodeRate": 1,
+      "threshold": 0.99,
+      "pass": true,
+      "missReasons": {
+        "no_decode": 0,
+        "no_vin": 0,
+        "carrier": 0
+      }
+    },
+    {
+      "path": "rgb",
+      "symbology": "code_128_fnc1",
+      "tier": "moderate",
+      "attempts": 200,
+      "hits": 142,
+      "misses": 58,
+      "falseAccepts": 0,
+      "errors": 0,
+      "decodeRate": 0.71,
+      "threshold": 0.9,
+      "pass": false,
+      "missReasons": {
+        "no_decode": 57,
         "no_vin": 1,
         "carrier": 0
       }
@@ -1044,53 +1088,17 @@
     {
       "path": "rgb",
       "symbology": "code_128_fnc1",
-      "tier": "clean",
-      "attempts": 200,
-      "hits": 200,
-      "misses": 0,
-      "falseAccepts": 0,
-      "errors": 0,
-      "decodeRate": 1,
-      "threshold": 0.99,
-      "pass": true,
-      "missReasons": {
-        "no_decode": 0,
-        "no_vin": 0,
-        "carrier": 0
-      }
-    },
-    {
-      "path": "rgb",
-      "symbology": "code_128_fnc1",
-      "tier": "moderate",
-      "attempts": 200,
-      "hits": 155,
-      "misses": 45,
-      "falseAccepts": 0,
-      "errors": 0,
-      "decodeRate": 0.775,
-      "threshold": 0.9,
-      "pass": false,
-      "missReasons": {
-        "no_decode": 45,
-        "no_vin": 0,
-        "carrier": 0
-      }
-    },
-    {
-      "path": "rgb",
-      "symbology": "code_128_fnc1",
       "tier": "severe",
       "attempts": 200,
-      "hits": 1,
-      "misses": 199,
+      "hits": 0,
+      "misses": 200,
       "falseAccepts": 0,
       "errors": 0,
-      "decodeRate": 0.005,
+      "decodeRate": 0,
       "threshold": 0.7,
       "pass": false,
       "missReasons": {
-        "no_decode": 199,
+        "no_decode": 200,
         "no_vin": 0,
         "carrier": 0
       }
@@ -1136,15 +1144,15 @@
       "symbology": "data_matrix",
       "tier": "severe",
       "attempts": 200,
-      "hits": 110,
-      "misses": 90,
+      "hits": 74,
+      "misses": 126,
       "falseAccepts": 0,
       "errors": 0,
-      "decodeRate": 0.55,
+      "decodeRate": 0.37,
       "threshold": 0.7,
       "pass": false,
       "missReasons": {
-        "no_decode": 90,
+        "no_decode": 126,
         "no_vin": 0,
         "carrier": 0
       }
@@ -1172,15 +1180,15 @@
       "symbology": "qr_code",
       "tier": "moderate",
       "attempts": 200,
-      "hits": 195,
-      "misses": 5,
+      "hits": 196,
+      "misses": 4,
       "falseAccepts": 0,
       "errors": 0,
-      "decodeRate": 0.975,
+      "decodeRate": 0.98,
       "threshold": 0.9,
       "pass": true,
       "missReasons": {
-        "no_decode": 5,
+        "no_decode": 4,
         "no_vin": 0,
         "carrier": 0
       }
@@ -1190,15 +1198,15 @@
       "symbology": "qr_code",
       "tier": "severe",
       "attempts": 200,
-      "hits": 87,
-      "misses": 113,
+      "hits": 86,
+      "misses": 114,
       "falseAccepts": 0,
       "errors": 0,
-      "decodeRate": 0.435,
+      "decodeRate": 0.43,
       "threshold": 0.7,
       "pass": false,
       "missReasons": {
-        "no_decode": 113,
+        "no_decode": 114,
         "no_vin": 0,
         "carrier": 0
       }
@@ -1208,74 +1216,74 @@
     {
       "scope": "canvas: all",
       "decodes": 4200,
-      "meanMs": 21.607357142848805,
-      "p95Ms": 88.10000000149012
+      "meanMs": 46.6392142857416,
+      "p95Ms": 98.59999999962747
     },
     {
       "scope": "canvas: clean",
       "decodes": 1400,
-      "meanMs": 7.844642857124231,
-      "p95Ms": 12.300000000745058
+      "meanMs": 35.65150000002235,
+      "p95Ms": 74.5
     },
     {
       "scope": "canvas: moderate",
       "decodes": 1400,
-      "meanMs": 21.899357142874173,
-      "p95Ms": 110
+      "meanMs": 41.284357142891466,
+      "p95Ms": 93.30000000074506
     },
     {
       "scope": "canvas: severe",
       "decodes": 1400,
-      "meanMs": 35.078071428548014,
-      "p95Ms": 77.20000000111759
+      "meanMs": 62.981785714310995,
+      "p95Ms": 111.40000000037253
     },
     {
       "scope": "yuv: all",
       "decodes": 4200,
-      "meanMs": 21.39961904761958,
-      "p95Ms": 88.29999999888241
+      "meanMs": 45.148166666660195,
+      "p95Ms": 95
     },
     {
       "scope": "yuv: clean",
       "decodes": 1400,
-      "meanMs": 7.291500000006386,
-      "p95Ms": 11.099999999627471
+      "meanMs": 32.05042857140702,
+      "p95Ms": 58.59999999962747
     },
     {
       "scope": "yuv: moderate",
       "decodes": 1400,
-      "meanMs": 21.409714285723332,
-      "p95Ms": 109.90000000037253
+      "meanMs": 40.55235714285102,
+      "p95Ms": 88.5
     },
     {
       "scope": "yuv: severe",
       "decodes": 1400,
-      "meanMs": 35.49764285712902,
-      "p95Ms": 78.5
+      "meanMs": 62.84171428572253,
+      "p95Ms": 113.70000000111759
     },
     {
       "scope": "rgb: all",
       "decodes": 4200,
-      "meanMs": 16.441896017380863,
-      "p95Ms": 81.8272280000092
+      "meanMs": 20.582236932619473,
+      "p95Ms": 41.54313199999888
     },
     {
       "scope": "rgb: clean",
       "decodes": 1400,
-      "meanMs": 4.122288962856853,
-      "p95Ms": 5.123690999986138
+      "meanMs": 13.640063275715056,
+      "p95Ms": 18.46336799999699
     },
     {
       "scope": "rgb: moderate",
       "decodes": 1400,
-      "meanMs": 17.398277724285613,
-      "p95Ms": 93.6617799999949
+      "meanMs": 18.75594198000016,
+      "p95Ms": 44.32053399999859
     },
     {
       "scope": "rgb: severe",
       "decodes": 1400,
-      "meanMs": 27.80512136500014,
-      "p95Ms": 60.21476900001289
+      "meanMs": 29.350705542143192,
+      "p95Ms": 41.99817299999995
     }
   ],
   "delta": [
@@ -1305,12 +1313,12 @@
       "path": "yuv",
       "symbology": "code_39",
       "tier": "severe",
-      "appRate": 0.51,
-      "otherRate": 0.505,
-      "appOnly": 5,
-      "otherOnly": 4,
-      "both": 97,
-      "neither": 94
+      "appRate": 0.3,
+      "otherRate": 0.3,
+      "appOnly": 1,
+      "otherOnly": 1,
+      "both": 59,
+      "neither": 139
     },
     {
       "path": "yuv",
@@ -1338,12 +1346,12 @@
       "path": "yuv",
       "symbology": "code_39_i",
       "tier": "severe",
-      "appRate": 0.455,
-      "otherRate": 0.46,
-      "appOnly": 3,
-      "otherOnly": 4,
-      "both": 88,
-      "neither": 105
+      "appRate": 0.235,
+      "otherRate": 0.235,
+      "appOnly": 2,
+      "otherOnly": 2,
+      "both": 45,
+      "neither": 151
     },
     {
       "path": "yuv",
@@ -1371,12 +1379,12 @@
       "path": "yuv",
       "symbology": "code_39_check",
       "tier": "severe",
-      "appRate": 0.125,
-      "otherRate": 0.12,
-      "appOnly": 2,
-      "otherOnly": 1,
-      "both": 23,
-      "neither": 174
+      "appRate": 0.07,
+      "otherRate": 0.07,
+      "appOnly": 0,
+      "otherOnly": 0,
+      "both": 14,
+      "neither": 186
     },
     {
       "path": "yuv",
@@ -1393,56 +1401,56 @@
       "path": "yuv",
       "symbology": "code_128",
       "tier": "moderate",
-      "appRate": 0.81,
-      "otherRate": 0.81,
+      "appRate": 0.805,
+      "otherRate": 0.805,
       "appOnly": 0,
       "otherOnly": 0,
-      "both": 162,
-      "neither": 38
+      "both": 161,
+      "neither": 39
     },
     {
       "path": "yuv",
       "symbology": "code_128",
       "tier": "severe",
-      "appRate": 0.59,
-      "otherRate": 0.575,
-      "appOnly": 3,
-      "otherOnly": 0,
-      "both": 115,
-      "neither": 82
-    },
-    {
-      "path": "yuv",
-      "symbology": "code_128_fnc1",
-      "tier": "clean",
-      "appRate": 1,
-      "otherRate": 1,
-      "appOnly": 0,
-      "otherOnly": 0,
-      "both": 200,
-      "neither": 0
-    },
-    {
-      "path": "yuv",
-      "symbology": "code_128_fnc1",
-      "tier": "moderate",
-      "appRate": 0.775,
-      "otherRate": 0.775,
+      "appRate": 0.25,
+      "otherRate": 0.245,
       "appOnly": 1,
-      "otherOnly": 1,
-      "both": 154,
-      "neither": 44
+      "otherOnly": 0,
+      "both": 49,
+      "neither": 150
+    },
+    {
+      "path": "yuv",
+      "symbology": "code_128_fnc1",
+      "tier": "clean",
+      "appRate": 1,
+      "otherRate": 1,
+      "appOnly": 0,
+      "otherOnly": 0,
+      "both": 200,
+      "neither": 0
+    },
+    {
+      "path": "yuv",
+      "symbology": "code_128_fnc1",
+      "tier": "moderate",
+      "appRate": 0.71,
+      "otherRate": 0.72,
+      "appOnly": 0,
+      "otherOnly": 2,
+      "both": 142,
+      "neither": 56
     },
     {
       "path": "yuv",
       "symbology": "code_128_fnc1",
       "tier": "severe",
-      "appRate": 0.005,
-      "otherRate": 0.005,
+      "appRate": 0,
+      "otherRate": 0,
       "appOnly": 0,
       "otherOnly": 0,
-      "both": 1,
-      "neither": 199
+      "both": 0,
+      "neither": 200
     },
     {
       "path": "yuv",
@@ -1470,12 +1478,12 @@
       "path": "yuv",
       "symbology": "data_matrix",
       "tier": "severe",
-      "appRate": 0.55,
-      "otherRate": 0.555,
+      "appRate": 0.37,
+      "otherRate": 0.37,
       "appOnly": 0,
-      "otherOnly": 1,
-      "both": 110,
-      "neither": 89
+      "otherOnly": 0,
+      "both": 74,
+      "neither": 126
     },
     {
       "path": "yuv",
@@ -1492,23 +1500,23 @@
       "path": "yuv",
       "symbology": "qr_code",
       "tier": "moderate",
-      "appRate": 0.975,
+      "appRate": 0.98,
       "otherRate": 0.98,
       "appOnly": 0,
-      "otherOnly": 1,
-      "both": 195,
+      "otherOnly": 0,
+      "both": 196,
       "neither": 4
     },
     {
       "path": "yuv",
       "symbology": "qr_code",
       "tier": "severe",
-      "appRate": 0.435,
-      "otherRate": 0.44,
+      "appRate": 0.43,
+      "otherRate": 0.435,
       "appOnly": 1,
       "otherOnly": 2,
-      "both": 86,
-      "neither": 111
+      "both": 85,
+      "neither": 112
     },
     {
       "path": "rgb",
@@ -1536,12 +1544,12 @@
       "path": "rgb",
       "symbology": "code_39",
       "tier": "severe",
-      "appRate": 0.51,
-      "otherRate": 0.51,
+      "appRate": 0.3,
+      "otherRate": 0.3,
       "appOnly": 0,
       "otherOnly": 0,
-      "both": 102,
-      "neither": 98
+      "both": 60,
+      "neither": 140
     },
     {
       "path": "rgb",
@@ -1569,12 +1577,12 @@
       "path": "rgb",
       "symbology": "code_39_i",
       "tier": "severe",
-      "appRate": 0.455,
-      "otherRate": 0.455,
+      "appRate": 0.235,
+      "otherRate": 0.235,
       "appOnly": 0,
       "otherOnly": 0,
-      "both": 91,
-      "neither": 109
+      "both": 47,
+      "neither": 153
     },
     {
       "path": "rgb",
@@ -1602,12 +1610,12 @@
       "path": "rgb",
       "symbology": "code_39_check",
       "tier": "severe",
-      "appRate": 0.125,
-      "otherRate": 0.125,
+      "appRate": 0.07,
+      "otherRate": 0.07,
       "appOnly": 0,
       "otherOnly": 0,
-      "both": 25,
-      "neither": 175
+      "both": 14,
+      "neither": 186
     },
     {
       "path": "rgb",
@@ -1624,23 +1632,23 @@
       "path": "rgb",
       "symbology": "code_128",
       "tier": "moderate",
-      "appRate": 0.81,
-      "otherRate": 0.81,
+      "appRate": 0.805,
+      "otherRate": 0.805,
       "appOnly": 0,
       "otherOnly": 0,
-      "both": 162,
-      "neither": 38
+      "both": 161,
+      "neither": 39
     },
     {
       "path": "rgb",
       "symbology": "code_128",
       "tier": "severe",
-      "appRate": 0.59,
-      "otherRate": 0.59,
+      "appRate": 0.25,
+      "otherRate": 0.25,
       "appOnly": 0,
       "otherOnly": 0,
-      "both": 118,
-      "neither": 82
+      "both": 50,
+      "neither": 150
     },
     {
       "path": "rgb",
@@ -1657,23 +1665,23 @@
       "path": "rgb",
       "symbology": "code_128_fnc1",
       "tier": "moderate",
-      "appRate": 0.775,
-      "otherRate": 0.775,
+      "appRate": 0.71,
+      "otherRate": 0.71,
       "appOnly": 0,
       "otherOnly": 0,
-      "both": 155,
-      "neither": 45
+      "both": 142,
+      "neither": 58
     },
     {
       "path": "rgb",
       "symbology": "code_128_fnc1",
       "tier": "severe",
-      "appRate": 0.005,
-      "otherRate": 0.005,
+      "appRate": 0,
+      "otherRate": 0,
       "appOnly": 0,
       "otherOnly": 0,
-      "both": 1,
-      "neither": 199
+      "both": 0,
+      "neither": 200
     },
     {
       "path": "rgb",
@@ -1701,12 +1709,12 @@
       "path": "rgb",
       "symbology": "data_matrix",
       "tier": "severe",
-      "appRate": 0.55,
-      "otherRate": 0.55,
+      "appRate": 0.37,
+      "otherRate": 0.37,
       "appOnly": 0,
       "otherOnly": 0,
-      "both": 110,
-      "neither": 90
+      "both": 74,
+      "neither": 126
     },
     {
       "path": "rgb",
@@ -1723,487 +1731,175 @@
       "path": "rgb",
       "symbology": "qr_code",
       "tier": "moderate",
-      "appRate": 0.975,
-      "otherRate": 0.975,
+      "appRate": 0.98,
+      "otherRate": 0.98,
       "appOnly": 0,
       "otherOnly": 0,
-      "both": 195,
-      "neither": 5
+      "both": 196,
+      "neither": 4
     },
     {
       "path": "rgb",
       "symbology": "qr_code",
       "tier": "severe",
-      "appRate": 0.435,
-      "otherRate": 0.435,
+      "appRate": 0.43,
+      "otherRate": 0.43,
       "appOnly": 0,
       "otherOnly": 0,
-      "both": 87,
-      "neither": 113
+      "both": 86,
+      "neither": 114
     }
   ],
   "disagreements": [
     {
       "path": "yuv",
-      "vin": "S9VUY70G2REGA0ABB",
+      "vin": "XU0XKN2C8N93SLYFA",
       "symbology": "code_39",
       "tier": "severe",
-      "seed": 102226051,
+      "seed": 1381297609,
       "severeExtras": [
         "glare",
-        "low_light"
+        "jpeg"
       ],
-      "appVerdict": "miss",
-      "appText": null,
-      "otherVerdict": "hit",
-      "otherText": "S9VUY70G2REGA0ABB"
-    },
-    {
-      "path": "yuv",
-      "vin": "RB8A3PC47V2V34HR7",
-      "symbology": "code_39",
-      "tier": "severe",
-      "seed": 91460543,
-      "severeExtras": [
-        "glare",
-        "low_light"
-      ],
-      "appVerdict": "miss",
-      "appText": null,
-      "otherVerdict": "miss",
-      "otherText": "RB8A3PC47$2V34HR7"
-    },
-    {
-      "path": "yuv",
-      "vin": "YEKPKTE13B04VXLL9",
-      "symbology": "code_39",
-      "tier": "severe",
-      "seed": 1209542977,
-      "severeExtras": [
-        "warp",
-        "glare"
-      ],
-      "appVerdict": "miss",
-      "appText": "YEKPKTE1%04VXLL9",
+      "appVerdict": "hit",
+      "appText": "XU0XKN2C8N93SLYFA",
       "otherVerdict": "miss",
       "otherText": null
     },
     {
       "path": "yuv",
-      "vin": "L58SMKD8437CUANSG",
+      "vin": "0W4B348U890HX2JC1",
       "symbology": "code_39",
       "tier": "severe",
-      "seed": 448925444,
-      "severeExtras": [
-        "warp",
-        "low_light"
-      ],
-      "appVerdict": "miss",
-      "appText": null,
-      "otherVerdict": "hit",
-      "otherText": "L58SMKD8437CUANSG"
-    },
-    {
-      "path": "yuv",
-      "vin": "4AUKWDWM27PBS1U8P",
-      "symbology": "code_39",
-      "tier": "severe",
-      "seed": 1195350235,
-      "severeExtras": [
-        "warp",
-        "glare"
-      ],
-      "appVerdict": "hit",
-      "appText": "4AUKWDWM27PBS1U8P",
-      "otherVerdict": "miss",
-      "otherText": null
-    },
-    {
-      "path": "yuv",
-      "vin": "2HP17JK7X7PJTFMBM",
-      "symbology": "code_39",
-      "tier": "severe",
-      "seed": 1234127570,
-      "severeExtras": [
-        "warp",
-        "glare"
-      ],
-      "appVerdict": "miss",
-      "appText": null,
-      "otherVerdict": "hit",
-      "otherText": "2HP17JK7X7PJTFMBM"
-    },
-    {
-      "path": "yuv",
-      "vin": "510FT7G86F0D7V641",
-      "symbology": "code_39",
-      "tier": "severe",
-      "seed": 2202036643,
-      "severeExtras": [
-        "warp",
-        "glare"
-      ],
-      "appVerdict": "hit",
-      "appText": "510FT7G86F0D7V641",
-      "otherVerdict": "miss",
-      "otherText": null
-    },
-    {
-      "path": "yuv",
-      "vin": "Z7T9GZZD0VMFK9M65",
-      "symbology": "code_39",
-      "tier": "severe",
-      "seed": 2222029611,
-      "severeExtras": [
-        "glare",
-        "low_light"
-      ],
-      "appVerdict": "hit",
-      "appText": "Z7T9GZZD0VMFK9M65",
-      "otherVerdict": "miss",
-      "otherText": "Z7T9GZ+D0VMFK9M65"
-    },
-    {
-      "path": "yuv",
-      "vin": "12F074JV0ULJR8CE7",
-      "symbology": "code_39",
-      "tier": "severe",
-      "seed": 1832319781,
-      "severeExtras": [
-        "glare",
-        "low_light"
-      ],
-      "appVerdict": "miss",
-      "appText": null,
-      "otherVerdict": "hit",
-      "otherText": "12F074JV0ULJR8CE7"
-    },
-    {
-      "path": "yuv",
-      "vin": "N86ZEF3D4K4WDWJM5",
-      "symbology": "code_39",
-      "tier": "severe",
-      "seed": 1226403084,
-      "severeExtras": [
-        "warp",
-        "glare"
-      ],
-      "appVerdict": "miss",
-      "appText": "N86Z+F3D4K4WDWJM5",
-      "otherVerdict": "miss",
-      "otherText": "N86+EF3D4K4WDWJM5"
-    },
-    {
-      "path": "yuv",
-      "vin": "MCM48HWY79NC3T20M",
-      "symbology": "code_39",
-      "tier": "severe",
-      "seed": 1688248017,
+      "seed": 4058131099,
       "severeExtras": [
         "warp",
         "jpeg"
       ],
-      "appVerdict": "hit",
-      "appText": "MCM48HWY79NC3T20M",
-      "otherVerdict": "miss",
-      "otherText": null
-    },
-    {
-      "path": "yuv",
-      "vin": "FZLZRF8C53G2BYUB0",
-      "symbology": "code_39",
-      "tier": "severe",
-      "seed": 3635765107,
-      "severeExtras": [
-        "glare",
-        "low_light"
-      ],
-      "appVerdict": "hit",
-      "appText": "FZLZRF8C53G2BYUB0",
-      "otherVerdict": "miss",
-      "otherText": null
-    },
-    {
-      "path": "yuv",
-      "vin": "HYEXFVXD1HUY41KYU",
-      "symbology": "code_39_i",
-      "tier": "moderate",
-      "seed": 2370310877,
-      "severeExtras": null,
       "appVerdict": "miss",
       "appText": null,
-      "otherVerdict": "miss",
-      "otherText": "EXFVXD1HUY41KYU"
+      "otherVerdict": "hit",
+      "otherText": "0W4B348U890HX2JC1"
     },
     {
       "path": "yuv",
-      "vin": "1HGCM82633A004352",
+      "vin": "J5XW697S5ZPFJL4RA",
       "symbology": "code_39_i",
       "tier": "severe",
-      "seed": 3356709448,
+      "seed": 3754485252,
+      "severeExtras": [
+        "glare",
+        "jpeg"
+      ],
+      "appVerdict": "hit",
+      "appText": "IJ5XW697S5ZPFJL4RA",
+      "otherVerdict": "miss",
+      "otherText": null
+    },
+    {
+      "path": "yuv",
+      "vin": "L9TV9RC15W5ABHG1U",
+      "symbology": "code_39_i",
+      "tier": "severe",
+      "seed": 620237608,
       "severeExtras": [
         "warp",
-        "low_light"
+        "jpeg"
       ],
       "appVerdict": "miss",
       "appText": null,
       "otherVerdict": "hit",
-      "otherText": "I1HGCM82633A004352"
+      "otherText": "IL9TV9RC15W5ABHG1U"
     },
     {
       "path": "yuv",
-      "vin": "MUUW9H4N0DSL1S1KV",
+      "vin": "MYTVHJ2823YBUYKE0",
       "symbology": "code_39_i",
       "tier": "severe",
-      "seed": 1291676883,
+      "seed": 4222610041,
       "severeExtras": [
         "warp",
-        "low_light"
+        "jpeg"
+      ],
+      "appVerdict": "miss",
+      "appText": null,
+      "otherVerdict": "hit",
+      "otherText": "IMYTVHJ2823YBUYKE0"
+    },
+    {
+      "path": "yuv",
+      "vin": "4LY6BDTG2RPG54RKP",
+      "symbology": "code_39_i",
+      "tier": "severe",
+      "seed": 2345414212,
+      "severeExtras": [
+        "glare",
+        "jpeg"
       ],
       "appVerdict": "hit",
-      "appText": "IMUUW9H4N0DSL1S1KV",
+      "appText": "I4LY6BDTG2RPG54RKP",
       "otherVerdict": "miss",
       "otherText": null
     },
     {
       "path": "yuv",
       "vin": "DNUDA92B2W9V0SN9G",
-      "symbology": "code_39_i",
+      "symbology": "code_39_check",
       "tier": "severe",
-      "seed": 1326642413,
+      "seed": 2944065184,
       "severeExtras": [
         "warp",
-        "low_light"
+        "jpeg"
       ],
-      "appVerdict": "hit",
-      "appText": "IDNUDA92B2W9V0SN9G",
+      "appVerdict": "miss",
+      "appText": null,
       "otherVerdict": "miss",
-      "otherText": null
+      "otherText": "DNUDA92B2W9V0SN9G3"
     },
     {
       "path": "yuv",
-      "vin": "UY0UL1LJ04EVH6KYG",
-      "symbology": "code_39_i",
+      "vin": "YW7Y7WHY16E85C9HE",
+      "symbology": "code_39_check",
       "tier": "severe",
-      "seed": 3226989701,
+      "seed": 1742827065,
       "severeExtras": [
         "warp",
-        "low_light"
-      ],
-      "appVerdict": "miss",
-      "appText": null,
-      "otherVerdict": "hit",
-      "otherText": "IUY0UL1LJ04EVH6KYG"
-    },
-    {
-      "path": "yuv",
-      "vin": "YDKU00AD5JDBRYVNR",
-      "symbology": "code_39_i",
-      "tier": "severe",
-      "seed": 2570421465,
-      "severeExtras": [
-        "low_light",
-        "jpeg"
-      ],
-      "appVerdict": "miss",
-      "appText": null,
-      "otherVerdict": "hit",
-      "otherText": "IYDKU00AD5JDBRYVNR"
-    },
-    {
-      "path": "yuv",
-      "vin": "EE37XVLL3E7XTYSNH",
-      "symbology": "code_39_i",
-      "tier": "severe",
-      "seed": 3791700356,
-      "severeExtras": [
-        "glare",
-        "low_light"
-      ],
-      "appVerdict": "miss",
-      "appText": "IEE37XVLL%7XTYSNH",
-      "otherVerdict": "hit",
-      "otherText": "IEE37XVLL3E7XTYSNH"
-    },
-    {
-      "path": "yuv",
-      "vin": "M4C0PA4H68976FS0B",
-      "symbology": "code_39_i",
-      "tier": "severe",
-      "seed": 708631685,
-      "severeExtras": [
-        "low_light",
-        "jpeg"
-      ],
-      "appVerdict": "hit",
-      "appText": "IM4C0PA4H68976FS0B",
-      "otherVerdict": "miss",
-      "otherText": null
-    },
-    {
-      "path": "yuv",
-      "vin": "4ZSFK20F3LP75VH94",
-      "symbology": "code_39_check",
-      "tier": "severe",
-      "seed": 137894064,
-      "severeExtras": [
-        "warp",
-        "low_light"
-      ],
-      "appVerdict": "miss",
-      "appText": null,
-      "otherVerdict": "hit",
-      "otherText": "4ZSFK20F3LP75VH94Q"
-    },
-    {
-      "path": "yuv",
-      "vin": "HYEXFVXD1HUY41KYU",
-      "symbology": "code_39_check",
-      "tier": "severe",
-      "seed": 2293578813,
-      "severeExtras": [
-        "glare",
-        "low_light"
-      ],
-      "appVerdict": "miss",
-      "appText": null,
-      "otherVerdict": "miss",
-      "otherText": "HYEXFVXD1HUY41KYUH"
-    },
-    {
-      "path": "yuv",
-      "vin": "71D4V49ZXRSV6G30V",
-      "symbology": "code_39_check",
-      "tier": "severe",
-      "seed": 1229063854,
-      "severeExtras": [
-        "glare",
-        "jpeg"
-      ],
-      "appVerdict": "miss",
-      "appText": "71D4V49ZXRSV6G30VL",
-      "otherVerdict": "miss",
-      "otherText": null
-    },
-    {
-      "path": "yuv",
-      "vin": "RDFAJ4D7828ZT57TE",
-      "symbology": "code_39_check",
-      "tier": "severe",
-      "seed": 1166774855,
-      "severeExtras": [
-        "glare",
-        "low_light"
-      ],
-      "appVerdict": "miss",
-      "appText": "RDF86 9",
-      "otherVerdict": "miss",
-      "otherText": null
-    },
-    {
-      "path": "yuv",
-      "vin": "RVUY5MSX3BS5U0DW3",
-      "symbology": "code_39_check",
-      "tier": "severe",
-      "seed": 1878256319,
-      "severeExtras": [
-        "warp",
-        "low_light"
-      ],
-      "appVerdict": "miss",
-      "appText": "RVUY5MSX3BS5U0DW3Y",
-      "otherVerdict": "miss",
-      "otherText": null
-    },
-    {
-      "path": "yuv",
-      "vin": "FXH4TLYD7GCJXWW02",
-      "symbology": "code_39_check",
-      "tier": "severe",
-      "seed": 396955874,
-      "severeExtras": [
-        "glare",
-        "jpeg"
-      ],
-      "appVerdict": "hit",
-      "appText": "FXH4TLYD7GCJXWW02I",
-      "otherVerdict": "miss",
-      "otherText": "FXH4T%D7GCJXWW02I"
-    },
-    {
-      "path": "yuv",
-      "vin": "JLW3HZMC7JRVF4ED0",
-      "symbology": "code_39_check",
-      "tier": "severe",
-      "seed": 4005464686,
-      "severeExtras": [
-        "glare",
-        "low_light"
-      ],
-      "appVerdict": "miss",
-      "appText": null,
-      "otherVerdict": "miss",
-      "otherText": "JLW3HZMC7JRVF4ED0X"
-    },
-    {
-      "path": "yuv",
-      "vin": "T86L0H3EXWXE343EZ",
-      "symbology": "code_39_check",
-      "tier": "severe",
-      "seed": 3961500291,
-      "severeExtras": [
-        "glare",
         "jpeg"
       ],
       "appVerdict": "miss",
       "appText": null,
       "otherVerdict": "miss",
-      "otherText": "T86L0H3EXWXE343EZB"
+      "otherText": "YW7Y7WHY16E85C9HEP"
     },
     {
       "path": "yuv",
-      "vin": "2HP17JK7X7PJTFMBM",
+      "vin": "40WF0NRH3TRUXSNF2",
       "symbology": "code_39_check",
       "tier": "severe",
-      "seed": 4146462691,
+      "seed": 1431386438,
       "severeExtras": [
         "glare",
-        "low_light"
+        "jpeg"
       ],
       "appVerdict": "miss",
-      "appText": "2HP17JK7X7PJTFMBMN",
+      "appText": "40WF0NRH3TRUXSNF27",
       "otherVerdict": "miss",
       "otherText": null
     },
     {
       "path": "yuv",
-      "vin": "A5CNPWYB5YYL0F6WK",
+      "vin": "JG1HZGN1XCZMJTYAN",
       "symbology": "code_39_check",
       "tier": "severe",
-      "seed": 2441376930,
+      "seed": 2587907996,
       "severeExtras": [
         "warp",
         "glare"
       ],
-      "appVerdict": "hit",
-      "appText": "A5CNPWYB5YYL0F6WKI",
+      "appVerdict": "miss",
+      "appText": "JG1HZGN1XCZMJTYAN1",
       "otherVerdict": "miss",
       "otherText": null
-    },
-    {
-      "path": "yuv",
-      "vin": "12F074JV0ULJR8CE7",
-      "symbology": "code_39_check",
-      "tier": "severe",
-      "seed": 4107412628,
-      "severeExtras": [
-        "warp",
-        "jpeg"
-      ],
-      "appVerdict": "miss",
-      "appText": null,
-      "otherVerdict": "miss",
-      "otherText": "12F074JV0ULJR8CE72"
     },
     {
       "path": "yuv",
@@ -2222,109 +1918,79 @@
     },
     {
       "path": "yuv",
-      "vin": "WZWED08H49E64D77G",
+      "vin": "HC1G7NUM1NCCFZJTZ",
       "symbology": "code_39_check",
       "tier": "severe",
-      "seed": 881138690,
+      "seed": 2958284225,
       "severeExtras": [
         "warp",
         "glare"
       ],
       "appVerdict": "miss",
-      "appText": "WZWED08H49E64D77GG",
+      "appText": null,
       "otherVerdict": "miss",
-      "otherText": null
+      "otherText": "HC1G7NUM1NCCFZJTZ8"
     },
     {
       "path": "yuv",
-      "vin": "11111111111111111",
-      "symbology": "code_128",
+      "vin": "EDAE3UP78M3612D3E",
+      "symbology": "code_39_check",
       "tier": "severe",
-      "seed": 377246677,
+      "seed": 3395141101,
       "severeExtras": [
         "glare",
-        "low_light"
+        "jpeg"
       ],
-      "appVerdict": "hit",
-      "appText": "11111111111111111",
+      "appVerdict": "miss",
+      "appText": "EDAE3UP78M3612D3EG",
       "otherVerdict": "miss",
       "otherText": null
     },
     {
       "path": "yuv",
-      "vin": "ZNCNNV4N0XSW7LSGF",
+      "vin": "74J7N9M86K6S0AUTE",
       "symbology": "code_128",
       "tier": "severe",
-      "seed": 2901804116,
-      "severeExtras": [
-        "glare",
-        "low_light"
-      ],
-      "appVerdict": "hit",
-      "appText": "ZNCNNV4N0XSW7LSGF",
-      "otherVerdict": "miss",
-      "otherText": null
-    },
-    {
-      "path": "yuv",
-      "vin": "MDM8MX585CNH40H0K",
-      "symbology": "code_128",
-      "tier": "severe",
-      "seed": 2415052589,
+      "seed": 279873535,
       "severeExtras": [
         "glare",
         "jpeg"
       ],
       "appVerdict": "hit",
-      "appText": "MDM8MX585CNH40H0K",
+      "appText": "74J7N9M86K6S0AUTE",
       "otherVerdict": "miss",
       "otherText": null
     },
     {
       "path": "yuv",
-      "vin": "LC840NMDXKCCRK2AB",
+      "vin": "6LTYUHPR0V8E05RZX",
       "symbology": "code_128_fnc1",
       "tier": "moderate",
-      "seed": 4075532041,
+      "seed": 358326800,
       "severeExtras": null,
       "appVerdict": "miss",
       "appText": null,
       "otherVerdict": "hit",
-      "otherText": "LC840NMDXKCCRK2AB\u001d1P84203911"
+      "otherText": "6LTYUHPR0V8E05RZX\u001d1P84203911"
     },
     {
       "path": "yuv",
-      "vin": "D6KSELNA6P1C8YUTM",
+      "vin": "EH8U2YHX60HU8VGWD",
       "symbology": "code_128_fnc1",
       "tier": "moderate",
-      "seed": 4016719793,
+      "seed": 21362190,
       "severeExtras": null,
-      "appVerdict": "hit",
-      "appText": "D6KSELNA6P1C8YUTM\u001d1P84203911",
-      "otherVerdict": "miss",
-      "otherText": null
-    },
-    {
-      "path": "yuv",
-      "vin": "MCM48HWY79NC3T20M",
-      "symbology": "code_128_fnc1",
-      "tier": "severe",
-      "seed": 2543734243,
-      "severeExtras": [
-        "warp",
-        "low_light"
-      ],
       "appVerdict": "miss",
-      "appText": null,
-      "otherVerdict": "miss",
-      "otherText": ",CM-8BW>79Nb320M\u001d.P84203911"
+      "appText": "!H8U2Y!X60HU8VGWD\u001d1P84203911",
+      "otherVerdict": "hit",
+      "otherText": "EH8U2YHX60HU8VGWD\u001d1P84203911"
     },
     {
       "path": "yuv",
-      "vin": "1HTMMAAL67H412345",
-      "symbology": "data_matrix",
+      "vin": "B33ZSLFN0H2NHWFEE",
+      "symbology": "qr_code",
       "tier": "severe",
-      "seed": 1951292358,
+      "seed": 1478242674,
       "severeExtras": [
         "glare",
         "low_light"
@@ -2332,146 +1998,56 @@
       "appVerdict": "miss",
       "appText": null,
       "otherVerdict": "hit",
-      "otherText": "1HTMMAAL67H412345"
+      "otherText": "B33ZSLFN0H2NHWFEE"
     },
     {
       "path": "yuv",
-      "vin": "3BLLLVM13K7XWTPC3",
+      "vin": "CKSP99BH62U3XH21L",
       "symbology": "qr_code",
-      "tier": "moderate",
-      "seed": 2104131502,
-      "severeExtras": null,
+      "tier": "severe",
+      "seed": 1000774010,
+      "severeExtras": [
+        "low_light",
+        "jpeg"
+      ],
       "appVerdict": "miss",
       "appText": null,
       "otherVerdict": "hit",
-      "otherText": "3BLLLVM13K7XWTPC3"
+      "otherText": "CKSP99BH62U3XH21L"
     },
     {
       "path": "yuv",
-      "vin": "WHKALVRL2BVEZWXNS",
+      "vin": "L6E30VGM0F2A6YULH",
       "symbology": "qr_code",
       "tier": "severe",
-      "seed": 3915760174,
+      "seed": 3953016241,
       "severeExtras": [
         "glare",
         "low_light"
       ],
       "appVerdict": "hit",
-      "appText": "WHKALVRL2BVEZWXNS",
+      "appText": "L6E30VGM0F2A6YULH",
       "otherVerdict": "miss",
       "otherText": null
-    },
-    {
-      "path": "yuv",
-      "vin": "3630DJTT1TNXE9UEX",
-      "symbology": "qr_code",
-      "tier": "severe",
-      "seed": 1189117921,
-      "severeExtras": [
-        "glare",
-        "low_light"
-      ],
-      "appVerdict": "miss",
-      "appText": null,
-      "otherVerdict": "hit",
-      "otherText": "3630DJTT1TNXE9UEX"
-    },
-    {
-      "path": "yuv",
-      "vin": "9S4DYWKH87VTLYL0W",
-      "symbology": "qr_code",
-      "tier": "severe",
-      "seed": 1113892490,
-      "severeExtras": [
-        "glare",
-        "low_light"
-      ],
-      "appVerdict": "miss",
-      "appText": null,
-      "otherVerdict": "hit",
-      "otherText": "9S4DYWKH87VTLYL0W"
     }
   ],
-  "falseAccepts": [
-    {
-      "vin": "EH8U2YHX60HU8VGWD",
-      "symbology": "code_128",
-      "tier": "severe",
-      "seed": 3318966556,
-      "severeExtras": [
-        "low_light",
-        "jpeg"
-      ],
-      "path": "canvas",
-      "decoded": "EH8U2YHX60HU7VAWD",
-      "aimStripped": false,
-      "format": "CODE_128",
-      "extracted": "EH8U2YHX60HU7VAWD",
-      "checkDigitValid": false,
-      "ms": 6.900000000372529,
-      "error": null,
-      "verdict": "false_accept",
-      "missReason": null
-    },
-    {
-      "vin": "EH8U2YHX60HU8VGWD",
-      "symbology": "code_128",
-      "tier": "severe",
-      "seed": 3318966556,
-      "severeExtras": [
-        "low_light",
-        "jpeg"
-      ],
-      "path": "yuv",
-      "decoded": "EH8U2YHX60HU7VAWD",
-      "aimStripped": false,
-      "format": "CODE_128",
-      "extracted": "EH8U2YHX60HU7VAWD",
-      "checkDigitValid": false,
-      "ms": 3.299999998882413,
-      "error": null,
-      "verdict": "false_accept",
-      "missReason": null
-    },
-    {
-      "vin": "EH8U2YHX60HU8VGWD",
-      "symbology": "code_128",
-      "tier": "severe",
-      "seed": 3318966556,
-      "severeExtras": [
-        "low_light",
-        "jpeg"
-      ],
-      "path": "rgb",
-      "decoded": "EH8U2YHX60HU7VAWD",
-      "aimStripped": false,
-      "format": "CODE_128",
-      "extracted": "EH8U2YHX60HU7VAWD",
-      "checkDigitValid": false,
-      "ms": 2.980937000014819,
-      "error": null,
-      "verdict": "false_accept",
-      "missReason": null
-    }
-  ],
+  "falseAccepts": [],
   "errors": [],
   "pass": false,
   "failures": [
-    "false accepts: 1 (§13.6 requires 0) — code_128/severe EH8U2YHX60HU8VGWD -> EH8U2YHX60HU7VAWD",
-    "false accepts off the app's path: 2 — yuv code_128/severe EH8U2YHX60HU8VGWD -> EH8U2YHX60HU7VAWD; rgb code_128/severe EH8U2YHX60HU8VGWD -> EH8U2YHX60HU7VAWD",
     "code_39 moderate: 77.5% < 90.0% (155/200 correct, -12.5 pp)",
-    "code_39 severe: 51.0% < 70.0% (102/200 correct, -19.0 pp)",
+    "code_39 severe: 30.0% < 70.0% (60/200 correct, -40.0 pp)",
     "code_39_i moderate: 79.0% < 90.0% (158/200 correct, -11.0 pp)",
-    "code_39_i severe: 45.5% < 70.0% (91/200 correct, -24.5 pp)",
+    "code_39_i severe: 23.5% < 70.0% (47/200 correct, -46.5 pp)",
     "code_39_check clean: 24.0% < 99.0% (48/200 correct, -75.0 pp)",
     "code_39_check moderate: 18.5% < 90.0% (37/200 correct, -71.5 pp)",
-    "code_39_check severe: 12.5% < 70.0% (25/200 correct, -57.5 pp)",
-    "code_128 moderate: 81.0% < 90.0% (162/200 correct, -9.0 pp)",
-    "code_128 severe: 59.0% < 70.0% (118/200 correct, -11.0 pp)",
-    "code_128_fnc1 moderate: 77.5% < 90.0% (155/200 correct, -12.5 pp)",
-    "code_128_fnc1 severe: 0.5% < 70.0% (1/200 correct, -69.5 pp)",
-    "data_matrix severe: 55.0% < 70.0% (110/200 correct, -15.0 pp)",
+    "code_39_check severe: 7.0% < 70.0% (14/200 correct, -63.0 pp)",
+    "code_128 moderate: 80.5% < 90.0% (161/200 correct, -9.5 pp)",
+    "code_128 severe: 25.0% < 70.0% (50/200 correct, -45.0 pp)",
+    "code_128_fnc1 moderate: 71.0% < 90.0% (142/200 correct, -19.0 pp)",
+    "code_128_fnc1 severe: 0.0% < 70.0% (0/200 correct, -70.0 pp)",
+    "data_matrix severe: 37.0% < 70.0% (74/200 correct, -33.0 pp)",
     "qr_code clean: 98.5% < 99.0% (197/200 correct, -0.5 pp)",
-    "qr_code severe: 43.5% < 70.0% (87/200 correct, -26.5 pp)"
+    "qr_code severe: 43.0% < 70.0% (86/200 correct, -27.0 pp)"
   ]
 }

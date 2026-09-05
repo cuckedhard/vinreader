@@ -2,8 +2,11 @@
  * §13.4 scan-robustness probe — **what the frame around the symbol costs**, and what an ROI
  * crop would buy back. `bun run bench/frame-probe.ts`.
  *
- * The main bench (`run.ts`) hands ZXing a tightly-cropped barcode: a ~1050 px symbol in a
- * ~1100 px image, quiet zone and nothing else. The app never sees that. `useScanner` calls
+ * This probe is the evidence behind SB-2 and SB-3. The main bench used to hand ZXing a
+ * tightly-cropped barcode — a ~1050 px symbol in a ~1100 px image, quiet zone and nothing
+ * else — which the app never sees; since SB-2 it composites the frame instead, using this
+ * file's `./frame` module, so the `frame` column below is now the bench's own layout and the
+ * `crop` column is what the bench measured before. `useScanner` calls
  * `decodeFromStream`, and `@zxing/browser` draws the whole `<video>` frame onto its capture
  * canvas at `videoWidth × videoHeight` — 1920×1080 under §6.3's `ideal` constraints — so the
  * symbol is a band across a mostly-empty field. §6.1 even draws a guide box over the preview
@@ -14,7 +17,7 @@
  * (VIN, symbology, tier) — the same seed arithmetic `run.ts` uses, so the pixels are the
  * bench's pixels — decoded three ways:
  *
- * - `crop`  — the degraded image alone. What the main bench measures.
+ * - `crop`  — the degraded image alone. What the main bench measured before SB-2.
  * - `frame` — the same pixels composited, unscaled and centred, onto a white 1920×1080
  *             field. What the app hands ZXing.
  * - `roi`   — that frame, cropped back to a centred guide-box band. What the app would hand
@@ -36,7 +39,6 @@
 
 import type { Buffer } from "node:buffer";
 import process from "node:process";
-import sharp from "sharp";
 import { extractVin } from "../src/lib/vin/extractVin";
 import { BENCH_SYMBOLOGIES, buildCorpus } from "./corpus";
 import type { BenchSymbology, CorpusItem } from "./corpus";
@@ -44,32 +46,21 @@ import { openBrowserDecoder } from "./browser-decode";
 import type { BrowserDecoder } from "./browser-decode";
 import { TIERS, degrade, severeExtrasFor } from "./degrade";
 import type { Tier } from "./degrade";
+import {
+  FRAME_HEIGHT,
+  FRAME_WIDTH,
+  GUIDE_HEIGHT_FRACTION,
+  GUIDE_WIDTH_FRACTION,
+  TALL_GUIDE_HEIGHT_FRACTION,
+  composite,
+  cropBand,
+} from "./frame";
 
 /**
- * §6.3 asks the camera for `{ width: { ideal: 1920 }, height: { ideal: 1080 } }`, and
- * `@zxing/browser` sizes its capture canvas from the video's intrinsic dimensions — so this
- * is the frame the shipped decoder is handed on a phone that honours the constraint.
+ * The frame, the guide-box fractions and the compositing all live in `./frame`, which
+ * `run.ts` now imports too (SB-2): the bench composites every frame it measures, so this
+ * probe and the bench must not carry two definitions of the same field.
  */
-const FRAME_WIDTH = 1920;
-const FRAME_HEIGHT = 1080;
-
-/**
- * §6.1's guide box, as a fraction of the preview: `w-[90%] h-[22%]` in `CameraView.tsx`.
- * Mapped straight onto the frame, which is the simplest crop a fixer could write and the
- * one the user is already being aimed at.
- */
-const GUIDE_WIDTH_FRACTION = 0.9;
-const GUIDE_HEIGHT_FRACTION = 0.22;
-
-/**
- * A second, taller band. A ±15° roll on a 5.5:1 label needs more height than the drawn box
- * has, so the two columns separate "cropping helps" from "this particular box is tall
- * enough", which are different findings and must not be reported as one.
- */
-const TALL_GUIDE_HEIGHT_FRACTION = 0.4;
-
-/** White, because a label's surround is white and alpha is composited onto it, never black. */
-const WHITE = { r: 255, g: 255, b: 255 };
 
 /** Same default as `run.ts`, so a probe row can be compared with a bench row directly. */
 const DEFAULT_SEED = 0x5eed_1a7c;
@@ -82,7 +73,7 @@ type Layout = "crop" | "frame" | "roi" | "roi_tall";
 const LAYOUTS: readonly Layout[] = ["crop", "frame", "roi", "roi_tall"];
 
 const LAYOUT_NOTES: Readonly<Record<Layout, string>> = {
-  crop: "the degraded image alone — what bench/run.ts measures",
+  crop: "the degraded image alone — what bench/run.ts measured before SB-2",
   frame: `centred, unscaled, on a white ${FRAME_WIDTH}x${FRAME_HEIGHT} field — what the app decodes`,
   roi: `that frame cropped to §6.1's guide box (${GUIDE_WIDTH_FRACTION * 100}% x ${GUIDE_HEIGHT_FRACTION * 100}%)`,
   roi_tall: `that frame cropped to a taller band (${GUIDE_WIDTH_FRACTION * 100}% x ${TALL_GUIDE_HEIGHT_FRACTION * 100}%)`,
@@ -118,56 +109,6 @@ function fnv1a(text: string): number {
   return hash >>> 0;
 }
 
-interface Size {
-  width: number;
-  height: number;
-}
-
-async function sizeOf(png: Buffer): Promise<Size> {
-  const meta = await sharp(png).metadata();
-  const { width, height } = meta;
-  if (width === undefined || height === undefined) {
-    throw new Error("frame-probe: sharp reported a PNG with no dimensions");
-  }
-  return { width, height };
-}
-
-/**
- * Centre `png` on a white frame. The symbol is never resampled — if it does not fit it is
- * clipped by the extract, which is what a camera does when the label overruns the frame, and
- * the caller is told the fill so the row can be read.
- */
-async function composite(png: Buffer, size: Size): Promise<Buffer> {
-  const left = Math.round((FRAME_WIDTH - size.width) / 2);
-  const top = Math.round((FRAME_HEIGHT - size.height) / 2);
-  return await sharp({
-    create: {
-      width: FRAME_WIDTH,
-      height: FRAME_HEIGHT,
-      channels: 3,
-      background: WHITE,
-    },
-  })
-    .composite([{ input: png, left: Math.max(left, 0), top: Math.max(top, 0) }])
-    .png()
-    .toBuffer();
-}
-
-/** A centred band of the frame, in the fractions §6.1's guide box uses. */
-async function crop(frame: Buffer, heightFraction: number): Promise<Buffer> {
-  const width = Math.round(FRAME_WIDTH * GUIDE_WIDTH_FRACTION);
-  const height = Math.round(FRAME_HEIGHT * heightFraction);
-  return await sharp(frame)
-    .extract({
-      left: Math.round((FRAME_WIDTH - width) / 2),
-      top: Math.round((FRAME_HEIGHT - height) / 2),
-      width,
-      height,
-    })
-    .png()
-    .toBuffer();
-}
-
 interface Variant {
   layout: Layout;
   png: Buffer;
@@ -175,20 +116,13 @@ interface Variant {
 }
 
 async function variantsFor(degraded: Buffer): Promise<Variant[]> {
-  const size = await sizeOf(degraded);
-  const fill = size.width / FRAME_WIDTH;
-  if (size.width > FRAME_WIDTH || size.height > FRAME_HEIGHT) {
-    throw new Error(
-      `frame-probe: a ${size.width}x${size.height} symbol does not fit a ` +
-        `${FRAME_WIDTH}x${FRAME_HEIGHT} frame`,
-    );
-  }
-  const framed = await composite(degraded, size);
+  const framed = await composite(degraded);
+  const fill = framed.fill;
   return [
     { layout: "crop", png: degraded, fill },
-    { layout: "frame", png: framed, fill },
-    { layout: "roi", png: await crop(framed, GUIDE_HEIGHT_FRACTION), fill },
-    { layout: "roi_tall", png: await crop(framed, TALL_GUIDE_HEIGHT_FRACTION), fill },
+    { layout: "frame", png: framed.png, fill },
+    { layout: "roi", png: await cropBand(framed.png, GUIDE_HEIGHT_FRACTION), fill },
+    { layout: "roi_tall", png: await cropBand(framed.png, TALL_GUIDE_HEIGHT_FRACTION), fill },
   ];
 }
 

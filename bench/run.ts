@@ -51,6 +51,7 @@ import {
 import type { DecodeOutcome, DecodePath } from "./decode";
 import { SEVERE_EXTRAS, SEVERE_EXTRAS_DRAWN, TIERS, degrade, severeExtrasFor } from "./degrade";
 import type { SevereExtra, Tier } from "./degrade";
+import { FRAME_HEIGHT, FRAME_WIDTH, composite } from "./frame";
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -111,6 +112,43 @@ const DEFAULT_PATHS: readonly DecodePath[] = ["canvas", "yuv", "rgb"];
 /** The one path that is the app. A report whose verdict came from anything else is a diagnostic. */
 const APP_PATH: DecodePath = "canvas";
 
+/**
+ * What the decoder is handed: the degraded symbol alone, or that symbol composited unscaled
+ * onto the `FRAME_WIDTH` x `FRAME_HEIGHT` field the app's decoder actually reads (SB-2).
+ */
+type Layout = "crop" | "frame";
+
+const LAYOUTS: readonly Layout[] = ["crop", "frame"];
+
+/**
+ * The app's layout, and therefore the canonical one (SB-2).
+ *
+ * Until this round the bench handed ZXing a ~1050 px symbol in a ~1100 px image: quiet zone
+ * and nothing else. The app hands it a whole video frame. `useScanner` calls
+ * `decodeFromStream`; `@zxing/browser` draws the entire `<video>` onto its capture canvas at
+ * `videoWidth` x `videoHeight`, which under §6.3's `ideal` constraints is 1920x1080 — the
+ * symbol is a band across a mostly empty field, and the decoder has to find it there.
+ *
+ * Measured on identical symbol pixels, that field costs up to 35 pp (code_128 severe
+ * 62.5% -> 27.5%) and 2.8x the decode time. So every §13.6 margin this bench has ever
+ * reported was measured on an easier problem than the product solves, in the optimistic
+ * direction. `crop` is kept as a diagnostic — it is the only way to reproduce the old
+ * numbers, and the only way to attribute a future change to the frame rather than to the
+ * symbol — and a run using it never writes the tracked artifacts.
+ *
+ * This changes what the bench MEASURES. It does not touch a §13.4 tier definition or a §4.6
+ * constant: the degradations, their order and their parameters are exactly what they were,
+ * applied to exactly the same pixels, and the symbol is never resampled.
+ */
+const CANONICAL_LAYOUT: Layout = "frame";
+
+const LAYOUT_NOTES: Readonly<Record<Layout, string>> = {
+  crop: "the degraded symbol alone, ~1100 px wide — NOT what the app decodes (SB-2)",
+  frame:
+    `the symbol composited unscaled and centred on a white ${FRAME_WIDTH}x${FRAME_HEIGHT} ` +
+    "field — what `@zxing/browser` draws from the `<video>` (SB-2)",
+};
+
 /** Which paths need Chromium. `rgb` is the only one that does not. */
 function isBrowserPath(path: DecodePath): boolean {
   return path !== "rgb";
@@ -150,6 +188,8 @@ interface Attempt {
   seed: number;
   /** Z5: which severe extras this frame drew, `SEVERE_EXTRAS` order. `null` off the tier. */
   severeExtras: readonly SevereExtra[] | null;
+  /** Symbol width over decoded-image width: 1 on `crop`, ~0.3-0.55 on `frame` (SB-2). */
+  fill: number;
   verdict: Verdict;
   missReason: MissReason | null;
   /** Raw decoder output, or null when nothing decoded. */
@@ -172,6 +212,8 @@ interface FrameIdentity {
   tier: Tier;
   seed: number;
   severeExtras: readonly SevereExtra[] | null;
+  /** How much of the decoded image the symbol occupies across, after layout (SB-2). */
+  fill: number;
 }
 
 /**
@@ -264,6 +306,7 @@ async function degradeChunk(
   jobs: readonly Job[],
   runSeed: number,
   forcedExtras: readonly SevereExtra[] | null,
+  layout: Layout,
 ): Promise<Frame[]> {
   const frames = new Array<Frame>(jobs.length);
   let next = 0;
@@ -283,10 +326,23 @@ async function degradeChunk(
         tier,
         seed,
         severeExtras,
+        fill: 1,
       };
       try {
-        const png = await degrade(item.png, tier, seed, severeExtras ?? undefined);
-        frames[index] = { identity, png, error: null };
+        const degraded = await degrade(item.png, tier, seed, severeExtras ?? undefined);
+        // The frame goes on *after* the degradation and before any instrument reads it, so
+        // every path still sees identical pixels (B2) and the symbol is never resampled
+        // (SB-2): the bytes inside the symbol's box are the crop layout's bytes.
+        if (layout === "crop") {
+          frames[index] = { identity, png: degraded, error: null };
+        } else {
+          const framed = await composite(degraded);
+          frames[index] = {
+            identity: { ...identity, fill: framed.fill },
+            png: framed.png,
+            error: null,
+          };
+        }
       } catch (error) {
         frames[index] = {
           identity,
@@ -358,6 +414,7 @@ async function runAll(
   forcedExtras: readonly SevereExtra[] | null,
   paths: readonly DecodePath[],
   browser: BrowserDecoder | null,
+  layout: Layout,
 ): Promise<Attempt[]> {
   const attempts: Attempt[] = [];
   const total = jobs.length * paths.length;
@@ -367,7 +424,7 @@ async function runAll(
 
   for (let start = 0; start < jobs.length; start += CHUNK) {
     const chunk = jobs.slice(start, start + CHUNK);
-    const frames = await degradeChunk(chunk, runSeed, forcedExtras);
+    const frames = await degradeChunk(chunk, runSeed, forcedExtras, layout);
     for (const path of paths) {
       const outcomes = await decodeChunk(frames, path, browser);
       for (let i = 0; i < frames.length; i += 1) {
@@ -492,6 +549,11 @@ interface Options {
   quick: boolean;
   seed: number;
   /**
+   * What the decoder is handed (SB-2). `frame` is the app's and the canonical one; `crop` is
+   * the diagnostic that reproduces every number this bench reported before SB-2.
+   */
+  layout: Layout;
+  /**
    * Z5 diagnostic: force every severe frame to carry exactly these extras instead of drawing
    * `SEVERE_EXTRAS_DRAWN` of them. This is how the per-subset table in the ledger was
    * measured, and a run using it is not measuring the tier — see `nonCanonical`.
@@ -509,6 +571,9 @@ const USAGE = `bun run bench [options]
   --paths a,b          decode paths, subset of ${DECODE_PATHS.join(",")} (default
                        ${DEFAULT_PATHS.join(",")}). The first is the report's verdict;
                        only a run led by "${APP_PATH}" writes the tracked report
+  --layout l           ${LAYOUTS.join(" | ")} (default ${CANONICAL_LAYOUT}). "frame" is what
+                       the app decodes; "crop" is the pre-SB-2 diagnostic and never
+                       writes the tracked report
   --browser-pages N    pages decoding in parallel (default ${DEFAULT_BROWSER_PAGES})
   --chromium PATH      Chromium binary (default: whatever Playwright resolves)
   --severe-extras a,b  force the severe draw to exactly these (diagnostic; never writes
@@ -568,6 +633,7 @@ function parseArgs(argv: readonly string[]): Options | null {
   let quick = false;
   let seed = DEFAULT_SEED;
   let severeExtras: SevereExtra[] | null = null;
+  let layout: Layout = CANONICAL_LAYOUT;
 
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -612,6 +678,9 @@ function parseArgs(argv: readonly string[]): Options | null {
       case "--severe-extras":
         severeExtras = parseList(value(), SEVERE_EXTRAS, "--severe-extras");
         break;
+      case "--layout":
+        layout = parseList(value(), LAYOUTS, "--layout")[0];
+        break;
       case "--json":
         json = value();
         break;
@@ -632,6 +701,7 @@ function parseArgs(argv: readonly string[]): Options | null {
     quick,
     seed,
     severeExtras,
+    layout,
   };
 }
 
@@ -968,6 +1038,52 @@ function deltaSection(
   return out;
 }
 
+/**
+ * What the frame costs and what an ROI crop would buy back — SB-2 and SB-3, measured by
+ * `bench/frame-probe.ts` and reproduced here because the next person to read this table will
+ * reach for a crop, and one of the two obvious crops destroys 2D entirely.
+ *
+ * These are recorded numbers from a named command, not this run's. They are in the report
+ * because a warning that lives only in a ledger row is a warning nobody reads before writing
+ * the code.
+ */
+function roiSection(): string[] {
+  return [
+    "## The frame, and the ROI crop somebody is about to write (SB-2 / SB-3)",
+    "",
+    "Measured by `bun run bench/frame-probe.ts --count 40` at seed `0x5eed1a7c` — **not by " +
+      "this run** — on identical symbol pixels across four layouts. `crop` is what this bench " +
+      "measured before SB-2; `frame` is what it measures now and what the app decodes; `roi` " +
+      "and `roi_tall` are two crops the app could apply to that frame.",
+    "",
+    "| Layout | What it is | Overall | Mean decode |",
+    "|---|---|---:|---:|",
+    "| `crop` | the tight crop — the pre-SB-2 bench, an image the app never sees | 571/840 " +
+      "(68.0%) | 14.3 ms |",
+    "| `frame` | 1920x1080, symbol unscaled and centred — **what the app decodes** | 535/840 " +
+      "(63.7%) | 40.0 ms |",
+    "| `roi` | that frame cropped to §6.1's guide box **as drawn**, 90% x 22% = 1728x238 | " +
+      "392/840 (46.7%) | - |",
+    "| `roi_tall` | that frame cropped to a taller band, 90% x 40% = 1728x432 | 547/840 " +
+      "(65.1%) | 29.0 ms |",
+    "",
+    "**Do not crop to the guide box as drawn.** §6.1's box is `h-[22%] w-[90%]` " +
+      "(`CameraView.tsx:92`); at 1080 px tall that is a 238 px band, and a label-realistic " +
+      "Data Matrix or QR is ~480-500 px tall. Cropping to it takes `data_matrix` clean from " +
+      "100% to **0%** and `qr_code` clean from 95% to **0%** — it does not degrade 2D, it " +
+      "deletes it. The taller 90% x 40% band is the one that helps: `code_128` severe " +
+      "27.5% -> 40.0% (+12.5 pp), `code_39_i` severe 30.0% -> 40.0% (+10.0), `code_39` severe " +
+      "37.5% -> 40.0%, 2D fully restored, and mean decode time 40.0 ms -> 29.0 ms (-27%).",
+    "",
+    "So an ROI crop buys back about a third of what the frame costs — it does not reach the " +
+      "tight crop's 68.0%, and no ROI band turns a failing §13.6 cell into a passing one. It " +
+      "is a `useScanner` change (SB-3) and it is a fixer's to make, not the bench's; the bench " +
+      "measures it and stops there. Separately, and independently of any of this: §6.1 draws " +
+      "a box telling the field user where to put the label and nothing downstream uses it.",
+    "",
+  ];
+}
+
 function markdownReport(
   options: Options,
   provenance: Provenance,
@@ -988,6 +1104,8 @@ function markdownReport(
   );
   const errors = attempts.filter((a) => a.verdict === "error");
   const stripped = attempts.filter((a) => a.aimStripped).length;
+  const meanFill =
+    scoped.length === 0 ? 0 : scoped.reduce((sum, a) => sum + a.fill, 0) / scoped.length;
   const out: string[] = [];
 
   out.push("# §13.4 scan-robustness bench");
@@ -1017,6 +1135,10 @@ function markdownReport(
   out.push(`| Tiers | ${options.tiers.join(", ")} |`);
   out.push(`| Attempts | ${attempts.length} (${scoped.length} per path) |`);
   out.push(`| **Decode path (verdict)** | \`${app}\` — ${DECODE_PATH_NOTES[app]} |`);
+  out.push(`| **Frame (SB-2)** | \`${options.layout}\` — ${LAYOUT_NOTES[options.layout]} |`);
+  out.push(
+    `| Symbol fill | ${pct(meanFill)} of the frame width, mean over ${scoped.length} frames |`,
+  );
   for (const path of others) {
     out.push(`| Also measured | \`${path}\` — ${DECODE_PATH_NOTES[path]} |`);
   }
@@ -1038,6 +1160,22 @@ function markdownReport(
   out.push(
     `Every rate, miss reason and false accept below is \`${app}\`'s unless it says otherwise. ` +
       "The instrument delta is its own section.",
+  );
+  out.push("");
+  out.push(
+    `**These numbers are measured on the frame the app decodes (SB-2), and they are much ` +
+      `worse than the ones this report used to carry.** The bench used to hand ZXing a tight ` +
+      `crop — a ~1050 px symbol in a ~1100 px image. \`useScanner\` calls \`decodeFromStream\`, ` +
+      `and \`@zxing/browser\` draws the whole \`<video>\` onto its capture canvas at ` +
+      `\`videoWidth\` x \`videoHeight\`, so under §6.3's \`ideal\` constraints the decoder gets ` +
+      `${FRAME_WIDTH}x${FRAME_HEIGHT} with the symbol filling ${pct(meanFill)} of the width ` +
+      `and the rest of the field empty. The symbol pixels are byte-identical either way — the ` +
+      `degraded image is composited unscaled and centred, never resampled — so the whole ` +
+      `difference between the old table and this one is the field around the symbol. Nothing ` +
+      `about the corpus, the tiers or the §4.6 hints changed. The old numbers were a ` +
+      `measurement of an easier problem than the product solves, and they were optimistic in ` +
+      `the direction that matters. \`--layout crop\` reproduces them, as a diagnostic that ` +
+      `cannot write this file.`,
   );
   out.push("");
 
@@ -1168,6 +1306,8 @@ function markdownReport(
   );
   out.push("");
 
+  out.push(...roiSection());
+
   out.push("## Decode time");
   out.push("");
   out.push("| Scope | Decodes | Mean ms | p95 ms |");
@@ -1209,14 +1349,18 @@ function markdownReport(
   }
   out.push("");
   out.push(
-    `These numbers came out of \`${app}\` — ${DECODE_PATH_NOTES[app]}. That is the app's ` +
-      "decoder in the app's engine, which the bench's node path was not (B2). What it still " +
-      "is not is a **camera frame**: the app draws a `<video>` element whose pixels came off " +
-      "a sensor through an ISP and YUV 4:2:0; this draws a PNG. `bench/camera-probe.ts` " +
-      "measures that last step on a subset — the same frames through Chromium's own fake " +
-      "capture device and a real `<video>` — and finds the camera reads slightly *worse*, " +
-      "deterministically, so these rates are a ceiling on the capture path and not a floor. " +
-      "Nothing here models a lens, and nothing here is a label.",
+    `These numbers came out of \`${app}\` — ${DECODE_PATH_NOTES[app]} — on ` +
+      `${options.layout === "frame" ? `the ${FRAME_WIDTH}x${FRAME_HEIGHT} field the app's decoder is handed (SB-2)` : "a tight crop the app never sees (SB-2)"}. ` +
+      "That is the app's decoder, in the app's engine, on the app's frame geometry; the " +
+      "bench's node path was none of those (B2) and the crop layout was not the last of them. " +
+      "What it still is not is a **camera frame**. The app draws a `<video>` whose pixels came " +
+      "off a sensor through an ISP and YUV 4:2:0; this composites a PNG onto a uniform white " +
+      "field. A real jamb is a darker, textured surround, and a clean white field is the " +
+      "*easier* of the two for a row-histogram binariser, so even these rates are a ceiling " +
+      "and not a floor. `bench/camera-probe.ts` measures the colour step on a subset — the " +
+      "same frames through Chromium's own fake capture device and a real `<video>` — and " +
+      "finds the camera reads slightly *worse*, deterministically. Nothing here models a " +
+      "lens, and nothing here is a label.",
   );
   out.push("");
   out.push(
@@ -1256,6 +1400,9 @@ function jsonReport(
         quick: options.quick,
         severeExtras: options.severeExtras,
         severeExtrasDrawn: SEVERE_EXTRAS_DRAWN,
+        layout: options.layout,
+        layoutNote: LAYOUT_NOTES[options.layout],
+        frame: options.layout === "frame" ? { width: FRAME_WIDTH, height: FRAME_HEIGHT } : null,
         tiers: options.tiers,
         symbologies: options.symbologies,
         paths: options.paths,
@@ -1375,6 +1522,9 @@ function nonCanonicalReasons(options: Options, app: DecodePath): string[] {
     reasons.push(`--severe-extras ${options.severeExtras.join(",")} forces the severe tier`);
   }
   if (app !== APP_PATH) reasons.push(`the verdict path is ${app}, not the app's ${APP_PATH}`);
+  if (options.layout !== CANONICAL_LAYOUT) {
+    reasons.push(`--layout ${options.layout}, not the app's ${CANONICAL_LAYOUT} (SB-2)`);
+  }
   if (options.seed !== DEFAULT_SEED) {
     reasons.push(`--seed 0x${options.seed.toString(16)}, not 0x${DEFAULT_SEED.toString(16)}`);
   }
@@ -1382,7 +1532,9 @@ function nonCanonicalReasons(options: Options, app: DecodePath): string[] {
     reasons.push(`--count ${options.count}, not ${DEFAULT_COUNT}`);
   }
   if (options.tiers.length !== TIERS.length) {
-    reasons.push(`--tiers ${options.tiers.join(",")}, not all ${TIERS.length} of ${TIERS.join(",")}`);
+    reasons.push(
+      `--tiers ${options.tiers.join(",")}, not all ${TIERS.length} of ${TIERS.join(",")}`,
+    );
   }
   if (options.symbologies.length !== BENCH_SYMBOLOGIES.length) {
     reasons.push(
@@ -1443,7 +1595,14 @@ async function main(): Promise<number> {
   let attempts: Attempt[];
   let pageErrors: readonly string[];
   try {
-    attempts = await runAll(jobs, options.seed, options.severeExtras, options.paths, browser);
+    attempts = await runAll(
+      jobs,
+      options.seed,
+      options.severeExtras,
+      options.paths,
+      browser,
+      options.layout,
+    );
     // Read before `close()` disposes the pages that recorded them.
     pageErrors = browser?.pageErrors() ?? [];
   } finally {
@@ -1511,6 +1670,7 @@ async function main(): Promise<number> {
       `${attempts.length} attempts`,
   );
   lines.push(`  decode path: ${app} (${options.paths.join(" + ")} measured)`);
+  lines.push(`  frame:       ${options.layout} — ${LAYOUT_NOTES[options.layout]}`);
   lines.push("");
   const width = Math.max(...options.symbologies.map((s) => s.length));
   lines.push(
