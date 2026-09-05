@@ -6,6 +6,25 @@
 @import "tailwindcss";
 @import "./ui/tokens.css";
 
+/* Tailwind v4 detects its sources by scanning the filesystem, and a build directory is
+   full of files: emitted HTML and minified JS that the extractor happily mines for class
+   names, so the app's own output feeds back into the app's own stylesheet. It had:
+   `.italic` and `.invert` were both in the shipped CSS with zero uses anywhere in `src/`,
+   pulled out of `docs/assets/*.js` (React's error overlay writes `fontStyle:"italic"`).
+
+   `docs/` is the one that reaches the stylesheet, because it is the GitHub Pages build and
+   Pages has to serve it from the branch — so it cannot be git-ignored, and git-ignoring is
+   the only thing keeping the other three out. That is the real defect here: the emitted CSS
+   was a function of which build directories happened to exist on disk and of an unrelated
+   ignore file, rather than of the source tree. All four are named, so it is now neither.
+
+   Measured: with `docs/` present the stylesheet is 21,858 bytes and carries both rules;
+   with it absent, or with this directive, 21,701 and neither. */
+@source not "../docs";
+@source not "../dist";
+@source not "../dist-demo";
+@source not "../dev-dist";
+
 @theme inline {
   --color-bg: var(--bg);
   --color-bg-elev: var(--bg-elev);
