@@ -134,7 +134,17 @@ export function ScanScreen() {
   }, []);
 
   return (
-    <section className="mx-auto flex w-full max-w-md flex-col gap-4 p-4 pb-8">
+    // The camera screen lays its preview and its controls side by side in landscape (F11),
+    // and a `max-w-md` column is what left it 200 px of an 844 px screen to do it in — the
+    // "wide empty margins" the finding measured. The keyboard screen keeps the reading
+    // measure: a single input does not want to be 736 px wide, and nothing about it was
+    // broken sideways.
+    <section
+      className={
+        "mx-auto flex w-full max-w-md flex-col gap-4 p-4 pb-8" +
+        (mode === "camera" ? " landscape:max-w-3xl" : "")
+      }
+    >
       <h1 className="text-2xl leading-tight font-bold text-fg">
         {mode === "camera" ? "Scan a VIN" : "Type a VIN"}
       </h1>

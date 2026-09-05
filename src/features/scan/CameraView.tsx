@@ -246,9 +246,20 @@ export function CameraView({
     .join(" ");
 
   return (
-    <div className="flex w-full flex-col gap-4">
+    // §6.1: "Portrait and landscape both work", and sideways it did not (F11). A phone turned
+    // over is short, not small: at 844x390 the portrait column — a 3:4 preview, then the
+    // status line, then the buttons — needs 460 px of a 341 px fold, so §6.4's "Type VIN
+    // instead" had 0 visible pixels and a tap at its centre landed on the bottom nav while
+    // the camera was working perfectly. Nothing can be trimmed to fit: the fixed parts alone
+    // (heading, status, button, padding, gaps) are 226 px, which leaves 115 px for a preview.
+    // So landscape lays the same two parts out side by side instead, which is where the width
+    // went — the row is the idiom R4-I already used on the §9-S3 QR overlay for the same
+    // reason. Portrait is untouched, and `landscape:` covers the short desktop window too.
+    <div className="flex w-full flex-col gap-4 landscape:flex-row landscape:items-start">
       <div className={previewClasses}>
-        <div className="aspect-[3/4] max-h-[60vh] w-full">
+        {/* 50vh sideways rather than 60: the row's height is the fold minus the heading and
+            the padding, and 60vh of a 360 px viewport does not leave the status line room. */}
+        <div className="aspect-[3/4] max-h-[60vh] w-full landscape:max-h-[50vh]">
           <video
             ref={videoRef}
             muted
@@ -308,34 +319,40 @@ export function CameraView({
         ) : null}
       </div>
 
-      <div
-        role="status"
-        aria-live="polite"
-        className="flex min-h-[var(--tap)] flex-col items-start justify-center gap-2"
-      >
-        {status === "" ? null : (
-          <p className={`text-lg leading-snug font-bold ${statusToneFor(state, unsaved)}`}>
-            {status}
-          </p>
-        )}
-        {/* §6.1 floors a VIN display at 28 px on a phone, and the candidate is exactly the
-            moment the number is being checked against the sticker at arm's length. */}
-        {sighting === null ? null : <VinDisplay vin={sighting.vin} size="lg" />}
-      </div>
+      {/* The status line, the notice and the two routes forward, as one part: in portrait
+          they stack under the preview exactly as before, and sideways they are the column
+          beside it. `min-w-0` so a 17-character VIN at §6.1's 28 px cannot push the row
+          wider than the fold. */}
+      <div className="flex min-w-0 flex-col gap-4 landscape:flex-1">
+        <div
+          role="status"
+          aria-live="polite"
+          className="flex min-h-[var(--tap)] flex-col items-start justify-center gap-2"
+        >
+          {status === "" ? null : (
+            <p className={`text-lg leading-snug font-bold ${statusToneFor(state, unsaved)}`}>
+              {status}
+            </p>
+          )}
+          {/* §6.1 floors a VIN display at 28 px on a phone, and the candidate is exactly the
+              moment the number is being checked against the sticker at arm's length. */}
+          {sighting === null ? null : <VinDisplay vin={sighting.vin} size="lg" />}
+        </div>
 
-      {notice === null ? null : <Banner tone={notice.tone} title={notice.message} />}
+        {notice === null ? null : <Banner tone={notice.tone} title={notice.message} />}
 
-      {/* The fallback for a destroyed label or a dead camera, so it is never
-          hidden behind an error state (P7). */}
-      <div className="flex flex-col gap-3">
-        {notice !== null && notice.retry ? (
-          <Button variant="primary" full onClick={onRetry}>
-            Retry
+        {/* The fallback for a destroyed label or a dead camera, so it is never
+            hidden behind an error state (P7). */}
+        <div className="flex flex-col gap-3">
+          {notice !== null && notice.retry ? (
+            <Button variant="primary" full onClick={onRetry}>
+              Retry
+            </Button>
+          ) : null}
+          <Button variant={typeVariant} full onClick={onTypeInstead}>
+            Type VIN instead
           </Button>
-        ) : null}
-        <Button variant={typeVariant} full onClick={onTypeInstead}>
-          Type VIN instead
-        </Button>
+        </div>
       </div>
     </div>
   );
