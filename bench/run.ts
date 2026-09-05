@@ -523,6 +523,119 @@ function timing(scope: string, attempts: readonly Attempt[]): Timing {
 }
 
 // ---------------------------------------------------------------------------
+// How much of a cell is noise (SB-7)
+// ---------------------------------------------------------------------------
+
+/**
+ * Two-sided 95%. Not tunable: a band nobody can move is a band nobody can shade.
+ */
+const BAND_Z = 1.96;
+
+/**
+ * What one cell's number is worth.
+ *
+ * A cell is `attempts` frames at one run seed. Change the seed and every moderate and severe
+ * frame gets a different rotation, warp, glare and grain, so the cell moves — and it moves a
+ * long way: five full canvas runs at five seeds put `code_128` severe anywhere in 54.0-65.5%,
+ * an 11.5 pp spread, with `code_128` moderate at 9.0 and four more cells above 7 (SB-7).
+ * Nothing in this report used to say so, so a fixer who moved a moderate cell by 5 pp on one
+ * seed and called it a fix had measured noise.
+ *
+ * `clean` is the exception and it is exact: the clean tier applies no seeded randomness at
+ * all (`degrade` returns the rendered symbol untouched), so a clean cell is identical at
+ * every seed — measured spread 0.0 pp at all five. That is worth stating rather than
+ * estimating, because it means **a clean-tier miss is structural, never sampling** (SB-4):
+ * the same three `qr_code` VINs fail at every seed, and no amount of re-running will move
+ * them.
+ *
+ * For `moderate` and `severe` the interval is Wilson's on the cell's own `hits / attempts`.
+ * Wilson rather than the normal approximation because cells sit near 0 and near 1 here, where
+ * the Wald interval runs off the end of the scale; and an interval computed from the sample
+ * rather than a sweep because a sweep costs five runs and this costs nothing, so it can be on
+ * in every report. Its accuracy is checked against the real thing, not assumed — see the
+ * measured spreads in the report section and `--seeds`.
+ */
+interface Band {
+  low: number;
+  high: number;
+  halfWidth: number;
+  /** True when the tier applies no randomness, so the cell does not move with the seed. */
+  deterministic: boolean;
+}
+
+function seedBand(cell: Cell): Band {
+  if (cell.tier === "clean" || cell.attempts === 0) {
+    return {
+      low: cell.decodeRate,
+      high: cell.decodeRate,
+      halfWidth: 0,
+      deterministic: true,
+    };
+  }
+  const n = cell.attempts;
+  const p = cell.decodeRate;
+  const z2 = BAND_Z * BAND_Z;
+  const denominator = 1 + z2 / n;
+  const centre = (p + z2 / (2 * n)) / denominator;
+  const spread = (BAND_Z * Math.sqrt((p * (1 - p)) / n + z2 / (4 * n * n))) / denominator;
+  const low = Math.max(0, centre - spread);
+  const high = Math.min(1, centre + spread);
+  return { low, high, halfWidth: (high - low) / 2, deterministic: false };
+}
+
+/**
+ * The band as a margin, for a cell in a table: `±6.7`, `exact`, or — when the run actually
+ * swept seeds — the measured spread, which needs no estimator.
+ */
+function bandLabel(cell: Cell, seedRuns: readonly SeedRun[]): string {
+  const band = seedBand(cell);
+  // `exact` is reserved for the tier that cannot move. A swept cell that happened to land on
+  // the same number every time is not exact — it is a measurement that came out flat, and
+  // saying so keeps the two claims apart.
+  if (band.deterministic) return "exact";
+  const measured = measuredBand(cell, seedRuns);
+  if (measured !== null) return `[${pct(measured.min)}-${pct(measured.max)}]`;
+  return `±${(band.halfWidth * 100).toFixed(1)}`;
+}
+
+/** One further seed's cells, for the measured band (`--seeds`, SB-7). */
+interface SeedRun {
+  seed: number;
+  cells: Cell[];
+}
+
+/** What one cell actually did across every seed measured. `null` at a single seed. */
+interface MeasuredBand {
+  seeds: number;
+  min: number;
+  max: number;
+  mean: number;
+  /** max - min: the number SB-7 reports, because it is the one a reader can act on. */
+  spread: number;
+}
+
+function measuredBand(cell: Cell, seedRuns: readonly SeedRun[]): MeasuredBand | null {
+  if (seedRuns.length === 0) return null;
+  const rates = [cell.decodeRate];
+  for (const run of seedRuns) {
+    const match = run.cells.find(
+      (c) => c.symbology === cell.symbology && c.tier === cell.tier && c.attempts > 0,
+    );
+    if (match !== undefined) rates.push(match.decodeRate);
+  }
+  if (rates.length < 2) return null;
+  const min = Math.min(...rates);
+  const max = Math.max(...rates);
+  return {
+    seeds: rates.length,
+    min,
+    max,
+    mean: rates.reduce((sum, rate) => sum + rate, 0) / rates.length,
+    spread: max - min,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Options
 // ---------------------------------------------------------------------------
 
@@ -554,6 +667,12 @@ interface Options {
    */
   layout: Layout;
   /**
+   * Further run seeds, each measuring the whole corpus again (SB-7). The report then carries
+   * the *measured* seed band per cell instead of the estimated one. A diagnostic: it is many
+   * runs in a trench coat, and the tracked artifact is one run.
+   */
+  extraSeeds: number[];
+  /**
    * Z5 diagnostic: force every severe frame to carry exactly these extras instead of drawing
    * `SEVERE_EXTRAS_DRAWN` of them. This is how the per-subset table in the ledger was
    * measured, and a run using it is not measuring the tier — see `nonCanonical`.
@@ -568,6 +687,8 @@ const USAGE = `bun run bench [options]
   --tiers a,b          subset of ${TIERS.join(",")}
   --symbologies a,b    subset of ${BENCH_SYMBOLOGIES.join(",")}
   --seed N             run seed (default 0x${DEFAULT_SEED.toString(16)})
+  --seeds a,b,c        run the whole corpus once per seed and report the MEASURED per-cell
+                       band instead of the estimated one (SB-7; diagnostic, N runs)
   --paths a,b          decode paths, subset of ${DECODE_PATHS.join(",")} (default
                        ${DEFAULT_PATHS.join(",")}). The first is the report's verdict;
                        only a run led by "${APP_PATH}" writes the tracked report
@@ -634,6 +755,7 @@ function parseArgs(argv: readonly string[]): Options | null {
   let seed = DEFAULT_SEED;
   let severeExtras: SevereExtra[] | null = null;
   let layout: Layout = CANONICAL_LAYOUT;
+  let extraSeeds: number[] = [];
 
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -681,6 +803,19 @@ function parseArgs(argv: readonly string[]): Options | null {
       case "--layout":
         layout = parseList(value(), LAYOUTS, "--layout")[0];
         break;
+      case "--seeds": {
+        const parsed = value()
+          .split(",")
+          .map((part) => part.trim())
+          .filter((part) => part.length > 0)
+          .map(parseSeed);
+        if (parsed.length === 0) throw new UsageError("--seeds: expected a comma-separated list");
+        // The first is the run's own seed, so `--seeds a,b,c` reads as "these three seeds"
+        // rather than "the default plus these three".
+        seed = parsed[0];
+        extraSeeds = parsed.slice(1).filter((value_) => value_ !== seed);
+        break;
+      }
       case "--json":
         json = value();
         break;
@@ -702,6 +837,7 @@ function parseArgs(argv: readonly string[]): Options | null {
     seed,
     severeExtras,
     layout,
+    extraSeeds,
   };
 }
 
@@ -1084,6 +1220,117 @@ function roiSection(): string[] {
   ];
 }
 
+/**
+ * What a cell is worth (SB-7). Without this, every number above reads as exact, and the loop
+ * spends rounds chasing 5 pp moves that were the seed.
+ */
+function seedNoiseSection(
+  options: Options,
+  cells: readonly Cell[],
+  seedRuns: readonly SeedRun[],
+): string[] {
+  const out: string[] = [];
+  const moving = cells.filter((c) => c.tier !== "clean" && c.attempts > 0);
+  const widest = [...moving].sort(
+    (a, b) =>
+      (measuredBand(b, seedRuns)?.spread ?? seedBand(b).halfWidth * 2) -
+      (measuredBand(a, seedRuns)?.spread ?? seedBand(a).halfWidth * 2),
+  )[0];
+
+  out.push("## What a cell is worth (SB-7)");
+  out.push("");
+  out.push(
+    `A cell above is ${moving[0]?.attempts ?? 0} frames at **one run seed**. Change the seed ` +
+      "and every `moderate` and `severe` frame draws a different rotation, warp, glare, grain " +
+      "and JPEG quality, so the cell moves. Five full canvas runs at five seeds, on this " +
+      "layout, spread `code_128` moderate over 75.0-83.5% and `qr_code` severe over " +
+      "37.5-46.0% — 8.5 pp each — with `code_128` severe and `data_matrix` severe at 8.0. " +
+      "(On the pre-SB-2 crop layout the widest was `code_128` severe at 11.5 pp.) None of " +
+      "that was ever stated here, so a fixer who moved a moderate cell by 5 pp on one seed " +
+      "and called it a fix had measured noise.",
+  );
+  out.push("");
+  out.push(
+    "**`clean` is exact.** The clean tier applies no seeded randomness at all — `degrade` " +
+      "returns the rendered symbol untouched — so a clean cell is byte-identical at every " +
+      "seed, and its measured spread across those five runs was 0.0 pp in every symbology. " +
+      "That is not a small band, it is no band: **a clean-tier miss is structural** " +
+      "(SB-4). The same three `qr_code` VINs fail at every seed and no re-run will move them.",
+  );
+  out.push("");
+  if (seedRuns.length > 0) {
+    out.push(
+      `**Measured, not estimated.** This run swept ${seedRuns.length + 1} seeds ` +
+        `(\`0x${options.seed.toString(16)}\`, ` +
+        `${seedRuns.map((r) => `\`0x${r.seed.toString(16)}\``).join(", ")}) over the whole ` +
+        "corpus, so the band on every cell is the range those runs actually produced.",
+    );
+  } else {
+    out.push(
+      "**This run measured one seed**, so the band on each `moderate` and `severe` cell is " +
+        "estimated from that cell's own sample: a 95% Wilson interval on `hits / attempts`. " +
+        "It estimates the same thing a sweep measures — a cell is n independent frames either " +
+        "way — and it was checked against the sweep rather than trusted. A 95% interval is " +
+        "about 3.9 standard errors wide and the range of five draws is about 2.3, so a " +
+        "five-seed spread should come out near 0.6 of this band; over the twenty-one cells " +
+        "swept it came out at 0.24-1.06, median 0.48. The band is therefore honest and, for " +
+        "a five-run comparison, slightly generous — which is the safe direction. Wilson " +
+        "rather than the normal approximation because cells sit near 0 and near 1 here. To " +
+        "measure it instead of estimating it: `bun run bench/run.ts --seeds a,b,c --paths " +
+        "canvas` — a diagnostic, n runs, which never writes this file.",
+    );
+  }
+  out.push("");
+  if (widest !== undefined) {
+    const measured = measuredBand(widest, seedRuns);
+    const width = measured !== null ? measured.spread : seedBand(widest).halfWidth * 2;
+    out.push(
+      `**The operating rule.** The widest band in this run is \`${widest.symbology}\` ` +
+        `${widest.tier}, ${(width * 100).toFixed(1)} pp wide. Comparing two runs carries that ` +
+        "uncertainty twice, so a before/after difference has to clear roughly 1.4x the band " +
+        `— about ${(width * 1.41 * 100).toFixed(1)} pp on that cell — before it is a claim ` +
+        "rather than a coincidence. Below that, sweep three seeds before it goes in a ledger " +
+        "row. It cuts both ways: a regression inside the band is not a regression either.",
+    );
+    out.push("");
+  }
+  // Derived, not asserted: whether any failing cell could reach its threshold at a lucky
+  // seed is a question this run can answer about itself, and a claim that goes stale if it
+  // is written down instead.
+  const failing = moving.filter((c) => !c.pass);
+  const reachable = failing.filter((c) => {
+    const measured = measuredBand(c, seedRuns);
+    return (measured !== null ? measured.max : seedBand(c).high) >= c.threshold;
+  });
+  const closest = [...failing].sort(
+    (a, b) =>
+      (measuredBand(a, seedRuns)?.max ?? seedBand(a).high) -
+      a.threshold -
+      ((measuredBand(b, seedRuns)?.max ?? seedBand(b).high) - b.threshold),
+  )[failing.length - 1];
+  if (reachable.length === 0 && closest !== undefined) {
+    const top = measuredBand(closest, seedRuns)?.max ?? seedBand(closest).high;
+    out.push(
+      "**No verdict changes inside these bands.** Not one failing cell reaches its threshold " +
+        `at the top of its band; the closest is \`${closest.symbology}\` ${closest.tier} at ` +
+        `${pct(closest.decodeRate)}, whose band tops out at ${pct(top)} against ` +
+        `${pct(closest.threshold)}. And the false-accept threshold is a count, not a rate, so ` +
+        "no band applies to it at all: one is one.",
+    );
+  } else if (reachable.length > 0) {
+    out.push(
+      `**${reachable.length} failing cell${reachable.length === 1 ? "" : "s"} could reach ` +
+        "the threshold at the top of the band** — " +
+        reachable.map((c) => `\`${c.symbology}\` ${c.tier}`).join(", ") +
+        " — so those verdicts are seed-sensitive and want a sweep before anyone acts on them. " +
+        "The false-accept threshold is a count, not a rate, so no band applies to it: one is " +
+        "one.",
+    );
+  }
+  out.push("");
+  return out;
+}
+
 function markdownReport(
   options: Options,
   provenance: Provenance,
@@ -1093,6 +1340,7 @@ function markdownReport(
   vinCount: number,
   failures: readonly string[],
   diagnosticReasons: readonly string[],
+  seedRuns: readonly SeedRun[],
 ): string {
   const app = options.paths[0];
   const others = options.paths.slice(1);
@@ -1186,6 +1434,28 @@ function markdownReport(
       `**0 false accepts** in ${scoped.length} attempts on \`${app}\`. ` +
         `Threshold ${FALSE_ACCEPT_THRESHOLD}.`,
     );
+    out.push("");
+    out.push(
+      `Zero at ${seedRuns.length === 0 ? "one seed" : `${seedRuns.length + 1} seeds`} is not ` +
+        "zero (SB-7). §13.6's zero is a claim about the whole corpus, and a run is one draw " +
+        "from it: R4-F was found at one seed, and SB-1 only turned up on the fourth seed of a " +
+        "five-seed sweep, at 2 in 21,000. A clean headline here means this run produced none " +
+        "— nothing more.",
+    );
+    out.push("");
+    out.push(
+      "**Recorded, on this layout:** the five-seed sweep was re-run after SB-2 — " +
+        "`bun run bench/run.ts --seed <s> --paths canvas` for `0x5eed1a7c`, `0x11111111`, " +
+        "`0x2bad5eed`, `0x7f3ac91d`, `0xdecafbad`, 200 VINs each — and produced **0 false " +
+        "accepts in 21,000 attempts**. Both known Code 128 checksum collisions were found on " +
+        "the pre-SB-2 crop and neither survives the frame: R4-F (`EH8U2YHX60HU8VGWD` -> " +
+        "`EH8U2YHX60HU7VAWD`, seed `0xc5d3691c`) and SB-1 (`KB7BWYDJ6TW0808Z3` -> " +
+        "`KB7BWYDJ6TW0874Z3`, seed `0x55f2df0a`) both read as nothing at all on the framed " +
+        "version of their own frame. **That is not a disproof.** The collisions are " +
+        "arithmetic in Code 128's mod-103 check, not artefacts of the crop; the frame changed " +
+        "which frames decode at all, and a decode that no longer happens cannot be wrong. " +
+        "21,000 attempts bound the rate at roughly 1 in 7,000 at 95%, which is not zero.",
+    );
   } else {
     out.push(
       `**${falseAccepts.length} FALSE ACCEPT${falseAccepts.length === 1 ? "" : "S"}** ` +
@@ -1245,13 +1515,21 @@ function markdownReport(
         (c) => c.path === app && c.symbology === symbology && c.tier === tier,
       );
       if (cell === undefined) return "-";
-      return `${pct(cell.decodeRate)} ${cell.pass ? "PASS" : "FAIL"}`;
+      return `${pct(cell.decodeRate)} ${bandLabel(cell, seedRuns)} ${cell.pass ? "PASS" : "FAIL"}`;
     });
     out.push(`| ${symbology} | ${row.join(" | ")} |`);
   }
   out.push("");
   out.push("Decode rate is end to end: the fraction of frames that produced the **correct** VIN");
   out.push("through ZXing and §4.2 `extractVin`, not the fraction that merely decoded.");
+  out.push("");
+  out.push(
+    `Each cell reads \`rate ${seedRuns.length > 0 ? "measured-band" : "±band"} PASS/FAIL\`. ` +
+      `**${seedRuns.length > 0 ? "The band is what this cell measured across the seeds swept" : "The band is how far this cell moves when the run seed moves"}** ` +
+      "— see *What a cell is worth* below. `exact` means the cell cannot move: the clean tier " +
+      "applies no seeded randomness, so a clean-tier miss is structural and re-running will " +
+      "never fix it.",
+  );
   out.push("");
   const ordering = orderingViolations(allCells, options.tiers, app);
   out.push(
@@ -1265,14 +1543,22 @@ function markdownReport(
   out.push("### Detail");
   out.push("");
   out.push(
-    "| Symbology | Tier | Attempts | Hits | Misses | Errors | False accepts | Rate | Threshold | Margin | Status |",
+    "| Symbology | Tier | Attempts | Hits | Misses | Errors | False accepts | Rate | Seed band | Threshold | Margin | Status |",
   );
-  out.push("|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|");
+  out.push("|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|");
   for (const c of cells) {
+    const band = seedBand(c);
+    const measured = measuredBand(c, seedRuns);
+    const bandCell =
+      measured !== null
+        ? `${pct(measured.min)}-${pct(measured.max)} over ${measured.seeds} seeds`
+        : band.deterministic
+          ? "exact (no randomness)"
+          : `${pct(band.low)}-${pct(band.high)}`;
     out.push(
       `| ${c.symbology} | ${c.tier} | ${c.attempts} | ${c.hits} | ${c.misses} | ${c.errors} | ` +
-        `${c.falseAccepts} | ${pct(c.decodeRate)} | ${pct(c.threshold)} | ${margin(c)} | ` +
-        `${c.pass ? "PASS" : "FAIL"} |`,
+        `${c.falseAccepts} | ${pct(c.decodeRate)} | ${bandCell} | ${pct(c.threshold)} | ` +
+        `${margin(c)} | ${c.pass ? "PASS" : "FAIL"} |`,
     );
   }
   out.push("");
@@ -1305,6 +1591,8 @@ function markdownReport(
       "is one, so any non-zero value here is itself a finding.",
   );
   out.push("");
+
+  out.push(...seedNoiseSection(options, cells, seedRuns));
 
   out.push(...roiSection());
 
@@ -1380,6 +1668,7 @@ function jsonReport(
   vinCount: number,
   failures: readonly string[],
   diagnosticReasons: readonly string[],
+  seedRuns: readonly SeedRun[],
 ): string {
   const app = options.paths[0];
   const others = options.paths.slice(1);
@@ -1426,6 +1715,16 @@ function jsonReport(
         aimIdentifiersStripped: attempts.filter((a) => a.aimStripped).length,
       },
       cells,
+      seedRuns: seedRuns.map((run) => ({ seed: run.seed, cells: run.cells })),
+      seedBands: cells
+        .filter((c) => c.path === app)
+        .map((c) => ({
+          symbology: c.symbology,
+          tier: c.tier,
+          decodeRate: c.decodeRate,
+          estimated: seedBand(c),
+          measured: measuredBand(c, seedRuns),
+        })),
       timings,
       delta: delta.cells,
       disagreements: delta.disagreements,
@@ -1528,6 +1827,9 @@ function nonCanonicalReasons(options: Options, app: DecodePath): string[] {
   if (options.seed !== DEFAULT_SEED) {
     reasons.push(`--seed 0x${options.seed.toString(16)}, not 0x${DEFAULT_SEED.toString(16)}`);
   }
+  if (options.extraSeeds.length > 0) {
+    reasons.push(`--seeds measured ${options.extraSeeds.length + 1} seeds, not 1 (SB-7)`);
+  }
   if (options.count !== DEFAULT_COUNT) {
     reasons.push(`--count ${options.count}, not ${DEFAULT_COUNT}`);
   }
@@ -1594,6 +1896,10 @@ async function main(): Promise<number> {
   const executable = browser?.executable ?? null;
   let attempts: Attempt[];
   let pageErrors: readonly string[];
+  // `--seeds`: the whole corpus again, once per further seed, so the report can state the
+  // band a cell actually has instead of estimating it (SB-7). Same browser, same corpus, same
+  // jobs — only the degradation seed moves, which is exactly the quantity being measured.
+  const seedRuns: SeedRun[] = [];
   try {
     attempts = await runAll(
       jobs,
@@ -1603,6 +1909,24 @@ async function main(): Promise<number> {
       browser,
       options.layout,
     );
+    for (const extraSeed of options.extraSeeds) {
+      process.stderr.write(`bench: sweeping seed 0x${extraSeed.toString(16)} (SB-7)\n`);
+      const extraAttempts = await runAll(
+        jobs,
+        extraSeed,
+        options.severeExtras,
+        options.paths,
+        browser,
+        options.layout,
+      );
+      seedRuns.push({
+        seed: extraSeed,
+        cells: summarise(extraAttempts, options.symbologies, options.tiers, app),
+      });
+      // A false accept at any seed is the headline, so the sweep's are folded into the run's
+      // attempts rather than summarised away — §13.6's zero is a count over everything seen.
+      attempts.push(...extraAttempts.filter((a) => a.verdict === "false_accept"));
+    }
     // Read before `close()` disposes the pages that recorded them.
     pageErrors = browser?.pageErrors() ?? [];
   } finally {
@@ -1642,7 +1966,17 @@ async function main(): Promise<number> {
 
   await writeFile(
     nonCanonical ? QUICK_REPORT_PATH : REPORT_PATH,
-    markdownReport(options, { executable }, cells, timings, attempts, vinCount, failures, reasons),
+    markdownReport(
+      options,
+      { executable },
+      cells,
+      timings,
+      attempts,
+      vinCount,
+      failures,
+      reasons,
+      seedRuns,
+    ),
     "utf8",
   );
   const jsonPath =
@@ -1655,7 +1989,17 @@ async function main(): Promise<number> {
   if (jsonPath !== null) {
     await writeFile(
       resolve(process.cwd(), jsonPath),
-      jsonReport(options, { executable }, cells, timings, attempts, vinCount, failures, reasons),
+      jsonReport(
+        options,
+        { executable },
+        cells,
+        timings,
+        attempts,
+        vinCount,
+        failures,
+        reasons,
+        seedRuns,
+      ),
       "utf8",
     );
   }
@@ -1673,20 +2017,30 @@ async function main(): Promise<number> {
   lines.push(`  frame:       ${options.layout} — ${LAYOUT_NOTES[options.layout]}`);
   lines.push("");
   const width = Math.max(...options.symbologies.map((s) => s.length));
+  const column = 30;
   lines.push(
     `  ${"symbology".padEnd(width)}  ` +
-      options.tiers.map((t) => `${t} (>=${pct(THRESHOLDS[t])})`.padEnd(22)).join(""),
+      options.tiers.map((t) => `${t} (>=${pct(THRESHOLDS[t])})`.padEnd(column)).join(""),
   );
   for (const symbology of options.symbologies) {
     const row = options.tiers.map((tier) => {
       const cell = cells.find(
         (c) => c.path === app && c.symbology === symbology && c.tier === tier,
       );
-      if (cell === undefined) return "-".padEnd(22);
-      return `${pct(cell.decodeRate)} ${cell.pass ? "PASS" : "FAIL"} ${margin(cell)}`.padEnd(22);
+      if (cell === undefined) return "-".padEnd(column);
+      return `${pct(cell.decodeRate)} ${cell.pass ? "PASS" : "FAIL"} ${margin(cell)} ${bandLabel(cell, seedRuns)}`.padEnd(
+        column,
+      );
     });
     lines.push(`  ${symbology.padEnd(width)}  ${row.join("")}`);
   }
+  lines.push("");
+  lines.push(
+    seedRuns.length > 0
+      ? `  seed band: measured over ${seedRuns.length + 1} seeds (SB-7)`
+      : "  seed band: estimated, 95% Wilson on this run's own sample; `exact` = the clean" +
+          " tier applies no randomness (SB-7)",
+  );
   lines.push("");
   const falseAccepts = attempts.filter((a) => a.verdict === "false_accept");
   lines.push(

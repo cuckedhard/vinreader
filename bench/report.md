@@ -33,48 +33,54 @@ Every rate, miss reason and false accept below is `canvas`'s unless it says othe
 
 **0 false accepts** in 4200 attempts on `canvas`. Threshold 0.
 
+Zero at one seed is not zero (SB-7). §13.6's zero is a claim about the whole corpus, and a run is one draw from it: R4-F was found at one seed, and SB-1 only turned up on the fourth seed of a five-seed sweep, at 2 in 21,000. A clean headline here means this run produced none — nothing more.
+
+**Recorded, on this layout:** the five-seed sweep was re-run after SB-2 — `bun run bench/run.ts --seed <s> --paths canvas` for `0x5eed1a7c`, `0x11111111`, `0x2bad5eed`, `0x7f3ac91d`, `0xdecafbad`, 200 VINs each — and produced **0 false accepts in 21,000 attempts**. Both known Code 128 checksum collisions were found on the pre-SB-2 crop and neither survives the frame: R4-F (`EH8U2YHX60HU8VGWD` -> `EH8U2YHX60HU7VAWD`, seed `0xc5d3691c`) and SB-1 (`KB7BWYDJ6TW0808Z3` -> `KB7BWYDJ6TW0874Z3`, seed `0x55f2df0a`) both read as nothing at all on the framed version of their own frame. **That is not a disproof.** The collisions are arithmetic in Code 128's mod-103 check, not artefacts of the crop; the frame changed which frames decode at all, and a decode that no longer happens cannot be wrong. 21,000 attempts bound the rate at roughly 1 in 7,000 at 95%, which is not zero.
+
 ## Decode rate per symbology × tier
 
 | Symbology | clean (>= 99.0%) | moderate (>= 90.0%) | severe (>= 70.0%) |
 |---|---|---|---|
-| code_39 | 100.0% PASS | 77.5% FAIL | 30.0% FAIL |
-| code_39_i | 100.0% PASS | 79.0% FAIL | 23.5% FAIL |
-| code_39_check | 24.0% FAIL | 18.5% FAIL | 7.0% FAIL |
-| code_128 | 100.0% PASS | 80.5% FAIL | 25.0% FAIL |
-| code_128_fnc1 | 100.0% PASS | 71.0% FAIL | 0.0% FAIL |
-| data_matrix | 100.0% PASS | 99.0% PASS | 37.0% FAIL |
-| qr_code | 98.5% FAIL | 98.0% PASS | 43.0% FAIL |
+| code_39 | 100.0% exact PASS | 77.5% ±5.8 FAIL | 30.0% ±6.3 FAIL |
+| code_39_i | 100.0% exact PASS | 79.0% ±5.6 FAIL | 23.5% ±5.8 FAIL |
+| code_39_check | 24.0% exact FAIL | 18.5% ±5.4 FAIL | 7.0% ±3.6 FAIL |
+| code_128 | 100.0% exact PASS | 80.5% ±5.5 FAIL | 25.0% ±6.0 FAIL |
+| code_128_fnc1 | 100.0% exact PASS | 71.0% ±6.2 FAIL | 0.0% ±0.9 FAIL |
+| data_matrix | 100.0% exact PASS | 99.0% ±1.6 PASS | 37.0% ±6.6 FAIL |
+| qr_code | 98.5% exact FAIL | 98.0% ±2.1 PASS | 43.0% ±6.8 FAIL |
 
 Decode rate is end to end: the fraction of frames that produced the **correct** VIN
 through ZXing and §4.2 `extractVin`, not the fraction that merely decoded.
+
+Each cell reads `rate ±band PASS/FAIL`. **The band is how far this cell moves when the run seed moves** — see *What a cell is worth* below. `exact` means the cell cannot move: the clean tier applies no seeded randomness, so a clean-tier miss is structural and re-running will never fix it.
 
 **Tier ordering holds** (§13.4): clean >= moderate >= severe in every cell.
 
 ### Detail
 
-| Symbology | Tier | Attempts | Hits | Misses | Errors | False accepts | Rate | Threshold | Margin | Status |
-|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|
-| code_39 | clean | 200 | 200 | 0 | 0 | 0 | 100.0% | 99.0% | +1.0 pp | PASS |
-| code_39 | moderate | 200 | 155 | 45 | 0 | 0 | 77.5% | 90.0% | -12.5 pp | FAIL |
-| code_39 | severe | 200 | 60 | 140 | 0 | 0 | 30.0% | 70.0% | -40.0 pp | FAIL |
-| code_39_i | clean | 200 | 200 | 0 | 0 | 0 | 100.0% | 99.0% | +1.0 pp | PASS |
-| code_39_i | moderate | 200 | 158 | 42 | 0 | 0 | 79.0% | 90.0% | -11.0 pp | FAIL |
-| code_39_i | severe | 200 | 47 | 153 | 0 | 0 | 23.5% | 70.0% | -46.5 pp | FAIL |
-| code_39_check | clean | 200 | 48 | 152 | 0 | 0 | 24.0% | 99.0% | -75.0 pp | FAIL |
-| code_39_check | moderate | 200 | 37 | 163 | 0 | 0 | 18.5% | 90.0% | -71.5 pp | FAIL |
-| code_39_check | severe | 200 | 14 | 186 | 0 | 0 | 7.0% | 70.0% | -63.0 pp | FAIL |
-| code_128 | clean | 200 | 200 | 0 | 0 | 0 | 100.0% | 99.0% | +1.0 pp | PASS |
-| code_128 | moderate | 200 | 161 | 39 | 0 | 0 | 80.5% | 90.0% | -9.5 pp | FAIL |
-| code_128 | severe | 200 | 50 | 150 | 0 | 0 | 25.0% | 70.0% | -45.0 pp | FAIL |
-| code_128_fnc1 | clean | 200 | 200 | 0 | 0 | 0 | 100.0% | 99.0% | +1.0 pp | PASS |
-| code_128_fnc1 | moderate | 200 | 142 | 58 | 0 | 0 | 71.0% | 90.0% | -19.0 pp | FAIL |
-| code_128_fnc1 | severe | 200 | 0 | 200 | 0 | 0 | 0.0% | 70.0% | -70.0 pp | FAIL |
-| data_matrix | clean | 200 | 200 | 0 | 0 | 0 | 100.0% | 99.0% | +1.0 pp | PASS |
-| data_matrix | moderate | 200 | 198 | 2 | 0 | 0 | 99.0% | 90.0% | +9.0 pp | PASS |
-| data_matrix | severe | 200 | 74 | 126 | 0 | 0 | 37.0% | 70.0% | -33.0 pp | FAIL |
-| qr_code | clean | 200 | 197 | 3 | 0 | 0 | 98.5% | 99.0% | -0.5 pp | FAIL |
-| qr_code | moderate | 200 | 196 | 4 | 0 | 0 | 98.0% | 90.0% | +8.0 pp | PASS |
-| qr_code | severe | 200 | 86 | 114 | 0 | 0 | 43.0% | 70.0% | -27.0 pp | FAIL |
+| Symbology | Tier | Attempts | Hits | Misses | Errors | False accepts | Rate | Seed band | Threshold | Margin | Status |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|
+| code_39 | clean | 200 | 200 | 0 | 0 | 0 | 100.0% | exact (no randomness) | 99.0% | +1.0 pp | PASS |
+| code_39 | moderate | 200 | 155 | 45 | 0 | 0 | 77.5% | 71.2%-82.7% | 90.0% | -12.5 pp | FAIL |
+| code_39 | severe | 200 | 60 | 140 | 0 | 0 | 30.0% | 24.1%-36.7% | 70.0% | -40.0 pp | FAIL |
+| code_39_i | clean | 200 | 200 | 0 | 0 | 0 | 100.0% | exact (no randomness) | 99.0% | +1.0 pp | PASS |
+| code_39_i | moderate | 200 | 158 | 42 | 0 | 0 | 79.0% | 72.8%-84.1% | 90.0% | -11.0 pp | FAIL |
+| code_39_i | severe | 200 | 47 | 153 | 0 | 0 | 23.5% | 18.2%-29.8% | 70.0% | -46.5 pp | FAIL |
+| code_39_check | clean | 200 | 48 | 152 | 0 | 0 | 24.0% | exact (no randomness) | 99.0% | -75.0 pp | FAIL |
+| code_39_check | moderate | 200 | 37 | 163 | 0 | 0 | 18.5% | 13.7%-24.5% | 90.0% | -71.5 pp | FAIL |
+| code_39_check | severe | 200 | 14 | 186 | 0 | 0 | 7.0% | 4.2%-11.4% | 70.0% | -63.0 pp | FAIL |
+| code_128 | clean | 200 | 200 | 0 | 0 | 0 | 100.0% | exact (no randomness) | 99.0% | +1.0 pp | PASS |
+| code_128 | moderate | 200 | 161 | 39 | 0 | 0 | 80.5% | 74.5%-85.4% | 90.0% | -9.5 pp | FAIL |
+| code_128 | severe | 200 | 50 | 150 | 0 | 0 | 25.0% | 19.5%-31.4% | 70.0% | -45.0 pp | FAIL |
+| code_128_fnc1 | clean | 200 | 200 | 0 | 0 | 0 | 100.0% | exact (no randomness) | 99.0% | +1.0 pp | PASS |
+| code_128_fnc1 | moderate | 200 | 142 | 58 | 0 | 0 | 71.0% | 64.4%-76.8% | 90.0% | -19.0 pp | FAIL |
+| code_128_fnc1 | severe | 200 | 0 | 200 | 0 | 0 | 0.0% | 0.0%-1.9% | 70.0% | -70.0 pp | FAIL |
+| data_matrix | clean | 200 | 200 | 0 | 0 | 0 | 100.0% | exact (no randomness) | 99.0% | +1.0 pp | PASS |
+| data_matrix | moderate | 200 | 198 | 2 | 0 | 0 | 99.0% | 96.4%-99.7% | 90.0% | +9.0 pp | PASS |
+| data_matrix | severe | 200 | 74 | 126 | 0 | 0 | 37.0% | 30.6%-43.9% | 70.0% | -33.0 pp | FAIL |
+| qr_code | clean | 200 | 197 | 3 | 0 | 0 | 98.5% | exact (no randomness) | 99.0% | -0.5 pp | FAIL |
+| qr_code | moderate | 200 | 196 | 4 | 0 | 0 | 98.0% | 95.0%-99.2% | 90.0% | +8.0 pp | PASS |
+| qr_code | severe | 200 | 86 | 114 | 0 | 0 | 43.0% | 36.3%-49.9% | 70.0% | -27.0 pp | FAIL |
 
 ### Severe: what each frame drew
 
@@ -207,6 +213,18 @@ Over 4200 frames: `canvas` 2623 correct, `rgb` 2623 correct — 0 read only by `
 
 `no_decode` — ZXing found no symbol. `no_vin` — text decoded but §4.2 named no VIN. `carrier` — a §4.9 handoff payload, which §6.3 never extracts; nothing in this corpus is one, so any non-zero value here is itself a finding.
 
+## What a cell is worth (SB-7)
+
+A cell above is 200 frames at **one run seed**. Change the seed and every `moderate` and `severe` frame draws a different rotation, warp, glare, grain and JPEG quality, so the cell moves. Five full canvas runs at five seeds, on this layout, spread `code_128` moderate over 75.0-83.5% and `qr_code` severe over 37.5-46.0% — 8.5 pp each — with `code_128` severe and `data_matrix` severe at 8.0. (On the pre-SB-2 crop layout the widest was `code_128` severe at 11.5 pp.) None of that was ever stated here, so a fixer who moved a moderate cell by 5 pp on one seed and called it a fix had measured noise.
+
+**`clean` is exact.** The clean tier applies no seeded randomness at all — `degrade` returns the rendered symbol untouched — so a clean cell is byte-identical at every seed, and its measured spread across those five runs was 0.0 pp in every symbology. That is not a small band, it is no band: **a clean-tier miss is structural** (SB-4). The same three `qr_code` VINs fail at every seed and no re-run will move them.
+
+**This run measured one seed**, so the band on each `moderate` and `severe` cell is estimated from that cell's own sample: a 95% Wilson interval on `hits / attempts`. It estimates the same thing a sweep measures — a cell is n independent frames either way — and it was checked against the sweep rather than trusted. A 95% interval is about 3.9 standard errors wide and the range of five draws is about 2.3, so a five-seed spread should come out near 0.6 of this band; over the twenty-one cells swept it came out at 0.24-1.06, median 0.48. The band is therefore honest and, for a five-run comparison, slightly generous — which is the safe direction. Wilson rather than the normal approximation because cells sit near 0 and near 1 here. To measure it instead of estimating it: `bun run bench/run.ts --seeds a,b,c --paths canvas` — a diagnostic, n runs, which never writes this file.
+
+**The operating rule.** The widest band in this run is `qr_code` severe, 13.6 pp wide. Comparing two runs carries that uncertainty twice, so a before/after difference has to clear roughly 1.4x the band — about 19.2 pp on that cell — before it is a claim rather than a coincidence. Below that, sweep three seeds before it goes in a ledger row. It cuts both ways: a regression inside the band is not a regression either.
+
+**No verdict changes inside these bands.** Not one failing cell reaches its threshold at the top of its band; the closest is `code_128` moderate at 80.5%, whose band tops out at 85.4% against 90.0%. And the false-accept threshold is a count, not a rate, so no band applies to it at all: one is one.
+
 ## The frame, and the ROI crop somebody is about to write (SB-2 / SB-3)
 
 Measured by `bun run bench/frame-probe.ts --count 40` at seed `0x5eed1a7c` — **not by this run** — on identical symbol pixels across four layouts. `crop` is what this bench measured before SB-2; `frame` is what it measures now and what the app decodes; `roi` and `roi_tall` are two crops the app could apply to that frame.
@@ -226,18 +244,18 @@ So an ROI crop buys back about a third of what the frame costs — it does not r
 
 | Scope | Decodes | Mean ms | p95 ms |
 |---|---:|---:|---:|
-| canvas: all | 4200 | 46.6 | 98.6 |
-| canvas: clean | 1400 | 35.7 | 74.5 |
-| canvas: moderate | 1400 | 41.3 | 93.3 |
-| canvas: severe | 1400 | 63.0 | 111.4 |
-| yuv: all | 4200 | 45.1 | 95.0 |
-| yuv: clean | 1400 | 32.1 | 58.6 |
-| yuv: moderate | 1400 | 40.6 | 88.5 |
-| yuv: severe | 1400 | 62.8 | 113.7 |
-| rgb: all | 4200 | 20.6 | 41.5 |
-| rgb: clean | 1400 | 13.6 | 18.5 |
-| rgb: moderate | 1400 | 18.8 | 44.3 |
-| rgb: severe | 1400 | 29.4 | 42.0 |
+| canvas: all | 4200 | 47.1 | 96.2 |
+| canvas: clean | 1400 | 36.5 | 75.5 |
+| canvas: moderate | 1400 | 41.2 | 92.3 |
+| canvas: severe | 1400 | 63.4 | 107.6 |
+| yuv: all | 4200 | 49.0 | 109.5 |
+| yuv: clean | 1400 | 35.7 | 68.0 |
+| yuv: moderate | 1400 | 44.3 | 106.1 |
+| yuv: severe | 1400 | 67.1 | 132.8 |
+| rgb: all | 4200 | 20.6 | 41.7 |
+| rgb: clean | 1400 | 13.5 | 18.6 |
+| rgb: moderate | 1400 | 18.6 | 44.2 |
+| rgb: severe | 1400 | 29.6 | 42.0 |
 
 Times cover the ZXing read only — binarisation and the decode — and exclude getting the frame onto the canvas, because the app never parses a PNG either: it draws a video frame it already has. Timings are the one part of this report that is not bit-reproducible; no threshold rides on them. §13.4's mean **time-to-confirm** is not here: confirmation is two agreeing reads inside §6.3's window, which run (b) — the Playwright fake-camera pass — is what exercises. This run measures one frame at a time.
 

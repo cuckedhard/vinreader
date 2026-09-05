@@ -1212,78 +1212,333 @@
       }
     }
   ],
+  "seedRuns": [],
+  "seedBands": [
+    {
+      "symbology": "code_39",
+      "tier": "clean",
+      "decodeRate": 1,
+      "estimated": {
+        "low": 1,
+        "high": 1,
+        "halfWidth": 0,
+        "deterministic": true
+      },
+      "measured": null
+    },
+    {
+      "symbology": "code_39",
+      "tier": "moderate",
+      "decodeRate": 0.775,
+      "estimated": {
+        "low": 0.7122575346140798,
+        "high": 0.8273771621308439,
+        "halfWidth": 0.05755981375838204,
+        "deterministic": false
+      },
+      "measured": null
+    },
+    {
+      "symbology": "code_39",
+      "tier": "severe",
+      "decodeRate": 0.3,
+      "estimated": {
+        "low": 0.24074644243406385,
+        "high": 0.3667919599332645,
+        "halfWidth": 0.06302275874960034,
+        "deterministic": false
+      },
+      "measured": null
+    },
+    {
+      "symbology": "code_39_i",
+      "tier": "clean",
+      "decodeRate": 1,
+      "estimated": {
+        "low": 1,
+        "high": 1,
+        "halfWidth": 0,
+        "deterministic": true
+      },
+      "measured": null
+    },
+    {
+      "symbology": "code_39_i",
+      "tier": "moderate",
+      "decodeRate": 0.79,
+      "estimated": {
+        "low": 0.7283526118460081,
+        "high": 0.8407167047213658,
+        "halfWidth": 0.05618204643767888,
+        "deterministic": false
+      },
+      "measured": null
+    },
+    {
+      "symbology": "code_39_i",
+      "tier": "severe",
+      "decodeRate": 0.235,
+      "estimated": {
+        "low": 0.18157345326946356,
+        "high": 0.29841492986724655,
+        "halfWidth": 0.058420738298891495,
+        "deterministic": false
+      },
+      "measured": null
+    },
+    {
+      "symbology": "code_39_check",
+      "tier": "clean",
+      "decodeRate": 0.24,
+      "estimated": {
+        "low": 0.24,
+        "high": 0.24,
+        "halfWidth": 0,
+        "deterministic": true
+      },
+      "measured": null
+    },
+    {
+      "symbology": "code_39_check",
+      "tier": "moderate",
+      "decodeRate": 0.185,
+      "estimated": {
+        "low": 0.13730116322736063,
+        "high": 0.2445718205011816,
+        "halfWidth": 0.05363532863691048,
+        "deterministic": false
+      },
+      "measured": null
+    },
+    {
+      "symbology": "code_39_check",
+      "tier": "severe",
+      "decodeRate": 0.07,
+      "estimated": {
+        "low": 0.04215178292291873,
+        "high": 0.11405578216683726,
+        "halfWidth": 0.03595199962195926,
+        "deterministic": false
+      },
+      "measured": null
+    },
+    {
+      "symbology": "code_128",
+      "tier": "clean",
+      "decodeRate": 1,
+      "estimated": {
+        "low": 1,
+        "high": 1,
+        "halfWidth": 0,
+        "deterministic": true
+      },
+      "measured": null
+    },
+    {
+      "symbology": "code_128",
+      "tier": "moderate",
+      "decodeRate": 0.805,
+      "estimated": {
+        "low": 0.744558352034882,
+        "high": 0.8539455843549424,
+        "halfWidth": 0.05469361616003021,
+        "deterministic": false
+      },
+      "measured": null
+    },
+    {
+      "symbology": "code_128",
+      "tier": "severe",
+      "decodeRate": 0.25,
+      "estimated": {
+        "low": 0.19508076816296532,
+        "high": 0.3143422347961952,
+        "halfWidth": 0.05963073331661495,
+        "deterministic": false
+      },
+      "measured": null
+    },
+    {
+      "symbology": "code_128_fnc1",
+      "tier": "clean",
+      "decodeRate": 1,
+      "estimated": {
+        "low": 1,
+        "high": 1,
+        "halfWidth": 0,
+        "deterministic": true
+      },
+      "measured": null
+    },
+    {
+      "symbology": "code_128_fnc1",
+      "tier": "moderate",
+      "decodeRate": 0.71,
+      "estimated": {
+        "low": 0.6436239464268834,
+        "high": 0.7684607310874219,
+        "halfWidth": 0.062418392330269246,
+        "deterministic": false
+      },
+      "measured": null
+    },
+    {
+      "symbology": "code_128_fnc1",
+      "tier": "severe",
+      "decodeRate": 0,
+      "estimated": {
+        "low": 0,
+        "high": 0.018846005918320894,
+        "halfWidth": 0.009423002959160447,
+        "deterministic": false
+      },
+      "measured": null
+    },
+    {
+      "symbology": "data_matrix",
+      "tier": "clean",
+      "decodeRate": 1,
+      "estimated": {
+        "low": 1,
+        "high": 1,
+        "halfWidth": 0,
+        "deterministic": true
+      },
+      "measured": null
+    },
+    {
+      "symbology": "data_matrix",
+      "tier": "moderate",
+      "decodeRate": 0.99,
+      "estimated": {
+        "low": 0.9642775148038205,
+        "high": 0.9972533993962251,
+        "halfWidth": 0.016487942296202318,
+        "deterministic": false
+      },
+      "measured": null
+    },
+    {
+      "symbology": "data_matrix",
+      "tier": "severe",
+      "decodeRate": 0.37,
+      "estimated": {
+        "low": 0.3061249750375241,
+        "high": 0.43877498650123936,
+        "halfWidth": 0.06632500573185762,
+        "deterministic": false
+      },
+      "measured": null
+    },
+    {
+      "symbology": "qr_code",
+      "tier": "clean",
+      "decodeRate": 0.985,
+      "estimated": {
+        "low": 0.985,
+        "high": 0.985,
+        "halfWidth": 0,
+        "deterministic": true
+      },
+      "measured": null
+    },
+    {
+      "symbology": "qr_code",
+      "tier": "moderate",
+      "decodeRate": 0.98,
+      "estimated": {
+        "low": 0.9497121344948062,
+        "high": 0.9921956998236058,
+        "halfWidth": 0.0212417826643998,
+        "deterministic": false
+      },
+      "measured": null
+    },
+    {
+      "symbology": "qr_code",
+      "tier": "severe",
+      "decodeRate": 0.43,
+      "estimated": {
+        "low": 0.36334204488394795,
+        "high": 0.49929639594461706,
+        "halfWidth": 0.06797717553033455,
+        "deterministic": false
+      },
+      "measured": null
+    }
+  ],
   "timings": [
     {
       "scope": "canvas: all",
       "decodes": 4200,
-      "meanMs": 46.6392142857416,
-      "p95Ms": 98.59999999962747
+      "meanMs": 47.05285714287355,
+      "p95Ms": 96.19999999925494
     },
     {
       "scope": "canvas: clean",
       "decodes": 1400,
-      "meanMs": 35.65150000002235,
-      "p95Ms": 74.5
+      "meanMs": 36.53778571427534,
+      "p95Ms": 75.5
     },
     {
       "scope": "canvas: moderate",
       "decodes": 1400,
-      "meanMs": 41.284357142891466,
-      "p95Ms": 93.30000000074506
+      "meanMs": 41.24064285718836,
+      "p95Ms": 92.30000000074506
     },
     {
       "scope": "canvas: severe",
       "decodes": 1400,
-      "meanMs": 62.981785714310995,
-      "p95Ms": 111.40000000037253
+      "meanMs": 63.38014285715696,
+      "p95Ms": 107.59999999962747
     },
     {
       "scope": "yuv: all",
       "decodes": 4200,
-      "meanMs": 45.148166666660195,
-      "p95Ms": 95
+      "meanMs": 49.02169047620281,
+      "p95Ms": 109.5
     },
     {
       "scope": "yuv: clean",
       "decodes": 1400,
-      "meanMs": 32.05042857140702,
-      "p95Ms": 58.59999999962747
+      "meanMs": 35.68271428571881,
+      "p95Ms": 68
     },
     {
       "scope": "yuv: moderate",
       "decodes": 1400,
-      "meanMs": 40.55235714285102,
-      "p95Ms": 88.5
+      "meanMs": 44.28250000003725,
+      "p95Ms": 106.09999999962747
     },
     {
       "scope": "yuv: severe",
       "decodes": 1400,
-      "meanMs": 62.84171428572253,
-      "p95Ms": 113.70000000111759
+      "meanMs": 67.09985714285236,
+      "p95Ms": 132.80000000074506
     },
     {
       "scope": "rgb: all",
       "decodes": 4200,
-      "meanMs": 20.582236932619473,
-      "p95Ms": 41.54313199999888
+      "meanMs": 20.59865015166615,
+      "p95Ms": 41.74408099998254
     },
     {
       "scope": "rgb: clean",
       "decodes": 1400,
-      "meanMs": 13.640063275715056,
-      "p95Ms": 18.46336799999699
+      "meanMs": 13.548527101427963,
+      "p95Ms": 18.635771000001114
     },
     {
       "scope": "rgb: moderate",
       "decodes": 1400,
-      "meanMs": 18.75594198000016,
-      "p95Ms": 44.32053399999859
+      "meanMs": 18.642349399285212,
+      "p95Ms": 44.2136060000048
     },
     {
       "scope": "rgb: severe",
       "decodes": 1400,
-      "meanMs": 29.350705542143192,
-      "p95Ms": 41.99817299999995
+      "meanMs": 29.605073954285274,
+      "p95Ms": 42.01451999999699
     }
   ],
   "delta": [
