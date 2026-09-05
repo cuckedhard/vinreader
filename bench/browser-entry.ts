@@ -2,12 +2,12 @@
  * §13.4 scan-robustness bench — the decoder under test, **inside a browser**.
  *
  * This module is bundled by `browser-decode.ts` and evaluated in a Chromium page. It is the
- * app's decode path and not an imitation of it: `BrowserMultiFormatReader` from
- * `@zxing/browser`, built from `buildScanHints()` (§4.6, the same function `useScanner`
- * calls), reading a `<canvas>` through `HTMLCanvasElementLuminanceSource` →
- * `HybridBinarizer` → `MultiFormatReader.decodeWithState`. `decodeFromCanvas` is the exact
- * call the scan loop makes on every frame (`BrowserCodeReader.prototype.scan` →
- * `drawImageOnCanvas` → `decodeFromCanvas`).
+ * app's decode path and not an imitation of it: `ScanFrameReader` — the app's own subclass
+ * of `BrowserMultiFormatReader`, imported from `src/features/scan` — built from
+ * `buildScanHints()` (§4.6, the same function `useScanner` calls), reading a `<canvas>`
+ * through `FrameLuminanceSource` → `HybridBinarizer` → `MultiFormatReader.decodeWithState`.
+ * `decodeFromCanvas` is the exact call the scan loop makes on every frame
+ * (`BrowserCodeReader.prototype.scan` → `drawImageOnCanvas` → `decodeFromCanvas`).
  *
  * **Why this file exists** (finding B2). The bench used to decode a PNG in node through
  * `RGBLuminanceSource`, which is a different luminance source, a different
@@ -25,13 +25,13 @@
  * No node API is available here. Keep this file DOM-only.
  */
 
-import { BrowserMultiFormatReader } from "@zxing/browser";
 import {
   BarcodeFormat,
   ChecksumException,
   FormatException,
   NotFoundException,
 } from "@zxing/library";
+import { ScanFrameReader } from "../src/features/scan/frameReader";
 import { buildScanHints, stripAimIdentifier } from "../src/lib/vin/symbologies";
 
 /** The two in-page paths. `rgb` (the old node path) lives in `decode.ts`. */
@@ -82,13 +82,17 @@ declare global {
 }
 
 /**
- * One reader for the page, built the way `useScanner` builds its own — `buildScanHints()`
- * and nothing else. The constructor's second argument only sets the scan loop's two timers
+ * One reader for the page, built the way `useScanner` builds its own — `ScanFrameReader`
+ * over `buildScanHints()`, imported from the app rather than reconstructed, so the bench
+ * cannot decode through a reader the product does not ship (B2, §7 item 5). Since R6-SA-1
+ * that class is also what makes §4.6's `TRY_HARDER` 90° retry run instead of throwing.
+ *
+ * The constructor's second argument only sets the scan loop's two timers
  * (`delayBetweenScanAttempts` / `delayBetweenScanSuccess`), and this file never runs that
  * loop: it schedules its own frames. Restating those milliseconds here would put a copy of
  * a constant in a second place for no effect (§7 item 5).
  */
-const READER = new BrowserMultiFormatReader(buildScanHints());
+const READER = new ScanFrameReader(buildScanHints());
 
 /** ZXing's own names for "this frame carries no symbol I can read". */
 const NO_READ_KINDS: ReadonlySet<string> = new Set([

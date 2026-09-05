@@ -13,7 +13,6 @@ import {
   useSyncExternalStore,
 } from "react";
 import type { RefObject } from "react";
-import { BrowserMultiFormatReader } from "@zxing/browser";
 import type { IScannerControls } from "@zxing/browser";
 import { ChecksumException, FormatException, NotFoundException } from "@zxing/library";
 import type { Result } from "@zxing/library";
@@ -22,6 +21,7 @@ import { extractVin } from "../../lib/vin/extractVin";
 import { buildScanHints, stripAimIdentifier, toSymbology } from "../../lib/vin/symbologies";
 import type { ScanError } from "../../lib/vin/types";
 import { cooldownStore } from "./cooldownStore";
+import { ScanFrameReader } from "./frameReader";
 import { CONFIRM_WINDOW_MS, scanReducer, startingScanMachine } from "./scanMachine";
 import type { ScanAction, ScanMachineState, ScanSighting } from "./scanMachine";
 
@@ -390,7 +390,10 @@ export function useScanner(options: {
         return;
       }
       try {
-        const reader = new BrowserMultiFormatReader(buildScanHints(), {
+        // §4.6's hints, read through a luminance source that can rotate: `TRY_HARDER`'s 90°
+        // retry threw once per miss frame on the stock one and never recovered a sideways
+        // label (R6-SA-1). `ScanFrameReader` changes nothing else about the decode.
+        const reader = new ScanFrameReader(buildScanHints(), {
           delayBetweenScanAttempts: SCAN_DELAY_MS,
           delayBetweenScanSuccess: SCAN_DELAY_MS,
         });
