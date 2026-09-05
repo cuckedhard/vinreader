@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
+import { appBaseUrl } from "../../app/appBase";
 import { db } from "../../lib/storage/db";
 import type { VehicleRecord } from "../../lib/vin/types";
 import { Banner } from "../../ui/Banner";
@@ -71,7 +72,9 @@ export function Actions({ record }: { record: VehicleRecord }) {
    * builds them all synchronously from this record and nothing else.
    */
   const texts = useMemo(
-    () => buildCopyTexts(record, deviceLabel, window.location.origin),
+    // The app's base, not the bare origin: `location.origin` drops the path, so under a
+    // sub-path deployment the carrier pointed at the site root instead of the app (F2).
+    () => buildCopyTexts(record, deviceLabel, appBaseUrl()),
     [record, deviceLabel],
   );
 
