@@ -19,7 +19,7 @@
  * §6.4 has no microcopy for any of this. Every string below is supplied under §0 rule 4 and
  * exported so the session report can list it and `harden` can find it in one place.
  */
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { softDeleteVehicle } from "../../lib/storage/upsert";
 import { Banner } from "../../ui/Banner";
 import { Button } from "../../ui/Button";
@@ -135,6 +135,24 @@ export function DeleteVehicle({ vin, onDeleted }: DeleteVehicleProps) {
   const [armed, setArmed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const confirmRef = useRef<HTMLDivElement | null>(null);
+
+  // §6.2 puts Delete last, on a sheet that runs ~1955 px on a phone, so the tap that arms
+  // it comes from the bottom of the scroll by definition — and the panel is taller than the
+  // 56 px button it replaces, so it opened past the fold: 1.75 of 48 px of Delete and of
+  // Cancel visible at 390×844, none at all at 320×658, and `elementFromPoint` at both
+  // centres returning the bottom nav, which is where the confirming second tap of a
+  // destructive flow landed instead. §6.4 gives the panel one job — to be read, with the
+  // VIN in it, before that tap — and it cannot do it off screen.
+  //
+  // `block: "nearest"` scrolls the least it can and does nothing when the panel is already
+  // whole, so a sheet short enough to fit does not move under the user's thumb. Nothing is
+  // animated (§6.1 is a gloved, one-handed screen; the scroll is instant and the panel is
+  // `role="alert"`, so it is announced as well as shown).
+  useEffect(() => {
+    if (!armed) return;
+    confirmRef.current?.scrollIntoView({ block: "nearest" });
+  }, [armed]);
 
   function remove(): void {
     if (busy) return;
@@ -163,7 +181,9 @@ export function DeleteVehicle({ vin, onDeleted }: DeleteVehicleProps) {
       <p className="text-base leading-snug text-fg-muted">{DELETE_BODY}</p>
 
       {armed ? (
-        <DeleteConfirm vin={vin} busy={busy} onConfirm={remove} onCancel={() => setArmed(false)} />
+        <div ref={confirmRef}>
+          <DeleteConfirm vin={vin} busy={busy} onConfirm={remove} onCancel={() => setArmed(false)} />
+        </div>
       ) : (
         <Button variant="danger" onClick={() => setArmed(true)}>
           {DELETE_ACTION}
