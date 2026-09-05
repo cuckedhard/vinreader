@@ -7,6 +7,7 @@ import { UpdateToast } from "../pwa/UpdateToast";
 import { db } from "../lib/storage/db";
 import { normalizeSettings } from "../lib/storage/settings";
 import { startDecodeQueue } from "../lib/storage/decodeQueue";
+import { seedWmiCache } from "../lib/storage/wmiCache";
 import { applyTheme } from "../ui/theme";
 
 /**
@@ -41,6 +42,16 @@ export function Shell() {
   // visible. The shell owns it because the queue must run wherever the user is — a
   // scan saved offline fills in even if they never open its sheet again (N1).
   useEffect(() => startDecodeQueue(), []);
+
+  // §5.5: the `wmi` cache is "seeded from `wmi-seed.json` on first run". Same owner as
+  // the queue and the same reason — it belongs to the app's lifetime, not to a screen.
+  // Nothing waits on it: a failure costs the coarse §4.5 manufacturer line on records
+  // scanned before a decode names their WMI, and no scan is blocked by it (N1, P1).
+  useEffect(() => {
+    void seedWmiCache().catch((cause: unknown) => {
+      console.error("VIN Relay: WMI seed failed", cause);
+    });
+  }, []);
 
   // The key remounts the boundary on every navigation, so a screen that threw does not
   // leave its notice standing over the next one — without it, a failed History would make

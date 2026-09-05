@@ -17,6 +17,7 @@ import type { ScanEvent, Symbology, VehicleDecode, VehicleRecord } from "../vin/
 import { META_NEVER_EDITED } from "../vin/types";
 import { db, newId, nowIso } from "./db";
 import { appendOutbox, scanEventRow, vehicleDeleteRow, vehicleMetaRow } from "./outbox";
+import { withCachedManufacturer } from "./wmiCache";
 
 export type UpsertInput = {
   vin: string;
@@ -83,8 +84,13 @@ export async function upsertVehicle(input: UpsertInput): Promise<VehicleRecord> 
   // §4.12: the outbox is in scope because the rows it takes are part of this write, not a
   // follow-up to it. A scan that commits without its outbox rows is a scan that never
   // syncs, with nothing left to notice the gap.
-  return db.transaction("rw", db.vehicles, db.scanEvents, db.outbox, async () => {
+  return db.transaction("rw", db.vehicles, db.scanEvents, db.outbox, db.wmi, async () => {
     const existing = await db.vehicles.get(input.vin);
+    // §5.1: `manufacturerFromWmi` comes from the cache *or* the seed. The read is here
+    // rather than in `buildStructural` because P3 keeps `src/lib/vin/` free of I/O, and
+    // it is inside the transaction so the row a scan is written with is the row the
+    // cache held when it was written.
+    const structural = await withCachedManufacturer(buildStructural(input.vin, currentYear));
     const unit = incomingUnit ?? existing?.unit ?? null;
     const notes = incomingNotes ?? existing?.notes ?? null;
     // D11: the LWW clock moves only when this write actually lands unit or notes — a
@@ -94,9 +100,10 @@ export async function upsertVehicle(input: UpsertInput): Promise<VehicleRecord> 
 
     const record: VehicleRecord = {
       vin: input.vin,
-      // Derived from the 17 characters alone, so it is recomputed on every write and a
-      // record stored before a constants fix heals itself.
-      structural: buildStructural(input.vin, currentYear),
+      // Derived from the 17 characters alone — plus §5.5's cache for the one field §5.1
+      // sources there — so it is recomputed on every write and a record stored before a
+      // constants fix, or before its WMI was known, heals itself.
+      structural,
       // §5.3 keeps an existing decode of ok / partial / unsupported and otherwise takes
       // the incoming one if better. Nothing here ever carries a decode — every write
       // starts pending, the lowest rank (§4.12) — so keeping the existing block is that

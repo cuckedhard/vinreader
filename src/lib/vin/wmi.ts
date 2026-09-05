@@ -11,6 +11,13 @@ interface WmiSeedEntry {
   make?: string;
 }
 
+/** One §4.5 seed entry, flattened for the §5.5 cache row it becomes. */
+export interface WmiSeedRow {
+  wmi: string;
+  manufacturer: string;
+  make: string | null;
+}
+
 /**
  * §4.5 verbatim: `A–H` Africa · `J–R` Asia · `S–Z` Europe · `1–5` North America ·
  * `6–7` Oceania · `8–9` South America. The ranges are spelled out over the §4.1
@@ -55,6 +62,20 @@ export function regionFromVin(vin: string): Region | null {
 
 export function countryFromVin(vin: string): string | null {
   return COUNTRY_BY_FIRST_CHAR.get(vin.charAt(0)) ?? null;
+}
+
+/**
+ * The whole compiled seed, flattened. §5.5 seeds the `wmi` cache table from
+ * `wmi-seed.json` on first run, and the storage layer reads it from here rather than
+ * importing the artifact a second time (§7 item 5) — this module owns it. Still pure:
+ * a compiled-in constant is not I/O.
+ */
+export function wmiSeedRows(): readonly WmiSeedRow[] {
+  return Object.entries(WMI_SEED).map(([wmi, entry]) => ({
+    wmi,
+    manufacturer: entry.manufacturer,
+    make: entry.make ?? null,
+  }));
 }
 
 export function manufacturerFromWmi(wmi: string): string | null {
