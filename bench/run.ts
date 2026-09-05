@@ -1519,6 +1519,13 @@ function replaySection(options: Options, replays: readonly Replay[]): string[] {
         "128's own check, not artefacts of a crop, and the quoted 21,000 attempts bound the " +
         "rate at roughly 1 in 7,000 at 95% — which is not zero.",
     );
+    out.push("");
+    out.push(
+      "**If you are about to crop the frame (SB-3), this is the number you are about to " +
+        "change.** Both rows above read as nothing because of the frame the app decodes; an " +
+        "ROI band recovers marginal Code 128 frames, which is the population they came from. " +
+        "Read *What ROI risks* below before writing it.",
+    );
   } else {
     out.push(
       `**${reproduced.length} of ${replays.length} REPRODUCES ITS WRONG VIN on this run's ` +
@@ -1545,7 +1552,7 @@ function replaySection(options: Options, replays: readonly Replay[]): string[] {
  */
 function roiSection(): string[] {
   return [
-    "## The frame, and the ROI crop somebody is about to write (SB-2 / SB-3)",
+    "## The frame, and the ROI crop somebody is about to write (SB-2 / SB-3 / SB-10)",
     "",
     "Measured by `bun run bench/frame-probe.ts --count 40` at seed `0x5eed1a7c` — **not by " +
       "this run** — on identical symbol pixels across four layouts. `crop` is what this bench " +
@@ -1569,13 +1576,72 @@ function roiSection(): string[] {
       "100% to **0%** and `qr_code` clean from 95% to **0%** — it does not degrade 2D, it " +
       "deletes it. The taller 90% x 40% band is the one that helps: `code_128` severe " +
       "27.5% -> 40.0% (+12.5 pp), `code_39_i` severe 30.0% -> 40.0% (+10.0), `code_39` severe " +
-      "37.5% -> 40.0%, 2D fully restored, and mean decode time 40.0 ms -> 29.0 ms (-27%).",
+      "37.5% -> 40.0%, 2D fully restored, and mean decode time 40.0 ms -> 29.0 ms (-27%). " +
+      "**Those 1D severe cells are 40 frames each and are superseded by the 200-frame " +
+      "measurement below (SB-10); the 2D result is not.**",
     "",
     "So an ROI crop buys back about a third of what the frame costs — it does not reach the " +
       "tight crop's 68.0%, and no ROI band turns a failing §13.6 cell into a passing one. It " +
       "is a `useScanner` change (SB-3) and it is a fixer's to make, not the bench's; the bench " +
       "measures it and stops there. Separately, and independently of any of this: §6.1 draws " +
       "a box telling the field user where to put the label and nothing downstream uses it.",
+    "",
+    "### What ROI risks — the part that is not a decode rate (SB-10)",
+    "",
+    "**An ROI crop does not decode better. It makes _different frames_ decode.** It raises a " +
+      "rate by turning frames that currently read as nothing into frames that read as " +
+      "something — and a marginal Code 128 frame is precisely where both of this slice's " +
+      "known checksum collisions were found. R4-F and SB-1 are mod-103-valid misreads, which " +
+      "Code 128's own check cannot catch, and the zero-false-accept headline at the top of " +
+      "this report holds on the `frame` layout **because** those two frames read as nothing " +
+      "on it. That is measured every run, in the replay table under the headline.",
+    "",
+    "Recorded, not taken by this run — `bun run bench/frame-probe.ts --count 200 " +
+      "--symbologies code_39,code_39_i,code_128,code_128_fnc1 --tiers severe` at seed " +
+      "`0x5eed1a7c`, the four 1D severe rows, 800 frames per layout:",
+    "",
+    "| Layout | Correct | False accepts | Frames dark on `frame` that this layout decodes |",
+    "|---|---:|---:|---|",
+    "| `frame` (the app) | 157/800 (19.6%) | 0 | - |",
+    "| `roi` (guide box as drawn) | 187/800 (23.4%) | 0 | 33 |",
+    "| `roi_tall` (90% x 40%) | 187/800 (23.4%) | 0 | 33 — 31 correct, **0 wrong VIN**, 2 " +
+      "decoded without naming a VIN, 0 frames lost |",
+    "",
+    "Three things follow, and the third is the one that matters.",
+    "",
+    "1. **The gain is smaller than SB-3 recorded.** At 200 VINs, `roi_tall` moves `code_128` " +
+      "severe 25.0% -> 31.0% (+6.0 pp), `code_39` 30.0% -> 34.0%, `code_39_i` 23.5% -> 28.5%, " +
+      "and leaves `code_128_fnc1` at 0.0%. SB-3's +12.5 pp on `code_128` severe was a 40-VIN " +
+      "cell, which is a ±15 pp measurement — see *What a cell is worth*. ROI is still worth " +
+      "having; it is worth about half of what the ledger row claims. The -27% decode time is " +
+      "the drawn box's, not the tall band's: in the same 200-VIN run, on the same machine " +
+      "under the same load, `frame` cost 141.2 ms, `roi` 103.7 ms (-27%) and `roi_tall` " +
+      "131.1 ms (-7%).",
+    "",
+    "2. **On 1D rows the two bands are the same measurement.** `roi` and `roi_tall` decode " +
+      "identically here, because a severe 1D symbol fits inside the 238 px drawn box. SB-3's " +
+      "difference between them is entirely 2D, where the drawn box deletes the symbol " +
+      "outright. A fixer testing an ROI crop on Code 39 alone will not see the failure mode " +
+      "that matters.",
+    "",
+    "3. **Zero false accepts in the recovered population is not the reassurance it looks " +
+      "like.** 33 recovered frames, against a phenomenon this bench has measured at 2 in " +
+      "21,000 attempts, is roughly 300x too small a sample to contain one; the rule of three " +
+      "puts the 95% upper bound on the recovered-frame rate at 3/33, about 9%. The " +
+      "measurement cannot see the thing ROI risks.",
+    "",
+    "**Therefore: implementing ROI (SB-3) requires re-taking the five-seed sweep before this " +
+      "report's false-accept headline may be believed.** `" +
+      RECORDED_SWEEP.command +
+      "` at " +
+      RECORDED_SWEEP.seeds.map((seed) => `\`0x${seed.toString(16)}\``).join(", ") +
+      `, ${RECORDED_SWEEP.config.count} VINs each — the same ` +
+      `${RECORDED_SWEEP.attempts.toLocaleString("en-US")} attempts the headline quotes. The ` +
+      "headline is a count over the frames the current layout decodes; ROI changes which " +
+      "frames those are, so afterwards it is a count about a different population and the " +
+      "old one says nothing. A decode rate that goes up while the false-accept count goes " +
+      "unmeasured is not an improvement, it is an unmeasured trade — and §13.3 grades the " +
+      "losing side of that trade S1.",
     "",
   ];
 }

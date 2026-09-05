@@ -162,6 +162,73 @@ function summarise(attempts: readonly Attempt[]): Cell[] {
   return cells;
 }
 
+/**
+ * What changes between two layouts, frame by frame (SB-10).
+ *
+ * The decode-rate table above compares two rates; this compares the same frame to itself.
+ * That is the comparison an ROI decision needs, because an ROI crop raises a rate by making
+ * **marginal** frames decodable — and a marginal Code 128 frame is where both known
+ * checksum collisions (R4-F, SB-1) were found. A recovered frame that returns the wrong VIN
+ * is a false accept the current layout does not have, and it can only be seen here.
+ */
+interface Transition {
+  symbology: BenchSymbology;
+  tier: Tier;
+  frames: number;
+  /** Frames `from` reads as nothing at all. */
+  dark: number;
+  /** Of those, how many `to` decodes to some text. */
+  recovered: number;
+  /** Of the recovered: the right VIN, the wrong VIN, and text §4.2 names no VIN in. */
+  correct: number;
+  wrong: number;
+  noVin: number;
+  /** The trade in the other direction: read on `from`, dark on `to`. */
+  lost: number;
+}
+
+function transitions(attempts: readonly Attempt[], from: Layout, to: Layout): Transition[] {
+  const byKey = new Map<string, Attempt>();
+  for (const a of attempts) byKey.set(`${a.vin}|${a.symbology}|${a.tier}|${a.layout}`, a);
+  const out: Transition[] = [];
+  for (const symbology of BENCH_SYMBOLOGIES) {
+    for (const tier of TIERS) {
+      const scoped = attempts.filter(
+        (a) => a.symbology === symbology && a.tier === tier && a.layout === from,
+      );
+      if (scoped.length === 0) continue;
+      const move: Transition = {
+        symbology,
+        tier,
+        frames: scoped.length,
+        dark: 0,
+        recovered: 0,
+        correct: 0,
+        wrong: 0,
+        noVin: 0,
+        lost: 0,
+      };
+      for (const before of scoped) {
+        const after = byKey.get(`${before.vin}|${symbology}|${tier}|${to}`);
+        if (after === undefined) continue;
+        if (before.text === null) {
+          move.dark += 1;
+          if (after.text !== null) {
+            move.recovered += 1;
+            if (after.hit) move.correct += 1;
+            else if (after.falseAccept) move.wrong += 1;
+            else move.noVin += 1;
+          }
+        } else if (after.text === null) {
+          move.lost += 1;
+        }
+      }
+      out.push(move);
+    }
+  }
+  return out;
+}
+
 function pct(hits: number, attempts: number): string {
   return attempts === 0 ? "-" : `${((hits / attempts) * 100).toFixed(1)}%`;
 }
@@ -361,6 +428,34 @@ async function main(): Promise<void> {
       );
     }
   }
+
+  process.stdout.write(`\n## What \`roi_tall\` changes, frame by frame (SB-10)\n\n`);
+  process.stdout.write(
+    `An ROI crop does not make decoding better; it makes *different frames* decode. This ` +
+      `table is that difference: frames the app's own layout reads as nothing, and what the ` +
+      `band reads instead. Every entry in the WRONG column is a false accept the app does ` +
+      `not currently have.\n\n`,
+  );
+  process.stdout.write(
+    `| symbology | tier | frames | dark on \`frame\` | recovered by \`roi_tall\` | correct | ` +
+      `WRONG VIN | no VIN | lost |\n`,
+  );
+  process.stdout.write(`|---|---|---:|---:|---:|---:|---:|---:|---:|\n`);
+  const moves = transitions(attempts, "frame", "roi_tall");
+  for (const move of moves) {
+    process.stdout.write(
+      `| ${move.symbology} | ${move.tier} | ${move.frames} | ${move.dark} | ${move.recovered} | ` +
+        `${move.correct} | ${move.wrong} | ${move.noVin} | ${move.lost} |\n`,
+    );
+  }
+  const sum = (pick: (m: Transition) => number): number => moves.reduce((a, m) => a + pick(m), 0);
+  process.stdout.write(
+    `\n**Totals:** ${sum((m) => m.dark)} frames dark on \`frame\`, ` +
+      `${sum((m) => m.recovered)} of them recovered by \`roi_tall\` ` +
+      `(${sum((m) => m.correct)} correct, **${sum((m) => m.wrong)} WRONG VIN**, ` +
+      `${sum((m) => m.noVin)} decoded without naming a VIN), and ${sum((m) => m.lost)} frames ` +
+      `that read on \`frame\` go dark under the band.\n`,
+  );
 
   const faults = attempts.filter((a) => a.fault !== null);
   if (faults.length > 0) {
