@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 38 38" width="38" height="38" role="img" aria-label="VIN Relay">
+  <rect width="38" height="38" fill="#0b0f14" />
+  <g fill="#57c7ff">
+    <rect x="4.5" y="7.5" width="3" height="23" />
+    <rect x="8.5" y="7.5" width="1" height="23" />
+    <rect x="11.5" y="7.5" width="3" height="23" />
+    <rect x="15.5" y="7.5" width="1" height="23" />
+    <rect x="17.5" y="7.5" width="2" height="23" />
+    <rect x="21.5" y="7.5" width="1" height="23" />
+    <rect x="25.5" y="7.5" width="1" height="23" />
+    <rect x="27.5" y="7.5" width="2" height="23" />
+    <rect x="30.5" y="7.5" width="3" height="23" />
+  </g>
+</svg>
