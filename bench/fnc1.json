@@ -1,0 +1,282 @@
+{
+  "probe": "bench/fnc1-probe.ts",
+  "command": "bun run bench/fnc1-probe.ts --count 60 --seed 0x5eed1a7c --tiers clean,moderate,severe --layouts frame,crop",
+  "provenance": {
+    "commit": "9eaa432ecd29dee1423bfb90b53c48f43a82ca4f",
+    "dirty": true
+  },
+  "config": {
+    "seed": 1592597116,
+    "count": 60,
+    "rows": [
+      "code_128",
+      "code_128_fnc1",
+      "code_128_fnc1_lead",
+      "code_128_fnc1_lead2"
+    ],
+    "tiers": [
+      "clean",
+      "moderate",
+      "severe"
+    ],
+    "layouts": [
+      "frame",
+      "crop"
+    ],
+    "path": "canvas",
+    "formats": [
+      "CODE_39",
+      "CODE_128",
+      "DATA_MATRIX",
+      "QR_CODE"
+    ],
+    "hints": [
+      "TRY_HARDER",
+      "ASSUME_GS1"
+    ]
+  },
+  "cells": [
+    {
+      "symbology": "code_128",
+      "tier": "clean",
+      "layout": "frame",
+      "attempts": 60,
+      "decoded": 60,
+      "aimSeen": 0,
+      "shipped": 60,
+      "unstripped": 60
+    },
+    {
+      "symbology": "code_128",
+      "tier": "moderate",
+      "layout": "frame",
+      "attempts": 60,
+      "decoded": 47,
+      "aimSeen": 0,
+      "shipped": 47,
+      "unstripped": 47
+    },
+    {
+      "symbology": "code_128",
+      "tier": "severe",
+      "layout": "frame",
+      "attempts": 60,
+      "decoded": 20,
+      "aimSeen": 0,
+      "shipped": 19,
+      "unstripped": 19
+    },
+    {
+      "symbology": "code_128_fnc1",
+      "tier": "clean",
+      "layout": "frame",
+      "attempts": 60,
+      "decoded": 60,
+      "aimSeen": 0,
+      "shipped": 60,
+      "unstripped": 60
+    },
+    {
+      "symbology": "code_128_fnc1",
+      "tier": "moderate",
+      "layout": "frame",
+      "attempts": 60,
+      "decoded": 45,
+      "aimSeen": 0,
+      "shipped": 45,
+      "unstripped": 45
+    },
+    {
+      "symbology": "code_128_fnc1",
+      "tier": "severe",
+      "layout": "frame",
+      "attempts": 60,
+      "decoded": 0,
+      "aimSeen": 0,
+      "shipped": 0,
+      "unstripped": 0
+    },
+    {
+      "symbology": "code_128_fnc1_lead",
+      "tier": "clean",
+      "layout": "frame",
+      "attempts": 60,
+      "decoded": 60,
+      "aimSeen": 60,
+      "shipped": 60,
+      "unstripped": 0
+    },
+    {
+      "symbology": "code_128_fnc1_lead",
+      "tier": "moderate",
+      "layout": "frame",
+      "attempts": 60,
+      "decoded": 49,
+      "aimSeen": 49,
+      "shipped": 49,
+      "unstripped": 0
+    },
+    {
+      "symbology": "code_128_fnc1_lead",
+      "tier": "severe",
+      "layout": "frame",
+      "attempts": 60,
+      "decoded": 21,
+      "aimSeen": 21,
+      "shipped": 21,
+      "unstripped": 0
+    },
+    {
+      "symbology": "code_128_fnc1_lead2",
+      "tier": "clean",
+      "layout": "frame",
+      "attempts": 60,
+      "decoded": 60,
+      "aimSeen": 60,
+      "shipped": 60,
+      "unstripped": 0
+    },
+    {
+      "symbology": "code_128_fnc1_lead2",
+      "tier": "moderate",
+      "layout": "frame",
+      "attempts": 60,
+      "decoded": 51,
+      "aimSeen": 51,
+      "shipped": 51,
+      "unstripped": 0
+    },
+    {
+      "symbology": "code_128_fnc1_lead2",
+      "tier": "severe",
+      "layout": "frame",
+      "attempts": 60,
+      "decoded": 1,
+      "aimSeen": 1,
+      "shipped": 0,
+      "unstripped": 0
+    },
+    {
+      "symbology": "code_128",
+      "tier": "clean",
+      "layout": "crop",
+      "attempts": 60,
+      "decoded": 60,
+      "aimSeen": 0,
+      "shipped": 60,
+      "unstripped": 60
+    },
+    {
+      "symbology": "code_128",
+      "tier": "moderate",
+      "layout": "crop",
+      "attempts": 60,
+      "decoded": 47,
+      "aimSeen": 0,
+      "shipped": 47,
+      "unstripped": 47
+    },
+    {
+      "symbology": "code_128",
+      "tier": "severe",
+      "layout": "crop",
+      "attempts": 60,
+      "decoded": 36,
+      "aimSeen": 0,
+      "shipped": 35,
+      "unstripped": 35
+    },
+    {
+      "symbology": "code_128_fnc1",
+      "tier": "clean",
+      "layout": "crop",
+      "attempts": 60,
+      "decoded": 60,
+      "aimSeen": 0,
+      "shipped": 60,
+      "unstripped": 60
+    },
+    {
+      "symbology": "code_128_fnc1",
+      "tier": "moderate",
+      "layout": "crop",
+      "attempts": 60,
+      "decoded": 45,
+      "aimSeen": 0,
+      "shipped": 45,
+      "unstripped": 45
+    },
+    {
+      "symbology": "code_128_fnc1",
+      "tier": "severe",
+      "layout": "crop",
+      "attempts": 60,
+      "decoded": 0,
+      "aimSeen": 0,
+      "shipped": 0,
+      "unstripped": 0
+    },
+    {
+      "symbology": "code_128_fnc1_lead",
+      "tier": "clean",
+      "layout": "crop",
+      "attempts": 60,
+      "decoded": 60,
+      "aimSeen": 60,
+      "shipped": 60,
+      "unstripped": 0
+    },
+    {
+      "symbology": "code_128_fnc1_lead",
+      "tier": "moderate",
+      "layout": "crop",
+      "attempts": 60,
+      "decoded": 49,
+      "aimSeen": 49,
+      "shipped": 49,
+      "unstripped": 0
+    },
+    {
+      "symbology": "code_128_fnc1_lead",
+      "tier": "severe",
+      "layout": "crop",
+      "attempts": 60,
+      "decoded": 41,
+      "aimSeen": 41,
+      "shipped": 41,
+      "unstripped": 0
+    },
+    {
+      "symbology": "code_128_fnc1_lead2",
+      "tier": "clean",
+      "layout": "crop",
+      "attempts": 60,
+      "decoded": 60,
+      "aimSeen": 60,
+      "shipped": 60,
+      "unstripped": 0
+    },
+    {
+      "symbology": "code_128_fnc1_lead2",
+      "tier": "moderate",
+      "layout": "crop",
+      "attempts": 60,
+      "decoded": 51,
+      "aimSeen": 51,
+      "shipped": 51,
+      "unstripped": 0
+    },
+    {
+      "symbology": "code_128_fnc1_lead2",
+      "tier": "severe",
+      "layout": "crop",
+      "attempts": 60,
+      "decoded": 1,
+      "aimSeen": 1,
+      "shipped": 0,
+      "unstripped": 0
+    }
+  ],
+  "falseAccepts": [],
+  "sample": "1HGCM82633A004352"
+}

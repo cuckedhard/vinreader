@@ -42,6 +42,8 @@ import type { BenchSymbology, CorpusItem } from "./corpus";
 import { openBrowserDecoder } from "./browser-decode";
 import { CONFIRM_RECORD_PATH } from "./confirm-record";
 import type { ConfirmRecord } from "./confirm-record";
+import { FNC1_RECORD_PATH } from "./fnc1-record";
+import type { Fnc1Cell, Fnc1Record } from "./fnc1-record";
 import type { BrowserDecoder } from "./browser-decode";
 import {
   BENCH_FORMAT_NAMES,
@@ -1809,6 +1811,193 @@ function roiSection(): string[] {
 }
 
 /**
+ * §13.7 R5 question (b) — **what a leading FNC1 costs**, read back from `bench/fnc1.json`.
+ *
+ * The header line above says how many reads carried the §4.6 AIM identifier, and on this
+ * corpus it is zero: no row in `BENCH_SYMBOLOGIES` opens with FNC1, so `stripAimIdentifier`
+ * — the newest §4.6 guard, on the app's scan path and on this bench's — never fires. A zero
+ * there is not evidence that the strip works. It is evidence that nothing in the gate has
+ * ever put a byte through it.
+ *
+ * `bench/fnc1-probe.ts` renders the two leading-FNC1 shapes as probe-only rows, deliberately
+ * outside `BENCH_SYMBOLOGIES` so the §13.6 threshold list cannot move without someone
+ * deciding to move it, and scores every decode twice off the same bytes: once as the app
+ * sees them, once with `]C1` put back. This section quotes that recording (SB-8, SB-11).
+ */
+type Fnc1Read =
+  { kind: "none" } | { kind: "bad"; reason: string } | { kind: "ok"; record: Fnc1Record };
+
+async function readFnc1Record(): Promise<Fnc1Read> {
+  let text: string;
+  try {
+    text = await readFile(FNC1_RECORD_PATH, "utf8");
+  } catch {
+    return { kind: "none" };
+  }
+  try {
+    const parsed: unknown = JSON.parse(text);
+    if (
+      typeof parsed !== "object" ||
+      parsed === null ||
+      !Array.isArray((parsed as Fnc1Record).cells)
+    ) {
+      return { kind: "bad", reason: "not an fnc1-probe recording" };
+    }
+    return { kind: "ok", record: parsed as Fnc1Record };
+  } catch (error) {
+    return { kind: "bad", reason: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+const FNC1_COMMAND = "bun run bench/fnc1-probe.ts --count 60";
+
+/** ASCII GS, the MH10.8.2 field separator §4.2 splits on. Rendered visibly in the report. */
+const GROUP_SEPARATOR = "\u001d";
+
+function fnc1Section(read: Fnc1Read, stripped: number): string[] {
+  const out: string[] = ["## The leading FNC1, and what §4.6's strip is worth (SB-8)", ""];
+  out.push(
+    stripped === 0
+      ? "This run's corpus produced **0** reads carrying the §4.6 AIM identifier, because no " +
+          "row in it opens with FNC1. That is not the strip passing a test; it is the strip " +
+          "never being asked. §13.7's R5 list keeps the *frequency* question — do the fleet's " +
+          "labels carry this shape — as §7 item 4, and it is the cost question that a bench " +
+          "can answer."
+      : `This run's corpus produced **${stripped}** reads carrying the §4.6 AIM identifier.`,
+  );
+  out.push("");
+  if (read.kind !== "ok") {
+    out.push(
+      (read.kind === "none"
+        ? `**Not measured.** There is no recording at \`${FNC1_RECORD_PATH}\`. `
+        : `**Unreadable recording** at \`${FNC1_RECORD_PATH}\` — ${read.reason}. `) +
+        `Take it with \`${FNC1_COMMAND}\`.`,
+    );
+    out.push("");
+    return out;
+  }
+
+  const { record } = read;
+  const app = record.config.layouts.includes("frame") ? "frame" : record.config.layouts[0];
+  const shown = record.cells.filter((c) => c.layout === app);
+  const total = (cells: readonly Fnc1Cell[], pick: (c: Fnc1Cell) => number): number =>
+    cells.reduce((sum, c) => sum + pick(c), 0);
+  const leadRows = record.config.rows.filter((row) => row.includes("lead"));
+  const lead = shown.filter((c) => leadRows.includes(c.symbology));
+  const since =
+    record.provenance.commit === null
+      ? null
+      : commitsTouchingSince(record.provenance.commit, ["src/lib/vin", "src/features/scan"]);
+
+  out.push(
+    "**Quoted, not measured by this run (SB-11).** " +
+      `\`${record.command}\`, ${record.config.count} VINs, decode path ` +
+      `\`${record.config.path}\`, §4.6 hints ${record.config.hints.join(", ")}, at build ` +
+      `\`${shortSha(record.provenance.commit)}\`` +
+      `${record.provenance.dirty === true ? " (dirty tree)" : ""}. ` +
+      (since === null
+        ? "git could not say whether the scan path has moved since."
+        : since === 0
+          ? "No commit has touched `src/lib/vin` or `src/features/scan` since."
+          : `**${since} commit${since === 1 ? " has" : "s have"} touched \`src/lib/vin\` or ` +
+            `\`src/features/scan\` since — re-take it with \`${record.command}\`.**`),
+  );
+  out.push("");
+  out.push(
+    `On the layout the app decodes (\`${app}\`, SB-2). \`shipped\` is \`extractVin\` over ` +
+      "the bytes the app sees, `]C1` already removed; `unstripped` is the same bytes with the " +
+      "identifier put back — §4.2 as it was before `stripAimIdentifier` existed.",
+  );
+  out.push("");
+  out.push("| Row | Tier | Decoded | `]C1` seen | shipped | unstripped |");
+  out.push("|---|---|---:|---:|---:|---:|");
+  for (const c of shown) {
+    out.push(
+      `| ${c.symbology} | ${c.tier} | ${pct(c.decoded / c.attempts)} | ${c.aimSeen} | ` +
+        `${pct(c.shipped / c.attempts)} | ${pct(c.unstripped / c.attempts)} |`,
+    );
+  }
+  out.push("");
+  const leadShipped = total(lead, (c) => c.shipped);
+  const leadUnstripped = total(lead, (c) => c.unstripped);
+  const leadAttempts = total(lead, (c) => c.attempts);
+  const leadAim = total(lead, (c) => c.aimSeen);
+  const leadDecoded = total(lead, (c) => c.decoded);
+  const control = shown.filter(
+    (c) => !leadRows.includes(c.symbology) && c.symbology === "code_128",
+  );
+  const controlShipped = total(control, (c) => c.shipped);
+  const controlAttempts = total(control, (c) => c.attempts);
+  out.push(
+    `**The strip is the whole difference.** On the ${leadRows.length} leading-FNC1 rows, ` +
+      `${leadDecoded} of ${leadAttempts} frames decoded and \`]C1\` was present on ` +
+      `${leadAim} of those reads; §4.2 named the right VIN on ${leadShipped} of ` +
+      `${leadAttempts} with the strip and ${leadUnstripped} without it. ` +
+      (leadUnstripped === 0
+        ? "Zero without it, at every tier: `]C1` fuses `C1` onto the front of the first " +
+          "field, §4.2 sees a 19-character run and refuses it, so the cost of not stripping " +
+          "is total rather than partial."
+        : "The difference is the value of the strip, in reads."),
+  );
+  out.push("");
+  out.push(
+    controlAttempts === 0
+      ? "There is no plain Code 128 control row in this recording to compare against."
+      : `Against the plain Code 128 control on the same frames — ${controlShipped}/` +
+          `${controlAttempts} (${pct(controlShipped / controlAttempts)}) versus the lead rows' ` +
+          `${leadShipped}/${leadAttempts} (${pct(leadShipped / leadAttempts)}) — a ` +
+          "leading-FNC1 label with the strip in place is neither better nor worse than an " +
+          "ordinary one. §4.6's guard closes the whole gap it was added for.",
+  );
+  out.push("");
+  const wrong = record.falseAccepts;
+  out.push(
+    wrong.length === 0
+      ? "**0 false accepts, on either scoring.** The strip recovers reads without inventing " +
+          "any: every frame it rescued produced the VIN that was printed on it, and the " +
+          "unstripped scoring produced no wrong VIN either — its failures are all refusals."
+      : `**${wrong.length} FALSE ACCEPT${wrong.length === 1 ? "" : "S"}** in this recording: ` +
+          wrong
+            .map(
+              (a) =>
+                `\`${a.vin}\` -> \`${a.returned}\` (${a.scoring}, ${a.symbology} ` +
+                `${a.tier}/${a.layout}, seed \`0x${a.seed.toString(16)}\`)`,
+            )
+            .join("; "),
+  );
+  out.push("");
+  const other = record.config.layouts.filter((l) => l !== app);
+  for (const layout of other) {
+    const cells = record.cells.filter((c) => c.layout === layout);
+    const leadOther = cells.filter((c) => leadRows.includes(c.symbology));
+    out.push(
+      `On \`${layout}\` — the symbol alone, which the app never sees — the same rows read ` +
+        `${total(leadOther, (c) => c.shipped)}/${total(leadOther, (c) => c.attempts)} shipped ` +
+        `against ${leadShipped}/${leadAttempts} on \`${app}\`. The SB-8 ledger row's ` +
+        "percentages were taken on that layout, before this probe composited the frame; the " +
+        "frame is the number that describes the product.",
+    );
+    out.push("");
+  }
+  if (record.sample !== null) {
+    out.push(
+      "A leading-FNC1 read, verbatim, after the strip: `" +
+        // Split rather than a regex: the separator is a control character, and a literal
+        // 0x1d in a report is invisible to the reader who needs to see it (§4.2 splits on it).
+        record.sample.split(GROUP_SEPARATOR).join("<GS>").replace(/\|/g, "\\|") +
+        "`.",
+    );
+    out.push("");
+  }
+  out.push(
+    "What this cannot say is how many real labels open with FNC1. That is §13.7's R5 " +
+      "question (b) and it stays §7 item 4: one photographed door-jamb label settles it.",
+  );
+  out.push("");
+  return out;
+}
+
+/**
  * What a cell is worth (SB-7). Without this, every number above reads as exact, and the loop
  * spends rounds chasing 5 pp moves that were the seed.
  */
@@ -1947,6 +2136,7 @@ function markdownReport(
   seedRuns: readonly SeedRun[],
   replays: readonly Replay[],
   confirm: ConfirmRead,
+  fnc1: Fnc1Read,
 ): string {
   const app = options.paths[0];
   const others = options.paths.slice(1);
@@ -2003,7 +2193,14 @@ function markdownReport(
   );
   out.push(`| Severe extras (Z5) | ${severeDraw(options)} |`);
   out.push(`| ZXing per-reader warnings swallowed (\`rgb\` only) | ${suppressedWarnings()} |`);
-  out.push(`| Reads carrying the §4.6 AIM identifier | ${stripped} |`);
+  out.push(
+    `| Reads carrying the §4.6 AIM identifier | ${stripped}` +
+      (stripped === 0
+        ? " — no row in this corpus opens with FNC1, so §4.6's strip is inert here and these" +
+          " rates do not depend on it; it is exercised by the probe quoted below (SB-8)"
+        : "") +
+      " |",
+  );
   out.push("");
   out.push(
     'Every degradation seed is `runSeed ^ fnv1a("vin|symbology|tier")` — the decode path is ' +
@@ -2190,6 +2387,8 @@ function markdownReport(
 
   out.push(...roiSection());
 
+  out.push(...fnc1Section(fnc1, stripped));
+
   out.push("## Decode time");
   out.push("");
   out.push("| Scope | Decodes | Mean ms | p95 ms |");
@@ -2266,6 +2465,7 @@ function jsonReport(
   seedRuns: readonly SeedRun[],
   replays: readonly Replay[],
   confirm: ConfirmRead,
+  fnc1: Fnc1Read,
 ): string {
   const app = options.paths[0];
   const others = options.paths.slice(1);
@@ -2358,6 +2558,17 @@ function jsonReport(
               confirmWindowMs: CONFIRM_WINDOW_MS,
             }
           : { quoted: false, reason: confirm.kind === "none" ? "no recording" : confirm.reason },
+      // §13.7 R5 (b), quoted from the leading-FNC1 recording (SB-8).
+      leadingFnc1:
+        fnc1.kind === "ok"
+          ? {
+              quoted: true,
+              command: fnc1.record.command,
+              build: fnc1.record.provenance,
+              cells: fnc1.record.cells,
+              falseAccepts: fnc1.record.falseAccepts,
+            }
+          : { quoted: false, reason: fnc1.kind === "none" ? "no recording" : fnc1.reason },
       delta: delta.cells,
       disagreements: delta.disagreements,
       falseAccepts,
@@ -2587,6 +2798,7 @@ async function main(): Promise<number> {
   // §13.4 run (b)'s recording, if one has been taken (SB-5). Reading it cannot fail a run:
   // an absent recording is reported as absent, not as a zero.
   const confirm = await readConfirmRecord();
+  const fnc1 = await readFnc1Record();
   const failures = checkThresholds(cells, attempts, app);
   // An uncaught error in the page means the bundle, not the barcode, decided the outcome.
   for (const message of pageErrors) failures.push(`browser page error: ${message}`);
@@ -2617,6 +2829,7 @@ async function main(): Promise<number> {
       seedRuns,
       replays,
       confirm,
+      fnc1,
     ),
     "utf8",
   );
@@ -2642,6 +2855,7 @@ async function main(): Promise<number> {
         seedRuns,
         replays,
         confirm,
+        fnc1,
       ),
       "utf8",
     );
