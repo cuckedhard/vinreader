@@ -76,13 +76,23 @@ export function extractVin(raw: string): ExtractResult | null {
   if (valid.length === 1 && wholeRun.includes(valid[0]!)) {
     return { vin: valid[0]!, raw, checkDigitValid: true };
   }
-  if (valid.length > 1) return null;
 
   /**
    * §4.2 step 4b, on window count rather than distinct VINs: an identifier carrying no
    * check digit is only locatable when it is a run of its own. A longer run of repeated
    * characters collapses to one distinct string, but the identifier still is not a run of
    * its own and reading one out of it would be a guess from noise.
+   *
+   * **An ambiguous run falls out here rather than being turned away above** (M9), and that
+   * is not an omission: `valid` is a set of `candidates`, so more than one distinct VIN
+   * validating means at least two windows, and a payload with two windows cannot satisfy
+   * this test. An `if (valid.length > 1) return null;` above therefore stood in front of a
+   * `return null` it could never change — a line no test could distinguish from its own
+   * absence, which is precisely what `bun run mutate` reported and what 100% branch
+   * coverage on this file could not see. §4.2 step 4a's refusal is unchanged and is pinned
+   * by `[M2]` and the straddle suite; what is gone is a second, unobservable statement of
+   * it. Anyone tempted to restore it should make step 4b weaker first — while it demands
+   * *exactly one* window, ambiguity has nowhere else to go.
    */
   if (candidates.length === 1) {
     return { vin: candidates[0]!, raw, checkDigitValid: false };
