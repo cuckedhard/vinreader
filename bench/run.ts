@@ -30,15 +30,18 @@
  */
 
 import type { Buffer } from "node:buffer";
-import { writeFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import { CONFIRM_WINDOW_MS } from "../src/features/scan/scanMachine";
 import { isPayloadCarrier } from "../src/lib/payload/carrier";
 import { extractVin } from "../src/lib/vin/extractVin";
 import { BENCH_SYMBOLOGIES, buildCorpus, renderBarcode } from "./corpus";
 import type { BenchSymbology, CorpusItem } from "./corpus";
 import { openBrowserDecoder } from "./browser-decode";
+import { CONFIRM_RECORD_PATH } from "./confirm-record";
+import type { ConfirmRecord } from "./confirm-record";
 import type { BrowserDecoder } from "./browser-decode";
 import {
   BENCH_FORMAT_NAMES,
@@ -52,6 +55,7 @@ import type { DecodeOutcome, DecodePath } from "./decode";
 import { SEVERE_EXTRAS, SEVERE_EXTRAS_DRAWN, TIERS, degrade, severeExtrasFor } from "./degrade";
 import type { SevereExtra, Tier } from "./degrade";
 import { FRAME_HEIGHT, FRAME_WIDTH, composite } from "./frame";
+import { commitsTouchingSince, shortSha } from "./provenance";
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -1542,6 +1546,164 @@ function replaySection(options: Options, replays: readonly Replay[]): string[] {
 }
 
 /**
+ * §13.4's third number — **mean time-to-confirm** — read back from `bench/confirm.json`.
+ *
+ * Two of §13.4's three report numbers are taken by this run. The third cannot be: confirming
+ * is two agreeing reads inside §6.3's `CONFIRM_WINDOW_MS`, so it needs the built app, a fake
+ * camera and a browser launch per cell — run (b), `bench/confirm-probe.ts`. For four rounds
+ * this report said, in prose, that the number was not here. Now it is here, quoted from the
+ * probe's recording, with the provenance that says whether the recording still describes the
+ * app (SB-5, under SB-11's rule for a quote).
+ */
+type ConfirmRead =
+  { kind: "none" } | { kind: "bad"; reason: string } | { kind: "ok"; record: ConfirmRecord };
+
+async function readConfirmRecord(): Promise<ConfirmRead> {
+  let text: string;
+  try {
+    text = await readFile(CONFIRM_RECORD_PATH, "utf8");
+  } catch {
+    return { kind: "none" };
+  }
+  try {
+    const parsed: unknown = JSON.parse(text);
+    if (
+      typeof parsed !== "object" ||
+      parsed === null ||
+      !Array.isArray((parsed as ConfirmRecord).cells) ||
+      typeof (parsed as ConfirmRecord).overall !== "object"
+    ) {
+      return { kind: "bad", reason: "not a confirm-probe recording" };
+    }
+    return { kind: "ok", record: parsed as ConfirmRecord };
+  } catch (error) {
+    // A corrupt recording is reported, never silently read as "not measured": those are
+    // different states and only one of them is anybody's fault.
+    return { kind: "bad", reason: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+const CONFIRM_COMMAND = "bun run build && bun run bench/confirm-probe.ts --repeats 5";
+
+function confirmSection(read: ConfirmRead): string[] {
+  const out: string[] = ["## Time to confirm (§13.4 run b, SB-5)", ""];
+  if (read.kind !== "ok") {
+    out.push(
+      (read.kind === "none"
+        ? `**Not measured.** There is no recording at \`${CONFIRM_RECORD_PATH}\`. `
+        : `**Unreadable recording** at \`${CONFIRM_RECORD_PATH}\` — ${read.reason}. `) +
+        "§13.4 asks this report for decode rate, false accepts **and mean time-to-confirm**; " +
+        `the third comes from run (b). Take it with \`${CONFIRM_COMMAND}\`.`,
+    );
+    out.push("");
+    return out;
+  }
+
+  const { record } = read;
+  const since =
+    record.provenance.commit === null
+      ? null
+      : commitsTouchingSince(record.provenance.commit, ["src"]);
+  const overWindow = record.cells.filter((c) => c.meanMs !== null && c.meanMs > CONFIRM_WINDOW_MS);
+
+  out.push(
+    "**Quoted, not measured by this run (SB-11).** Confirmation is a property of a stream, " +
+      "not of a frame: §6.3 confirms on two agreeing reads inside " +
+      `${CONFIRM_WINDOW_MS} ms, so the number below comes from run (b) — the built app, ` +
+      "Chromium's fake capture device, a fresh browser context per repeat so the 10 s " +
+      "cooldown is not what gets timed, and the clock running from the first frame the " +
+      "`<video>` can supply to the hash change only the `confirmed` transition performs.",
+  );
+  out.push("");
+  out.push("| | |");
+  out.push("|---|---|");
+  out.push(`| Taken by | \`${record.command}\` |`);
+  out.push(
+    `| Build measured | \`${shortSha(record.provenance.commit)}\`` +
+      `${record.provenance.dirty === true ? " — **from a dirty tree, so the commit does not identify what was measured**" : ""} |`,
+  );
+  out.push(
+    `| Scene | VIN \`${record.config.vin}\`, ${record.config.frames} distinct degraded poses ` +
+      `at ${record.config.fps} fps, ${record.config.width}x${record.config.height}, ` +
+      `${record.config.repeats} contexts per cell, giving up at ${record.config.timeoutMs} ms |`,
+  );
+  out.push(
+    `| Machine | ${record.machine.cpus} cores, load ` +
+      `${record.machine.loadavg.map((n) => n.toFixed(1)).join(" / ")} at recording — ` +
+      "milliseconds here are wall clock on a shared box, and only the comparison between " +
+      "cells is load-free |",
+  );
+  out.push(
+    `| Still current? | ${
+      since === null
+        ? "git could not say whether `src/` has moved since — re-take it if in doubt"
+        : since === 0
+          ? "no commit has touched `src/` since that build"
+          : `**${since} commit${since === 1 ? " has" : "s have"} touched \`src/\` since that ` +
+            "build — re-take it (`bun run build`, then `" +
+            record.command +
+            "`) before quoting it**"
+    } |`,
+  );
+  out.push("");
+  out.push("| Symbology | Tier | Confirmed | Mean ms | Min ms | Max ms | Harness faults |");
+  out.push("|---|---|---:|---:|---:|---:|---:|");
+  for (const c of record.cells) {
+    out.push(
+      `| ${c.symbology} | ${c.tier} | ${c.confirmed}/${c.measured} | ` +
+        `${c.meanMs === null ? "-" : c.meanMs.toFixed(0)} | ${c.minMs ?? "-"} | ` +
+        `${c.maxMs ?? "-"} | ${c.faults} |`,
+    );
+  }
+  out.push("");
+  out.push(
+    `**Overall: ${record.overall.confirmed} of ${record.overall.measured} confirmed, mean ` +
+      `${record.overall.meanMs === null ? "-" : `${record.overall.meanMs.toFixed(0)} ms`}.** ` +
+      `${record.overall.faults === 0 ? "No harness faults" : `${record.overall.faults} harness faults excluded from every mean`}` +
+      `${record.overall.notConfirmed === 0 ? "" : `, ${record.overall.notConfirmed} repeats never confirmed inside ${record.config.timeoutMs} ms`}` +
+      ".",
+  );
+  out.push("");
+  // Derived rather than asserted, twice over: both the spread and the window comparison are
+  // facts about *this* recording, and a sentence written down here would go stale the next
+  // time it is taken (SB-11).
+  const spread = [...record.cells]
+    .filter((c) => c.minMs !== null && c.maxMs !== null && c.minMs > 0)
+    .sort((a, b) => (b.maxMs ?? 0) / (b.minMs ?? 1) - (a.maxMs ?? 0) / (a.minMs ?? 1))[0];
+  if (spread !== undefined && spread.minMs !== null && spread.maxMs !== null) {
+    out.push(
+      `**A mean here is a tail statistic.** The widest cell in this recording is ` +
+        `\`${spread.symbology}\` ${spread.tier}, ${spread.minMs}-${spread.maxMs} ms over ` +
+        `${spread.measured} repeats — a ${(spread.maxMs / spread.minMs).toFixed(1)}x spread ` +
+        "on one scene at one build. Confirmation needs *two* decodable poses inside one " +
+        "window, so on a hard label it waits for a coincidence, and the mean is set by how " +
+        "long that takes. Read these as orders of magnitude; a 20% move between recordings " +
+        "is noise, the same way a 5 pp move in a severe decode cell is (SB-7).",
+    );
+    out.push("");
+  }
+  out.push(
+    overWindow.length === 0
+      ? `Every cell's mean is inside §6.3's ${CONFIRM_WINDOW_MS} ms agreement window, so on ` +
+          "this scene the standing candidate typically survives to meet its second read."
+      : `**${overWindow.map((c) => `\`${c.symbology}\` ${c.tier}`).join(", ")} ` +
+          `${overWindow.length === 1 ? "sits" : "sit"} above §6.3's ${CONFIRM_WINDOW_MS} ms ` +
+          "agreement window** — mean " +
+          overWindow.map((c) => `${(c.meanMs ?? 0).toFixed(0)} ms`).join(", ") +
+          ". A candidate that old has lapsed, so confirmation on those labels typically " +
+          "restarts at least once: the user holds the phone still through more than one " +
+          "window. That is the number a confirmation change (§6.3) would be aiming at.",
+  );
+  out.push("");
+  out.push(
+    "A y4m loop is not a hand (§13.7): fixed frame rate, repeating poses, nobody moving the " +
+      "phone toward the label. This bounds the confirmation logic; it does not close §7 item 4.",
+  );
+  out.push("");
+  return out;
+}
+
+/**
  * What the frame costs and what an ROI crop would buy back — SB-2 and SB-3, measured by
  * `bench/frame-probe.ts` and reproduced here because the next person to read this table will
  * reach for a crop, and one of the two obvious crops destroys 2D entirely.
@@ -1784,6 +1946,7 @@ function markdownReport(
   diagnosticReasons: readonly string[],
   seedRuns: readonly SeedRun[],
   replays: readonly Replay[],
+  confirm: ConfirmRead,
 ): string {
   const app = options.paths[0];
   const others = options.paths.slice(1);
@@ -2039,11 +2202,12 @@ function markdownReport(
     "Times cover the ZXing read only — binarisation and the decode — and exclude getting the " +
       "frame onto the canvas, because the app never parses a PNG either: it draws a video " +
       "frame it already has. Timings are the one part of this report that is not " +
-      "bit-reproducible; no threshold rides on them. §13.4's mean **time-to-confirm** is not " +
-      "here: confirmation is two agreeing reads inside §6.3's window, which run (b) — the " +
-      "Playwright fake-camera pass — is what exercises. This run measures one frame at a time.",
+      "bit-reproducible; no threshold rides on them. This run measures one frame at a time, " +
+      "so §13.4's mean **time-to-confirm** is not one of these numbers: it is two agreeing " +
+      "reads inside §6.3's window, which run (b) exercises — the section below (SB-5).",
   );
   out.push("");
+  out.push(...confirmSection(confirm));
 
   if (errors.length > 0) {
     out.push("## Decoder faults");
@@ -2101,6 +2265,7 @@ function jsonReport(
   diagnosticReasons: readonly string[],
   seedRuns: readonly SeedRun[],
   replays: readonly Replay[],
+  confirm: ConfirmRead,
 ): string {
   const app = options.paths[0];
   const others = options.paths.slice(1);
@@ -2177,6 +2342,22 @@ function jsonReport(
           measured: measuredBand(c, seedRuns),
         })),
       timings,
+      // §13.4's third number, quoted from the run-(b) recording (SB-5).
+      timeToConfirm:
+        confirm.kind === "ok"
+          ? {
+              quoted: true,
+              command: confirm.record.command,
+              build: confirm.record.provenance,
+              srcCommitsSince:
+                confirm.record.provenance.commit === null
+                  ? null
+                  : commitsTouchingSince(confirm.record.provenance.commit, ["src"]),
+              overall: confirm.record.overall,
+              cells: confirm.record.cells,
+              confirmWindowMs: CONFIRM_WINDOW_MS,
+            }
+          : { quoted: false, reason: confirm.kind === "none" ? "no recording" : confirm.reason },
       delta: delta.cells,
       disagreements: delta.disagreements,
       falseAccepts,
@@ -2403,6 +2584,9 @@ async function main(): Promise<number> {
       ),
     ];
   });
+  // §13.4 run (b)'s recording, if one has been taken (SB-5). Reading it cannot fail a run:
+  // an absent recording is reported as absent, not as a zero.
+  const confirm = await readConfirmRecord();
   const failures = checkThresholds(cells, attempts, app);
   // An uncaught error in the page means the bundle, not the barcode, decided the outcome.
   for (const message of pageErrors) failures.push(`browser page error: ${message}`);
@@ -2432,6 +2616,7 @@ async function main(): Promise<number> {
       reasons,
       seedRuns,
       replays,
+      confirm,
     ),
     "utf8",
   );
@@ -2456,6 +2641,7 @@ async function main(): Promise<number> {
         reasons,
         seedRuns,
         replays,
+        confirm,
       ),
       "utf8",
     );
@@ -2532,6 +2718,14 @@ async function main(): Promise<number> {
   }
   const all = timings[0];
   lines.push(`  decode time (${all.scope}): mean ${ms(all.meanMs)} ms, p95 ${ms(all.p95Ms)} ms`);
+  lines.push(
+    `  time to confirm: ${
+      confirm.kind === "ok"
+        ? `${confirm.record.overall.meanMs === null ? "-" : `mean ${confirm.record.overall.meanMs.toFixed(0)} ms`} ` +
+          `over ${confirm.record.overall.measured} runs, quoted from bench/confirm.json (SB-5)`
+        : `not measured — ${CONFIRM_COMMAND}`
+    }`,
+  );
   lines.push(
     `  report: ${nonCanonical ? QUICK_REPORT_PATH : REPORT_PATH}` +
       (nonCanonical ? `  (diagnostic — ${reasons.join("; ")})` : "  (canonical §13.6 evidence)"),

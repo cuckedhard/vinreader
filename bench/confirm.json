@@ -1,0 +1,550 @@
+{
+  "probe": "bench/confirm-probe.ts",
+  "command": "bun run bench/confirm-probe.ts --repeats 8 --symbologies code_39_i,code_128 --tiers clean,moderate,severe",
+  "provenance": {
+    "commit": "66a0aa9fdb2a5261b8c92ea8ef5996d4e5b2d299",
+    "dirty": false
+  },
+  "dist": "/tmp/claude-0/-home-user-vinreader/c79fd7d1-8827-5e7c-aa59-8ca5f7602e93/scratchpad/wt-head/dist",
+  "machine": {
+    "cpus": 4,
+    "loadavg": [
+      9.77,
+      7.87,
+      5.89
+    ]
+  },
+  "config": {
+    "vin": "1HGCM82633A004352",
+    "runSeed": 1592597116,
+    "frames": 12,
+    "fps": 10,
+    "width": 1920,
+    "height": 1080,
+    "repeats": 8,
+    "timeoutMs": 25000,
+    "symbologies": [
+      "code_39_i",
+      "code_128"
+    ],
+    "tiers": [
+      "clean",
+      "moderate",
+      "severe"
+    ],
+    "chromium": "/opt/pw-browsers/chromium-1194/chrome-linux/chrome"
+  },
+  "overall": {
+    "symbology": "all",
+    "tier": "all",
+    "measured": 48,
+    "confirmed": 48,
+    "notConfirmed": 0,
+    "faults": 0,
+    "meanMs": 923.2708333333334,
+    "minMs": 323,
+    "maxMs": 4880
+  },
+  "cells": [
+    {
+      "symbology": "code_39_i",
+      "tier": "clean",
+      "measured": 8,
+      "confirmed": 8,
+      "notConfirmed": 0,
+      "faults": 0,
+      "meanMs": 373.5,
+      "minMs": 323,
+      "maxMs": 487
+    },
+    {
+      "symbology": "code_39_i",
+      "tier": "moderate",
+      "measured": 8,
+      "confirmed": 8,
+      "notConfirmed": 0,
+      "faults": 0,
+      "meanMs": 416,
+      "minMs": 346,
+      "maxMs": 610
+    },
+    {
+      "symbology": "code_39_i",
+      "tier": "severe",
+      "measured": 8,
+      "confirmed": 8,
+      "notConfirmed": 0,
+      "faults": 0,
+      "meanMs": 1352.25,
+      "minMs": 694,
+      "maxMs": 3316
+    },
+    {
+      "symbology": "code_128",
+      "tier": "clean",
+      "measured": 8,
+      "confirmed": 8,
+      "notConfirmed": 0,
+      "faults": 0,
+      "meanMs": 358.375,
+      "minMs": 328,
+      "maxMs": 399
+    },
+    {
+      "symbology": "code_128",
+      "tier": "moderate",
+      "measured": 8,
+      "confirmed": 8,
+      "notConfirmed": 0,
+      "faults": 0,
+      "meanMs": 478.125,
+      "minMs": 334,
+      "maxMs": 951
+    },
+    {
+      "symbology": "code_128",
+      "tier": "severe",
+      "measured": 8,
+      "confirmed": 8,
+      "notConfirmed": 0,
+      "faults": 0,
+      "meanMs": 2561.375,
+      "minMs": 970,
+      "maxMs": 4880
+    }
+  ],
+  "measurements": [
+    {
+      "symbology": "code_39_i",
+      "tier": "clean",
+      "repeat": 0,
+      "outcome": "confirmed",
+      "ms": 369,
+      "fault": null,
+      "attempts": 1
+    },
+    {
+      "symbology": "code_39_i",
+      "tier": "clean",
+      "repeat": 1,
+      "outcome": "confirmed",
+      "ms": 323,
+      "fault": null,
+      "attempts": 1
+    },
+    {
+      "symbology": "code_39_i",
+      "tier": "clean",
+      "repeat": 2,
+      "outcome": "confirmed",
+      "ms": 333,
+      "fault": null,
+      "attempts": 1
+    },
+    {
+      "symbology": "code_39_i",
+      "tier": "clean",
+      "repeat": 3,
+      "outcome": "confirmed",
+      "ms": 363,
+      "fault": null,
+      "attempts": 1
+    },
+    {
+      "symbology": "code_39_i",
+      "tier": "clean",
+      "repeat": 4,
+      "outcome": "confirmed",
+      "ms": 371,
+      "fault": null,
+      "attempts": 1
+    },
+    {
+      "symbology": "code_39_i",
+      "tier": "clean",
+      "repeat": 5,
+      "outcome": "confirmed",
+      "ms": 487,
+      "fault": null,
+      "attempts": 1
+    },
+    {
+      "symbology": "code_39_i",
+      "tier": "clean",
+      "repeat": 6,
+      "outcome": "confirmed",
+      "ms": 380,
+      "fault": null,
+      "attempts": 1
+    },
+    {
+      "symbology": "code_39_i",
+      "tier": "clean",
+      "repeat": 7,
+      "outcome": "confirmed",
+      "ms": 362,
+      "fault": null,
+      "attempts": 1
+    },
+    {
+      "symbology": "code_39_i",
+      "tier": "moderate",
+      "repeat": 0,
+      "outcome": "confirmed",
+      "ms": 349,
+      "fault": null,
+      "attempts": 1
+    },
+    {
+      "symbology": "code_39_i",
+      "tier": "moderate",
+      "repeat": 1,
+      "outcome": "confirmed",
+      "ms": 366,
+      "fault": null,
+      "attempts": 1
+    },
+    {
+      "symbology": "code_39_i",
+      "tier": "moderate",
+      "repeat": 2,
+      "outcome": "confirmed",
+      "ms": 346,
+      "fault": null,
+      "attempts": 1
+    },
+    {
+      "symbology": "code_39_i",
+      "tier": "moderate",
+      "repeat": 3,
+      "outcome": "confirmed",
+      "ms": 583,
+      "fault": null,
+      "attempts": 1
+    },
+    {
+      "symbology": "code_39_i",
+      "tier": "moderate",
+      "repeat": 4,
+      "outcome": "confirmed",
+      "ms": 364,
+      "fault": null,
+      "attempts": 1
+    },
+    {
+      "symbology": "code_39_i",
+      "tier": "moderate",
+      "repeat": 5,
+      "outcome": "confirmed",
+      "ms": 358,
+      "fault": null,
+      "attempts": 1
+    },
+    {
+      "symbology": "code_39_i",
+      "tier": "moderate",
+      "repeat": 6,
+      "outcome": "confirmed",
+      "ms": 352,
+      "fault": null,
+      "attempts": 1
+    },
+    {
+      "symbology": "code_39_i",
+      "tier": "moderate",
+      "repeat": 7,
+      "outcome": "confirmed",
+      "ms": 610,
+      "fault": null,
+      "attempts": 1
+    },
+    {
+      "symbology": "code_39_i",
+      "tier": "severe",
+      "repeat": 0,
+      "outcome": "confirmed",
+      "ms": 735,
+      "fault": null,
+      "attempts": 1
+    },
+    {
+      "symbology": "code_39_i",
+      "tier": "severe",
+      "repeat": 1,
+      "outcome": "confirmed",
+      "ms": 1234,
+      "fault": null,
+      "attempts": 1
+    },
+    {
+      "symbology": "code_39_i",
+      "tier": "severe",
+      "repeat": 2,
+      "outcome": "confirmed",
+      "ms": 694,
+      "fault": null,
+      "attempts": 1
+    },
+    {
+      "symbology": "code_39_i",
+      "tier": "severe",
+      "repeat": 3,
+      "outcome": "confirmed",
+      "ms": 3316,
+      "fault": null,
+      "attempts": 1
+    },
+    {
+      "symbology": "code_39_i",
+      "tier": "severe",
+      "repeat": 4,
+      "outcome": "confirmed",
+      "ms": 733,
+      "fault": null,
+      "attempts": 1
+    },
+    {
+      "symbology": "code_39_i",
+      "tier": "severe",
+      "repeat": 5,
+      "outcome": "confirmed",
+      "ms": 1143,
+      "fault": null,
+      "attempts": 1
+    },
+    {
+      "symbology": "code_39_i",
+      "tier": "severe",
+      "repeat": 6,
+      "outcome": "confirmed",
+      "ms": 1087,
+      "fault": null,
+      "attempts": 1
+    },
+    {
+      "symbology": "code_39_i",
+      "tier": "severe",
+      "repeat": 7,
+      "outcome": "confirmed",
+      "ms": 1876,
+      "fault": null,
+      "attempts": 1
+    },
+    {
+      "symbology": "code_128",
+      "tier": "clean",
+      "repeat": 0,
+      "outcome": "confirmed",
+      "ms": 344,
+      "fault": null,
+      "attempts": 1
+    },
+    {
+      "symbology": "code_128",
+      "tier": "clean",
+      "repeat": 1,
+      "outcome": "confirmed",
+      "ms": 347,
+      "fault": null,
+      "attempts": 1
+    },
+    {
+      "symbology": "code_128",
+      "tier": "clean",
+      "repeat": 2,
+      "outcome": "confirmed",
+      "ms": 328,
+      "fault": null,
+      "attempts": 1
+    },
+    {
+      "symbology": "code_128",
+      "tier": "clean",
+      "repeat": 3,
+      "outcome": "confirmed",
+      "ms": 343,
+      "fault": null,
+      "attempts": 1
+    },
+    {
+      "symbology": "code_128",
+      "tier": "clean",
+      "repeat": 4,
+      "outcome": "confirmed",
+      "ms": 347,
+      "fault": null,
+      "attempts": 1
+    },
+    {
+      "symbology": "code_128",
+      "tier": "clean",
+      "repeat": 5,
+      "outcome": "confirmed",
+      "ms": 365,
+      "fault": null,
+      "attempts": 1
+    },
+    {
+      "symbology": "code_128",
+      "tier": "clean",
+      "repeat": 6,
+      "outcome": "confirmed",
+      "ms": 399,
+      "fault": null,
+      "attempts": 1
+    },
+    {
+      "symbology": "code_128",
+      "tier": "clean",
+      "repeat": 7,
+      "outcome": "confirmed",
+      "ms": 394,
+      "fault": null,
+      "attempts": 1
+    },
+    {
+      "symbology": "code_128",
+      "tier": "moderate",
+      "repeat": 0,
+      "outcome": "confirmed",
+      "ms": 335,
+      "fault": null,
+      "attempts": 1
+    },
+    {
+      "symbology": "code_128",
+      "tier": "moderate",
+      "repeat": 1,
+      "outcome": "confirmed",
+      "ms": 350,
+      "fault": null,
+      "attempts": 1
+    },
+    {
+      "symbology": "code_128",
+      "tier": "moderate",
+      "repeat": 2,
+      "outcome": "confirmed",
+      "ms": 951,
+      "fault": null,
+      "attempts": 1
+    },
+    {
+      "symbology": "code_128",
+      "tier": "moderate",
+      "repeat": 3,
+      "outcome": "confirmed",
+      "ms": 334,
+      "fault": null,
+      "attempts": 1
+    },
+    {
+      "symbology": "code_128",
+      "tier": "moderate",
+      "repeat": 4,
+      "outcome": "confirmed",
+      "ms": 364,
+      "fault": null,
+      "attempts": 1
+    },
+    {
+      "symbology": "code_128",
+      "tier": "moderate",
+      "repeat": 5,
+      "outcome": "confirmed",
+      "ms": 754,
+      "fault": null,
+      "attempts": 1
+    },
+    {
+      "symbology": "code_128",
+      "tier": "moderate",
+      "repeat": 6,
+      "outcome": "confirmed",
+      "ms": 372,
+      "fault": null,
+      "attempts": 1
+    },
+    {
+      "symbology": "code_128",
+      "tier": "moderate",
+      "repeat": 7,
+      "outcome": "confirmed",
+      "ms": 365,
+      "fault": null,
+      "attempts": 1
+    },
+    {
+      "symbology": "code_128",
+      "tier": "severe",
+      "repeat": 0,
+      "outcome": "confirmed",
+      "ms": 2338,
+      "fault": null,
+      "attempts": 1
+    },
+    {
+      "symbology": "code_128",
+      "tier": "severe",
+      "repeat": 1,
+      "outcome": "confirmed",
+      "ms": 2235,
+      "fault": null,
+      "attempts": 1
+    },
+    {
+      "symbology": "code_128",
+      "tier": "severe",
+      "repeat": 2,
+      "outcome": "confirmed",
+      "ms": 2050,
+      "fault": null,
+      "attempts": 1
+    },
+    {
+      "symbology": "code_128",
+      "tier": "severe",
+      "repeat": 3,
+      "outcome": "confirmed",
+      "ms": 970,
+      "fault": null,
+      "attempts": 1
+    },
+    {
+      "symbology": "code_128",
+      "tier": "severe",
+      "repeat": 4,
+      "outcome": "confirmed",
+      "ms": 2210,
+      "fault": null,
+      "attempts": 1
+    },
+    {
+      "symbology": "code_128",
+      "tier": "severe",
+      "repeat": 5,
+      "outcome": "confirmed",
+      "ms": 4880,
+      "fault": null,
+      "attempts": 1
+    },
+    {
+      "symbology": "code_128",
+      "tier": "severe",
+      "repeat": 6,
+      "outcome": "confirmed",
+      "ms": 3768,
+      "fault": null,
+      "attempts": 1
+    },
+    {
+      "symbology": "code_128",
+      "tier": "severe",
+      "repeat": 7,
+      "outcome": "confirmed",
+      "ms": 2040,
+      "fault": null,
+      "attempts": 1
+    }
+  ]
+}
