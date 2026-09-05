@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildStructural } from "./structural";
 import { extractVin } from "./extractVin";
+import { isCheckDigitValid } from "./checkDigit";
 
 /** §9-S0 definition of done: the §4.11 fixtures produce the stated structural results. */
 describe("§4.11 fixtures end to end", () => {
@@ -62,8 +63,30 @@ describe("§4.11 fixtures end to end", () => {
     "1HGCM8263IA004352",
     // Z1: a run holding more than one plausible VIN is refused, not ranked.
     "1HGCM82633A0043531HGCM82633A004352",
+    // §4.11's "§4.1-legal character in front of the VIN" row, both of its members. The
+    // second was the only one under test: `B1HGCM82633A004352` — the fixture as §4.11
+    // writes it — was named in three files' prose and asserted in none.
+    "B1HGCM82633A004352",
     "UNIT B\n1HGCM82633A004352",
   ])("rejects %s", (raw) => {
     expect(extractVin(raw)).toBeNull();
+  });
+
+  it("refuses the B-prefixed fixture for the reason §4.11 gives, not by accident", () => {
+    // §4.11: "A §4.1-legal character in front of the VIN makes the offset-0 window validate
+    // by chance." That is what makes this row load-bearing rather than decorative — it is
+    // the one fixture where **two** windows of one run pass §4.3, so it is the §4.2 step
+    // 4(a) uniqueness rule that refuses it and not R4-A's whole-run rule alone. Before
+    // uniqueness it came back as `B1HGCM82633A00435` marked check-digit valid: a wrong VIN
+    // accepted as fact, which §13.3 calls S1.
+    expect(isCheckDigitValid("B1HGCM82633A00435")).toBe(true);
+    expect(isCheckDigitValid("1HGCM82633A004352")).toBe(true);
+    expect(extractVin("B1HGCM82633A004352")).toBeNull();
+
+    // The other member of the row, whose straddle also validates (`TB1HGCM82633A0043`).
+    // §4.2 step 1 strips whitespace before step 2 splits, so the newline does not save it:
+    // "UNIT B" fuses onto the VIN and the whole thing is one 23-character run.
+    expect(isCheckDigitValid("TB1HGCM82633A0043")).toBe(true);
+    expect(extractVin("UNIT B\n1HGCM82633A004352")).toBeNull();
   });
 });
