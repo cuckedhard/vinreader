@@ -33,12 +33,19 @@ export type BenchSymbology =
   | "code_39_check"
   | "code_128"
   | "code_128_fnc1"
+  | "code_128_fnc1_lead"
+  | "code_128_fnc1_lead2"
   | "data_matrix"
   | "qr_code";
 
 /**
  * §4.6 priority order — CODE_39, CODE_128, DATA_MATRIX, QR_CODE — with each encoding
  * variant next to the plain symbology it varies.
+ *
+ * The two *leading*-FNC1 rows are deliberately **not** here: they are probe rows, rendered
+ * on demand by `bench/fnc1-probe.ts`, and adding them to the tracked run would move the
+ * §13.6 threshold list without anyone deciding to. `BENCH_SYMBOLOGIES` is what §13.4's
+ * corpus is; `PROBE_SYMBOLOGIES` is what a diagnostic may additionally render.
  */
 export const BENCH_SYMBOLOGIES: readonly BenchSymbology[] = [
   "code_39",
@@ -48,6 +55,18 @@ export const BENCH_SYMBOLOGIES: readonly BenchSymbology[] = [
   "code_128_fnc1",
   "data_matrix",
   "qr_code",
+];
+
+/**
+ * Rows a probe may render that the tracked §13.4 corpus does not carry.
+ *
+ * Both are the shape §13.7's R5 question (b) asks about — "whether any Code 128 label sets a
+ * **leading** FNC1, which `]C1` makes §4.2 refuse". The frequency is a question only a
+ * photographed label can answer; what it *costs* is measurable, and these rows are how.
+ */
+export const PROBE_SYMBOLOGIES: readonly BenchSymbology[] = [
+  "code_128_fnc1_lead",
+  "code_128_fnc1_lead2",
 ];
 
 export interface CorpusItem {
@@ -272,6 +291,38 @@ const RENDER_SPECS: Readonly<Record<BenchSymbology, RenderSpec>> = {
   code_128_fnc1: {
     bcid: "code128",
     encode: (vin) => `${vin}^FNC1${MH10_SECOND_FIELD}`,
+    kind: "linear",
+    parsefnc: true,
+    quiet: 12,
+  },
+  /**
+   * §13.7 R5 question (b): a Code 128 whose message opens with FNC1 and carries the VIN as
+   * its only field. Under §4.6's `ASSUME_GS1` this is the shape that makes ZXing emit the
+   * AIM symbology identifier `]C1` (GS1 5.4.3.7 / 5.4.6.4) — decoder metadata, not label
+   * content — which fuses `C1` onto the front of the run and turns a 17-character VIN into a
+   * 19-character run with three windows. `stripAimIdentifier` (§4.6) exists for exactly
+   * this, and the tracked corpus carries no row that exercises it: the run header's "reads
+   * carrying the §4.6 AIM identifier" has read 0 since the strip shipped. Ground truth stays
+   * the bare VIN.
+   *
+   * Probe-only (`PROBE_SYMBOLOGIES`): the frequency of this shape in a real fleet is §13.7's
+   * question, so its rate must not silently join §13.6's threshold list.
+   */
+  code_128_fnc1_lead: {
+    bcid: "code128",
+    encode: (vin) => `^FNC1${vin}`,
+    kind: "linear",
+    parsefnc: true,
+    quiet: 12,
+  },
+  /**
+   * The same, with a second MH10.8.2 field behind the VIN — a leading FNC1 *and* a
+   * separating one, which is what a GS1-128 label carrying two fields actually prints.
+   * Probe-only, same reason.
+   */
+  code_128_fnc1_lead2: {
+    bcid: "code128",
+    encode: (vin) => `^FNC1${vin}^FNC1${MH10_SECOND_FIELD}`,
     kind: "linear",
     parsefnc: true,
     quiet: 12,

@@ -233,6 +233,7 @@ describe("encodePayload / decodePayload", () => {
       fc.property(payloadArb, (payload) => {
         expect(decodePayload(encodePayload(payload))).toEqual(payload);
       }),
+      { seed: 0x4a9_0001, numRuns: 100 },
     );
   });
 
@@ -241,6 +242,7 @@ describe("encodePayload / decodePayload", () => {
       fc.property(payloadArb, (payload) => {
         expect(encodePayload(payload)).toMatch(/^[A-Za-z0-9_-]+$/);
       }),
+      { seed: 0x4a9_0002, numRuns: 100 },
     );
   });
 
@@ -672,6 +674,7 @@ describe("parseCarrier", () => {
         for (const key of dropped) expect(DROP_ORDER).toContain(key);
         expect(parseCarrier(buildTextCarrier(payload))).toEqual(payload);
       }),
+      { seed: 0x4a9_0003, numRuns: 100 },
     );
   });
 
@@ -737,6 +740,7 @@ describe("parseCarrier", () => {
         if (recognized) expect(parsed).not.toBeNull();
         else expect(parsed).toBeNull();
       }),
+      { seed: 0x4a9_0004, numRuns: 100 },
     );
   });
 });

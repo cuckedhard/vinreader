@@ -163,7 +163,7 @@ describe("property: the expected check digit always validates", () => {
         expect("0123456789X").toContain(expected);
         expect(isCheckDigitValid(vin.slice(0, 8) + expected + vin.slice(9))).toBe(true);
       }),
-      { numRuns: 500 },
+      { seed: 0x4a3_0001, numRuns: 500 },
     );
   });
 });

@@ -57,7 +57,10 @@ function relative(path: string): string {
 }
 
 describe("[F2-a] §4.9's URL carrier is built from the app's base, not the bare origin", () => {
-  const files = sourceFiles(SRC).map((path) => ({ path, code: withoutComments(readFileSync(path, "utf8")) }));
+  const files = sourceFiles(SRC).map((path) => ({
+    path,
+    code: withoutComments(readFileSync(path, "utf8")),
+  }));
 
   it("finds the source tree it means to read", () => {
     // A scan that found nothing would satisfy every assertion below.
@@ -87,6 +90,8 @@ describe("[F2-a] §4.9's URL carrier is built from the app's base, not the bare 
 
     const actions = files.find((file) => relative(file.path) === "features/sheet/Actions.tsx")!;
     expect(actions.code).toMatch(/buildCopyTexts\([^)]*appBaseUrl\(\)\)/);
-    expect(actions.code).toMatch(/import\s*\{\s*appBaseUrl\s*\}\s*from\s*"\.\.\/\.\.\/app\/appBase"/);
+    expect(actions.code).toMatch(
+      /import\s*\{\s*appBaseUrl\s*\}\s*from\s*"\.\.\/\.\.\/app\/appBase"/,
+    );
   });
 });

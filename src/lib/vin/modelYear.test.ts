@@ -162,6 +162,7 @@ describe("modelYearFromVin", () => {
           if (resolved !== null) expect(candidates).toContain(resolved);
         },
       ),
+      { seed: 0x4a4_0001, numRuns: 100 },
     );
   });
 });
