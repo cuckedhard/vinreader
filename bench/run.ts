@@ -1336,17 +1336,22 @@ function deltaSection(
   );
   out.push("");
   out.push(
-    "**Why a column can come out identical, and how to tell that is a result rather than a " +
-      "harness fault.** On a grey frame the two luminance sources reduce to the same bytes: " +
-      "`RGBLuminanceSource` takes the green-favouring average `(r + 2g + b) / 4` and " +
-      "`HTMLCanvasElementLuminanceSource` takes `(306r + 601g + 117b + 512) >> 10`, and at " +
-      "`r = g = b = v` both are exactly `v`. This corpus renders grey. What is left between " +
-      "them is `isRotateSupported()` — true only on the canvas source, so `OneDReader` gets a " +
-      "90°-rotated retry under `TRY_HARDER`, which cannot help a symbol that is already " +
-      "horizontal — and `decodeWithState` against `decode(bitmap, hints)`, which rebuild the " +
-      "same readers from the same hints. The `yuv` column is the control: it is the one path " +
-      "that moves frames, so a delta table that shows it moving is a table that can see a " +
-      "difference when there is one.",
+    "**What is different between the instruments, and what is not.** Not colour: on a grey " +
+      "frame the two luminance sources reduce to the same bytes — `RGBLuminanceSource` takes " +
+      "the green-favouring average `(r + 2g + b) / 4` and the app's `FrameLuminanceSource` " +
+      "takes ZXing's `(306r + 601g + 117b + 512) >> 10`, and at `r = g = b = v` both are " +
+      "exactly `v`. This corpus renders grey. Three things do differ. **(1)** The app decodes " +
+      "§9-S1's ROI band before it decodes the whole frame (SB-3) and the `rgb` control " +
+      "decodes the frame only, which is where a `rgb` delta on this corpus comes from. " +
+      "**(2)** The app's source can rotate, so `OneDReader` takes `TRY_HARDER`'s 90° retry " +
+      "(R6-SA-1, where it used to throw once per miss frame); `RGBLuminanceSource` answers " +
+      "`isRotateSupported()` with false and never takes it. That retry cannot help a symbol " +
+      "which is already horizontal, and every symbol in this corpus is, so it moves no cell " +
+      "here — it is named because it is a real difference between the two instruments, not " +
+      "because it explains a number. **(3)** `decodeWithState` against " +
+      "`decode(bitmap, hints)`, which rebuild the same readers from the same hints. The " +
+      "`yuv` column is the control: it is the one path that moves frames, so a delta table " +
+      "that shows it moving is a table that can see a difference when there is one.",
   );
   out.push("");
   for (const path of others) {

@@ -139,9 +139,9 @@ function context(width: number, height: number): CanvasRenderingContext2D {
   if (canvas === null) canvas = document.createElement("canvas");
   if (canvas.width !== width) canvas.width = width;
   if (canvas.height !== height) canvas.height = height;
-  // `willReadFrequently` is what `@zxing/browser` asks for on both the capture canvas and
-  // inside `HTMLCanvasElementLuminanceSource`; it selects a software-backed canvas, so the
-  // pixels this bench decodes are the pixels the app's binarizer would see.
+  // `willReadFrequently` is what `@zxing/browser` asks for on its capture canvas and what
+  // `readFrame` asks for on the app's; it selects a software-backed canvas, so the pixels
+  // this bench decodes are the pixels the app's binarizer would see.
   const ctx = canvas.getContext("2d", { willReadFrequently: true });
   if (ctx === null) throw new Error("bench: no 2d context");
   return ctx;
@@ -192,8 +192,8 @@ function toI420AndBack(image: ImageData): void {
       data[at] = (298 * C + 409 * E + 128) >> 8;
       data[at + 1] = (298 * C - 100 * D - 208 * E + 128) >> 8;
       data[at + 2] = (298 * C + 516 * D + 128) >> 8;
-      // Alpha is left alone: the frame is opaque and `HTMLCanvasElementLuminanceSource`
-      // reads a zero alpha as white.
+      // Alpha is left alone: the frame is opaque, and `toLuminance` reads a zero alpha as
+      // white exactly as ZXing's own canvas source did.
     }
   }
 }
