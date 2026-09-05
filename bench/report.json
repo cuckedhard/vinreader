@@ -37,7 +37,7 @@
     ],
     "appPath": "canvas",
     "pathNotes": {
-      "canvas": "the app's path — Chromium, `BrowserMultiFormatReader.decodeFromCanvas`, `HTMLCanvasElementLuminanceSource`, `decodeWithState`",
+      "canvas": "the app's path — Chromium, `ScanFrameReader.decodeFromCanvas`, `FrameLuminanceSource`, `decodeWithState`",
       "yuv": "`canvas`, with the frame first put through a **modelled** BT.601 studio-swing I420 round trip — the colour half of a camera capture, not a camera",
       "rgb": "node, `RGBLuminanceSource` + `MultiFormatReader.decode` — the control, not the app"
     },
@@ -1213,6 +1213,121 @@
     }
   ],
   "seedRuns": [],
+  "quoted": {
+    "sweep": {
+      "result": "0 false accepts in 21,000 attempts",
+      "command": "bun run bench/run.ts --seed <s> --paths canvas",
+      "taken": "`harden S1` round 2, re-taken after SB-2 moved the bench onto the app's frame; ledger rows SB-1 and SB-7",
+      "seeds": [
+        1592597116,
+        286331153,
+        732782317,
+        2134559005,
+        3737844653
+      ],
+      "attempts": 21000,
+      "falseAccepts": 0,
+      "spreads": [
+        {
+          "cell": "`code_128` moderate",
+          "low": 0.75,
+          "high": 0.835
+        },
+        {
+          "cell": "`qr_code` severe",
+          "low": 0.375,
+          "high": 0.46
+        }
+      ],
+      "alsoWide": "`code_128` severe and `data_matrix` severe at 8.0 pp",
+      "cropWidest": "`code_128` severe at 11.5 pp",
+      "config": {
+        "layout": "frame",
+        "appPath": "canvas",
+        "count": 200,
+        "tiers": [
+          "clean",
+          "moderate",
+          "severe"
+        ],
+        "symbologies": [
+          "code_39",
+          "code_39_i",
+          "code_39_check",
+          "code_128",
+          "code_128_fnc1",
+          "data_matrix",
+          "qr_code"
+        ],
+        "formats": [
+          "CODE_39",
+          "CODE_128",
+          "DATA_MATRIX",
+          "QR_CODE"
+        ],
+        "hints": [
+          "TRY_HARDER",
+          "ASSUME_GS1"
+        ],
+        "severeDraw": "2 of warp, glare, low_light, jpeg, drawn per frame from the seed"
+      }
+    },
+    "drift": [],
+    "thisRun": {
+      "layout": "frame",
+      "appPath": "canvas",
+      "count": 200,
+      "tiers": [
+        "clean",
+        "moderate",
+        "severe"
+      ],
+      "symbologies": [
+        "code_39",
+        "code_39_i",
+        "code_39_check",
+        "code_128",
+        "code_128_fnc1",
+        "data_matrix",
+        "qr_code"
+      ],
+      "formats": [
+        "CODE_39",
+        "CODE_128",
+        "DATA_MATRIX",
+        "QR_CODE"
+      ],
+      "hints": [
+        "TRY_HARDER",
+        "ASSUME_GS1"
+      ],
+      "severeDraw": "2 of warp, glare, low_light, jpeg, drawn per frame from the seed"
+    }
+  },
+  "collisionReplay": [
+    {
+      "id": "R4-F",
+      "expected": "EH8U2YHX60HU8VGWD",
+      "collisionReads": "EH8U2YHX60HU7VAWD",
+      "verdict": "miss",
+      "extracted": null,
+      "decoded": null,
+      "layout": "frame",
+      "path": "canvas",
+      "seed": 3318966556
+    },
+    {
+      "id": "SB-1",
+      "expected": "KB7BWYDJ6TW0808Z3",
+      "collisionReads": "KB7BWYDJ6TW0874Z3",
+      "verdict": "miss",
+      "extracted": null,
+      "decoded": null,
+      "layout": "frame",
+      "path": "canvas",
+      "seed": 1441980170
+    }
+  ],
   "seedBands": [
     {
       "symbology": "code_39",
@@ -1471,76 +1586,416 @@
     {
       "scope": "canvas: all",
       "decodes": 4200,
-      "meanMs": 47.05285714287355,
-      "p95Ms": 96.19999999925494
+      "meanMs": 170.39235714284482,
+      "p95Ms": 448.69999999925494
     },
     {
       "scope": "canvas: clean",
       "decodes": 1400,
-      "meanMs": 36.53778571427534,
-      "p95Ms": 75.5
+      "meanMs": 108.16014285713035,
+      "p95Ms": 228.19999999925494
     },
     {
       "scope": "canvas: moderate",
       "decodes": 1400,
-      "meanMs": 41.24064285718836,
-      "p95Ms": 92.30000000074506
+      "meanMs": 141.90499999998934,
+      "p95Ms": 411.20000000018626
     },
     {
       "scope": "canvas: severe",
       "decodes": 1400,
-      "meanMs": 63.38014285715696,
-      "p95Ms": 107.59999999962747
+      "meanMs": 261.11192857141475,
+      "p95Ms": 522.2999999998137
     },
     {
       "scope": "yuv: all",
       "decodes": 4200,
-      "meanMs": 49.02169047620281,
-      "p95Ms": 109.5
+      "meanMs": 169.9920952380982,
+      "p95Ms": 464
     },
     {
       "scope": "yuv: clean",
       "decodes": 1400,
-      "meanMs": 35.68271428571881,
-      "p95Ms": 68
+      "meanMs": 101.93714285714884,
+      "p95Ms": 217.70000000018626
     },
     {
       "scope": "yuv: moderate",
       "decodes": 1400,
-      "meanMs": 44.28250000003725,
-      "p95Ms": 106.09999999962747
+      "meanMs": 142.3843571428602,
+      "p95Ms": 427.59999999962747
     },
     {
       "scope": "yuv: severe",
       "decodes": 1400,
-      "meanMs": 67.09985714285236,
-      "p95Ms": 132.80000000074506
+      "meanMs": 265.65478571428554,
+      "p95Ms": 556.1000000000931
     },
     {
       "scope": "rgb: all",
       "decodes": 4200,
-      "meanMs": 20.59865015166615,
-      "p95Ms": 41.74408099998254
+      "meanMs": 43.56029409523764,
+      "p95Ms": 81.989029999997
     },
     {
       "scope": "rgb: clean",
       "decodes": 1400,
-      "meanMs": 13.548527101427963,
-      "p95Ms": 18.635771000001114
+      "meanMs": 30.832184046428566,
+      "p95Ms": 42.929484000080265
     },
     {
       "scope": "rgb: moderate",
       "decodes": 1400,
-      "meanMs": 18.642349399285212,
-      "p95Ms": 44.2136060000048
+      "meanMs": 40.27030281857036,
+      "p95Ms": 85.3762299999944
     },
     {
       "scope": "rgb: severe",
       "decodes": 1400,
-      "meanMs": 29.605073954285274,
-      "p95Ms": 42.01451999999699
+      "meanMs": 59.578395420714,
+      "p95Ms": 86.82288099988364
     }
   ],
+  "timeToConfirm": {
+    "quoted": true,
+    "command": "bun run bench/confirm-probe.ts --repeats 8 --symbologies code_39_i,code_128 --tiers clean,moderate,severe",
+    "build": {
+      "commit": "66a0aa9fdb2a5261b8c92ea8ef5996d4e5b2d299",
+      "dirty": false
+    },
+    "srcCommitsSince": 0,
+    "overall": {
+      "symbology": "all",
+      "tier": "all",
+      "measured": 48,
+      "confirmed": 48,
+      "notConfirmed": 0,
+      "faults": 0,
+      "meanMs": 923.2708333333334,
+      "minMs": 323,
+      "maxMs": 4880
+    },
+    "cells": [
+      {
+        "symbology": "code_39_i",
+        "tier": "clean",
+        "measured": 8,
+        "confirmed": 8,
+        "notConfirmed": 0,
+        "faults": 0,
+        "meanMs": 373.5,
+        "minMs": 323,
+        "maxMs": 487
+      },
+      {
+        "symbology": "code_39_i",
+        "tier": "moderate",
+        "measured": 8,
+        "confirmed": 8,
+        "notConfirmed": 0,
+        "faults": 0,
+        "meanMs": 416,
+        "minMs": 346,
+        "maxMs": 610
+      },
+      {
+        "symbology": "code_39_i",
+        "tier": "severe",
+        "measured": 8,
+        "confirmed": 8,
+        "notConfirmed": 0,
+        "faults": 0,
+        "meanMs": 1352.25,
+        "minMs": 694,
+        "maxMs": 3316
+      },
+      {
+        "symbology": "code_128",
+        "tier": "clean",
+        "measured": 8,
+        "confirmed": 8,
+        "notConfirmed": 0,
+        "faults": 0,
+        "meanMs": 358.375,
+        "minMs": 328,
+        "maxMs": 399
+      },
+      {
+        "symbology": "code_128",
+        "tier": "moderate",
+        "measured": 8,
+        "confirmed": 8,
+        "notConfirmed": 0,
+        "faults": 0,
+        "meanMs": 478.125,
+        "minMs": 334,
+        "maxMs": 951
+      },
+      {
+        "symbology": "code_128",
+        "tier": "severe",
+        "measured": 8,
+        "confirmed": 8,
+        "notConfirmed": 0,
+        "faults": 0,
+        "meanMs": 2561.375,
+        "minMs": 970,
+        "maxMs": 4880
+      }
+    ],
+    "confirmWindowMs": 1500
+  },
+  "leadingFnc1": {
+    "quoted": true,
+    "command": "bun run bench/fnc1-probe.ts --count 60 --seed 0x5eed1a7c --tiers clean,moderate,severe --layouts frame,crop",
+    "build": {
+      "commit": "9eaa432ecd29dee1423bfb90b53c48f43a82ca4f",
+      "dirty": true
+    },
+    "cells": [
+      {
+        "symbology": "code_128",
+        "tier": "clean",
+        "layout": "frame",
+        "attempts": 60,
+        "decoded": 60,
+        "aimSeen": 0,
+        "shipped": 60,
+        "unstripped": 60
+      },
+      {
+        "symbology": "code_128",
+        "tier": "moderate",
+        "layout": "frame",
+        "attempts": 60,
+        "decoded": 47,
+        "aimSeen": 0,
+        "shipped": 47,
+        "unstripped": 47
+      },
+      {
+        "symbology": "code_128",
+        "tier": "severe",
+        "layout": "frame",
+        "attempts": 60,
+        "decoded": 20,
+        "aimSeen": 0,
+        "shipped": 19,
+        "unstripped": 19
+      },
+      {
+        "symbology": "code_128_fnc1",
+        "tier": "clean",
+        "layout": "frame",
+        "attempts": 60,
+        "decoded": 60,
+        "aimSeen": 0,
+        "shipped": 60,
+        "unstripped": 60
+      },
+      {
+        "symbology": "code_128_fnc1",
+        "tier": "moderate",
+        "layout": "frame",
+        "attempts": 60,
+        "decoded": 45,
+        "aimSeen": 0,
+        "shipped": 45,
+        "unstripped": 45
+      },
+      {
+        "symbology": "code_128_fnc1",
+        "tier": "severe",
+        "layout": "frame",
+        "attempts": 60,
+        "decoded": 0,
+        "aimSeen": 0,
+        "shipped": 0,
+        "unstripped": 0
+      },
+      {
+        "symbology": "code_128_fnc1_lead",
+        "tier": "clean",
+        "layout": "frame",
+        "attempts": 60,
+        "decoded": 60,
+        "aimSeen": 60,
+        "shipped": 60,
+        "unstripped": 0
+      },
+      {
+        "symbology": "code_128_fnc1_lead",
+        "tier": "moderate",
+        "layout": "frame",
+        "attempts": 60,
+        "decoded": 49,
+        "aimSeen": 49,
+        "shipped": 49,
+        "unstripped": 0
+      },
+      {
+        "symbology": "code_128_fnc1_lead",
+        "tier": "severe",
+        "layout": "frame",
+        "attempts": 60,
+        "decoded": 21,
+        "aimSeen": 21,
+        "shipped": 21,
+        "unstripped": 0
+      },
+      {
+        "symbology": "code_128_fnc1_lead2",
+        "tier": "clean",
+        "layout": "frame",
+        "attempts": 60,
+        "decoded": 60,
+        "aimSeen": 60,
+        "shipped": 60,
+        "unstripped": 0
+      },
+      {
+        "symbology": "code_128_fnc1_lead2",
+        "tier": "moderate",
+        "layout": "frame",
+        "attempts": 60,
+        "decoded": 51,
+        "aimSeen": 51,
+        "shipped": 51,
+        "unstripped": 0
+      },
+      {
+        "symbology": "code_128_fnc1_lead2",
+        "tier": "severe",
+        "layout": "frame",
+        "attempts": 60,
+        "decoded": 1,
+        "aimSeen": 1,
+        "shipped": 0,
+        "unstripped": 0
+      },
+      {
+        "symbology": "code_128",
+        "tier": "clean",
+        "layout": "crop",
+        "attempts": 60,
+        "decoded": 60,
+        "aimSeen": 0,
+        "shipped": 60,
+        "unstripped": 60
+      },
+      {
+        "symbology": "code_128",
+        "tier": "moderate",
+        "layout": "crop",
+        "attempts": 60,
+        "decoded": 47,
+        "aimSeen": 0,
+        "shipped": 47,
+        "unstripped": 47
+      },
+      {
+        "symbology": "code_128",
+        "tier": "severe",
+        "layout": "crop",
+        "attempts": 60,
+        "decoded": 36,
+        "aimSeen": 0,
+        "shipped": 35,
+        "unstripped": 35
+      },
+      {
+        "symbology": "code_128_fnc1",
+        "tier": "clean",
+        "layout": "crop",
+        "attempts": 60,
+        "decoded": 60,
+        "aimSeen": 0,
+        "shipped": 60,
+        "unstripped": 60
+      },
+      {
+        "symbology": "code_128_fnc1",
+        "tier": "moderate",
+        "layout": "crop",
+        "attempts": 60,
+        "decoded": 45,
+        "aimSeen": 0,
+        "shipped": 45,
+        "unstripped": 45
+      },
+      {
+        "symbology": "code_128_fnc1",
+        "tier": "severe",
+        "layout": "crop",
+        "attempts": 60,
+        "decoded": 0,
+        "aimSeen": 0,
+        "shipped": 0,
+        "unstripped": 0
+      },
+      {
+        "symbology": "code_128_fnc1_lead",
+        "tier": "clean",
+        "layout": "crop",
+        "attempts": 60,
+        "decoded": 60,
+        "aimSeen": 60,
+        "shipped": 60,
+        "unstripped": 0
+      },
+      {
+        "symbology": "code_128_fnc1_lead",
+        "tier": "moderate",
+        "layout": "crop",
+        "attempts": 60,
+        "decoded": 49,
+        "aimSeen": 49,
+        "shipped": 49,
+        "unstripped": 0
+      },
+      {
+        "symbology": "code_128_fnc1_lead",
+        "tier": "severe",
+        "layout": "crop",
+        "attempts": 60,
+        "decoded": 41,
+        "aimSeen": 41,
+        "shipped": 41,
+        "unstripped": 0
+      },
+      {
+        "symbology": "code_128_fnc1_lead2",
+        "tier": "clean",
+        "layout": "crop",
+        "attempts": 60,
+        "decoded": 60,
+        "aimSeen": 60,
+        "shipped": 60,
+        "unstripped": 0
+      },
+      {
+        "symbology": "code_128_fnc1_lead2",
+        "tier": "moderate",
+        "layout": "crop",
+        "attempts": 60,
+        "decoded": 51,
+        "aimSeen": 51,
+        "shipped": 51,
+        "unstripped": 0
+      },
+      {
+        "symbology": "code_128_fnc1_lead2",
+        "tier": "severe",
+        "layout": "crop",
+        "attempts": 60,
+        "decoded": 1,
+        "aimSeen": 1,
+        "shipped": 0,
+        "unstripped": 0
+      }
+    ],
+    "falseAccepts": []
+  },
   "delta": [
     {
       "path": "yuv",

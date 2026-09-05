@@ -11,7 +11,7 @@
 | Symbologies | code_39, code_39_i, code_39_check, code_128, code_128_fnc1, data_matrix, qr_code |
 | Tiers | clean, moderate, severe |
 | Attempts | 12600 (4200 per path) |
-| **Decode path (verdict)** | `canvas` — the app's path — Chromium, `BrowserMultiFormatReader.decodeFromCanvas`, `HTMLCanvasElementLuminanceSource`, `decodeWithState` |
+| **Decode path (verdict)** | `canvas` — the app's path — Chromium, `ScanFrameReader.decodeFromCanvas`, `FrameLuminanceSource`, `decodeWithState` |
 | **Frame (SB-2)** | `frame` — the symbol composited unscaled and centred on a white 1920x1080 field — what `@zxing/browser` draws from the `<video>` (SB-2) |
 | Symbol fill | 33.6% of the frame width, mean over 4200 frames |
 | Also measured | `yuv` — `canvas`, with the frame first put through a **modelled** BT.601 studio-swing I420 round trip — the colour half of a camera capture, not a camera |
@@ -21,7 +21,7 @@
 | Decoder hints (§4.6) | CODE_39, CODE_128, DATA_MATRIX, QR_CODE; TRY_HARDER, ASSUME_GS1 |
 | Severe extras (Z5) | 2 of warp, glare, low_light, jpeg, drawn per frame from the seed |
 | ZXing per-reader warnings swallowed (`rgb` only) | 8232 |
-| Reads carrying the §4.6 AIM identifier | 0 |
+| Reads carrying the §4.6 AIM identifier | 0 — no row in this corpus opens with FNC1, so §4.6's strip is inert here and these rates do not depend on it; it is exercised by the probe quoted below (SB-8) |
 
 Every degradation seed is `runSeed ^ fnv1a("vin|symbology|tier")` — the decode path is deliberately not in the key, so every instrument reads the same pixels. This run reproduces exactly, and any single row below reproduces on its own.
 
@@ -35,7 +35,32 @@ Every rate, miss reason and false accept below is `canvas`'s unless it says othe
 
 Zero at one seed is not zero (SB-7). §13.6's zero is a claim about the whole corpus, and a run is one draw from it: R4-F was found at one seed, and SB-1 only turned up on the fourth seed of a five-seed sweep, at 2 in 21,000. A clean headline here means this run produced none — nothing more.
 
-**Recorded, on this layout:** the five-seed sweep was re-run after SB-2 — `bun run bench/run.ts --seed <s> --paths canvas` for `0x5eed1a7c`, `0x11111111`, `0x2bad5eed`, `0x7f3ac91d`, `0xdecafbad`, 200 VINs each — and produced **0 false accepts in 21,000 attempts**. Both known Code 128 checksum collisions were found on the pre-SB-2 crop and neither survives the frame: R4-F (`EH8U2YHX60HU8VGWD` -> `EH8U2YHX60HU7VAWD`, seed `0xc5d3691c`) and SB-1 (`KB7BWYDJ6TW0808Z3` -> `KB7BWYDJ6TW0874Z3`, seed `0x55f2df0a`) both read as nothing at all on the framed version of their own frame. **That is not a disproof.** The collisions are arithmetic in Code 128's mod-103 check, not artefacts of the crop; the frame changed which frames decode at all, and a decode that no longer happens cannot be wrong. 21,000 attempts bound the rate at roughly 1 in 7,000 at 95%, which is not zero.
+### Quoted, not measured by this run (SB-11)
+
+Everything above this line is this run's own count over its own attempts. What follows is a **record of a measurement taken once and not re-taken here**: no part of this run recomputes those 21,000 attempts, and this block will go on printing until someone does.
+
+| | |
+|---|---|
+| Quoted result | **0 false accepts in 21,000 attempts** |
+| Seeds | `0x5eed1a7c`, `0x11111111`, `0x2bad5eed`, `0x7f3ac91d`, `0xdecafbad` — 200 VINs each |
+| Taken at | `harden S1` round 2, re-taken after SB-2 moved the bench onto the app's frame; ledger rows SB-1 and SB-7 |
+| Re-take with | `bun run bench/run.ts --seed <s> --paths canvas` |
+| Still comparable? | **Yes** — this run matches the sweep's configuration on layout, verdict path, corpus size, symbology set, §4.6 formats and hints, and the Z5 severe draw. |
+
+**What that check cannot see.** It compares the bench's configuration, not the program: a change inside `src/lib/vin`, in `bwip-js`'s rendering, in `sharp`'s degradations or in ZXing itself moves decodes without moving a single axis above. Nothing short of re-running the command covers that, and a quote is never evidence that a **current** run is clean.
+
+### Replayed by this run: the known Code 128 collisions (SB-11)
+
+Both mod-103-valid misreads this slice has found, re-decoded on this run's `frame` layout through `canvas`. Fixed seeds, so `--seed` and `--severe-extras` do not move them; they are recorded frames, not corpus attempts, and they are counted nowhere above.
+
+| Ledger | Expected VIN | Collision reads | Symbology | Drawn extras | This run | Decoded text |
+|---|---|---|---|---|---|---|
+| R4-F | `EH8U2YHX60HU8VGWD` | `EH8U2YHX60HU7VAWD` | code_128 | low_light + jpeg | reads nothing | - |
+| SB-1 | `KB7BWYDJ6TW0808Z3` | `KB7BWYDJ6TW0874Z3` | code_128_fnc1 | warp + low_light | reads nothing | - |
+
+Neither reads on this instrument, which is what the quoted sweep's explanation rests on: the frame changed which frames decode at all, and a decode that no longer happens cannot be wrong. **That is not a disproof.** The collisions are arithmetic in Code 128's own check, not artefacts of a crop, and the quoted 21,000 attempts bound the rate at roughly 1 in 7,000 at 95% — which is not zero.
+
+**If you are about to crop the frame (SB-3), this is the number you are about to change.** Both rows above read as nothing because of the frame the app decodes; an ROI band recovers marginal Code 128 frames, which is the population they came from. Read *What ROI risks* below before writing it.
 
 ## Decode rate per symbology × tier
 
@@ -215,7 +240,9 @@ Over 4200 frames: `canvas` 2623 correct, `rgb` 2623 correct — 0 read only by `
 
 ## What a cell is worth (SB-7)
 
-A cell above is 200 frames at **one run seed**. Change the seed and every `moderate` and `severe` frame draws a different rotation, warp, glare, grain and JPEG quality, so the cell moves. Five full canvas runs at five seeds, on this layout, spread `code_128` moderate over 75.0-83.5% and `qr_code` severe over 37.5-46.0% — 8.5 pp each — with `code_128` severe and `data_matrix` severe at 8.0. (On the pre-SB-2 crop layout the widest was `code_128` severe at 11.5 pp.) None of that was ever stated here, so a fixer who moved a moderate cell by 5 pp on one seed and called it a fix had measured noise.
+A cell above is 200 frames at **one run seed**. Change the seed and every `moderate` and `severe` frame draws a different rotation, warp, glare, grain and JPEG quality, so the cell moves.
+
+**Quoted, not measured by this run (SB-11).** The five-seed sweep recorded at `harden S1` round 2, re-taken after SB-2 moved the bench onto the app's frame; ledger rows SB-1 and SB-7 — 200 VINs at `0x5eed1a7c`, `0x11111111`, `0x2bad5eed`, `0x7f3ac91d`, `0xdecafbad` — spread `code_128` moderate over 75.0%-83.5% and `qr_code` severe over 37.5%-46.0% — 8.5 pp each — with `code_128` severe and `data_matrix` severe at 8.0 pp. (On the pre-SB-2 crop layout the widest was `code_128` severe at 11.5 pp.) Its configuration still matches this run's, so those spreads describe these cells. Re-take it with `bun run bench/run.ts --seed <s> --paths canvas`. None of it was ever stated here, so a fixer who moved a moderate cell by 5 pp on one seed and called it a fix had measured noise.
 
 **`clean` is exact.** The clean tier applies no seeded randomness at all — `degrade` returns the rendered symbol untouched — so a clean cell is byte-identical at every seed, and its measured spread across those five runs was 0.0 pp in every symbology. That is not a small band, it is no band: **a clean-tier miss is structural** (SB-4). The same three `qr_code` VINs fail at every seed and no re-run will move them.
 
@@ -225,7 +252,7 @@ A cell above is 200 frames at **one run seed**. Change the seed and every `moder
 
 **No verdict changes inside these bands.** Not one failing cell reaches its threshold at the top of its band; the closest is `code_128` moderate at 80.5%, whose band tops out at 85.4% against 90.0%. And the false-accept threshold is a count, not a rate, so no band applies to it at all: one is one.
 
-## The frame, and the ROI crop somebody is about to write (SB-2 / SB-3)
+## The frame, and the ROI crop somebody is about to write (SB-2 / SB-3 / SB-10)
 
 Measured by `bun run bench/frame-probe.ts --count 40` at seed `0x5eed1a7c` — **not by this run** — on identical symbol pixels across four layouts. `crop` is what this bench measured before SB-2; `frame` is what it measures now and what the app decodes; `roi` and `roi_tall` are two crops the app could apply to that frame.
 
@@ -236,28 +263,114 @@ Measured by `bun run bench/frame-probe.ts --count 40` at seed `0x5eed1a7c` — *
 | `roi` | that frame cropped to §6.1's guide box **as drawn**, 90% x 22% = 1728x238 | 392/840 (46.7%) | - |
 | `roi_tall` | that frame cropped to a taller band, 90% x 40% = 1728x432 | 547/840 (65.1%) | 29.0 ms |
 
-**Do not crop to the guide box as drawn.** §6.1's box is `h-[22%] w-[90%]` (`CameraView.tsx:92`); at 1080 px tall that is a 238 px band, and a label-realistic Data Matrix or QR is ~480-500 px tall. Cropping to it takes `data_matrix` clean from 100% to **0%** and `qr_code` clean from 95% to **0%** — it does not degrade 2D, it deletes it. The taller 90% x 40% band is the one that helps: `code_128` severe 27.5% -> 40.0% (+12.5 pp), `code_39_i` severe 30.0% -> 40.0% (+10.0), `code_39` severe 37.5% -> 40.0%, 2D fully restored, and mean decode time 40.0 ms -> 29.0 ms (-27%).
+**Do not crop to the guide box as drawn.** §6.1's box is `h-[22%] w-[90%]` (`CameraView.tsx:92`); at 1080 px tall that is a 238 px band, and a label-realistic Data Matrix or QR is ~480-500 px tall. Cropping to it takes `data_matrix` clean from 100% to **0%** and `qr_code` clean from 95% to **0%** — it does not degrade 2D, it deletes it. The taller 90% x 40% band is the one that helps: `code_128` severe 27.5% -> 40.0% (+12.5 pp), `code_39_i` severe 30.0% -> 40.0% (+10.0), `code_39` severe 37.5% -> 40.0%, 2D fully restored, and mean decode time 40.0 ms -> 29.0 ms (-27%). **Those 1D severe cells are 40 frames each and are superseded by the 200-frame measurement below (SB-10); the 2D result is not.**
 
 So an ROI crop buys back about a third of what the frame costs — it does not reach the tight crop's 68.0%, and no ROI band turns a failing §13.6 cell into a passing one. It is a `useScanner` change (SB-3) and it is a fixer's to make, not the bench's; the bench measures it and stops there. Separately, and independently of any of this: §6.1 draws a box telling the field user where to put the label and nothing downstream uses it.
+
+### What ROI risks — the part that is not a decode rate (SB-10)
+
+**An ROI crop does not decode better. It makes _different frames_ decode.** It raises a rate by turning frames that currently read as nothing into frames that read as something — and a marginal Code 128 frame is precisely where both of this slice's known checksum collisions were found. R4-F and SB-1 are mod-103-valid misreads, which Code 128's own check cannot catch, and the zero-false-accept headline at the top of this report holds on the `frame` layout **because** those two frames read as nothing on it. That is measured every run, in the replay table under the headline.
+
+Recorded, not taken by this run — `bun run bench/frame-probe.ts --count 200 --symbologies code_39,code_39_i,code_128,code_128_fnc1 --tiers severe` at seed `0x5eed1a7c`, the four 1D severe rows, 800 frames per layout:
+
+| Layout | Correct | False accepts | Frames dark on `frame` that this layout decodes |
+|---|---:|---:|---|
+| `frame` (the app) | 157/800 (19.6%) | 0 | - |
+| `roi` (guide box as drawn) | 187/800 (23.4%) | 0 | 33 |
+| `roi_tall` (90% x 40%) | 187/800 (23.4%) | 0 | 33 — 31 correct, **0 wrong VIN**, 2 decoded without naming a VIN, 0 frames lost |
+
+Three things follow, and the third is the one that matters.
+
+1. **The gain is smaller than SB-3 recorded.** At 200 VINs, `roi_tall` moves `code_128` severe 25.0% -> 31.0% (+6.0 pp), `code_39` 30.0% -> 34.0%, `code_39_i` 23.5% -> 28.5%, and leaves `code_128_fnc1` at 0.0%. SB-3's +12.5 pp on `code_128` severe was a 40-VIN cell, which is a ±15 pp measurement — see *What a cell is worth*. ROI is still worth having; it is worth about half of what the ledger row claims. The -27% decode time is the drawn box's, not the tall band's: in the same 200-VIN run, on the same machine under the same load, `frame` cost 141.2 ms, `roi` 103.7 ms (-27%) and `roi_tall` 131.1 ms (-7%).
+
+2. **On 1D rows the two bands are the same measurement.** `roi` and `roi_tall` decode identically here, because a severe 1D symbol fits inside the 238 px drawn box. SB-3's difference between them is entirely 2D, where the drawn box deletes the symbol outright. A fixer testing an ROI crop on Code 39 alone will not see the failure mode that matters.
+
+3. **Zero false accepts in the recovered population is not the reassurance it looks like.** 33 recovered frames, against a phenomenon this bench has measured at 2 in 21,000 attempts, is roughly 300x too small a sample to contain one; the rule of three puts the 95% upper bound on the recovered-frame rate at 3/33, about 9%. The measurement cannot see the thing ROI risks.
+
+**Therefore: implementing ROI (SB-3) requires re-taking the five-seed sweep before this report's false-accept headline may be believed.** `bun run bench/run.ts --seed <s> --paths canvas` at `0x5eed1a7c`, `0x11111111`, `0x2bad5eed`, `0x7f3ac91d`, `0xdecafbad`, 200 VINs each — the same 21,000 attempts the headline quotes. The headline is a count over the frames the current layout decodes; ROI changes which frames those are, so afterwards it is a count about a different population and the old one says nothing. A decode rate that goes up while the false-accept count goes unmeasured is not an improvement, it is an unmeasured trade — and §13.3 grades the losing side of that trade S1.
+
+## The leading FNC1, and what §4.6's strip is worth (SB-8)
+
+This run's corpus produced **0** reads carrying the §4.6 AIM identifier, because no row in it opens with FNC1. That is not the strip passing a test; it is the strip never being asked. §13.7's R5 list keeps the *frequency* question — do the fleet's labels carry this shape — as §7 item 4, and it is the cost question that a bench can answer.
+
+**Quoted, not measured by this run (SB-11).** `bun run bench/fnc1-probe.ts --count 60 --seed 0x5eed1a7c --tiers clean,moderate,severe --layouts frame,crop`, 60 VINs, decode path `canvas`, §4.6 hints TRY_HARDER, ASSUME_GS1, at build `9eaa432` (dirty tree). No commit has touched `src/lib/vin` or `src/features/scan` since.
+
+On the layout the app decodes (`frame`, SB-2). `shipped` is `extractVin` over the bytes the app sees, `]C1` already removed; `unstripped` is the same bytes with the identifier put back — §4.2 as it was before `stripAimIdentifier` existed.
+
+| Row | Tier | Decoded | `]C1` seen | shipped | unstripped |
+|---|---|---:|---:|---:|---:|
+| code_128 | clean | 100.0% | 0 | 100.0% | 100.0% |
+| code_128 | moderate | 78.3% | 0 | 78.3% | 78.3% |
+| code_128 | severe | 33.3% | 0 | 31.7% | 31.7% |
+| code_128_fnc1 | clean | 100.0% | 0 | 100.0% | 100.0% |
+| code_128_fnc1 | moderate | 75.0% | 0 | 75.0% | 75.0% |
+| code_128_fnc1 | severe | 0.0% | 0 | 0.0% | 0.0% |
+| code_128_fnc1_lead | clean | 100.0% | 60 | 100.0% | 0.0% |
+| code_128_fnc1_lead | moderate | 81.7% | 49 | 81.7% | 0.0% |
+| code_128_fnc1_lead | severe | 35.0% | 21 | 35.0% | 0.0% |
+| code_128_fnc1_lead2 | clean | 100.0% | 60 | 100.0% | 0.0% |
+| code_128_fnc1_lead2 | moderate | 85.0% | 51 | 85.0% | 0.0% |
+| code_128_fnc1_lead2 | severe | 1.7% | 1 | 0.0% | 0.0% |
+
+**The strip is the whole difference.** On the 2 leading-FNC1 rows, 242 of 360 frames decoded and `]C1` was present on 242 of those reads; §4.2 named the right VIN on 241 of 360 with the strip and 0 without it. Zero without it, at every tier: `]C1` fuses `C1` onto the front of the first field, §4.2 sees a 19-character run and refuses it, so the cost of not stripping is total rather than partial.
+
+Against the plain Code 128 control on the same frames — 126/180 (70.0%) versus the lead rows' 241/360 (66.9%) — a leading-FNC1 label with the strip in place is neither better nor worse than an ordinary one. §4.6's guard closes the whole gap it was added for.
+
+**0 false accepts, on either scoring.** The strip recovers reads without inventing any: every frame it rescued produced the VIN that was printed on it, and the unstripped scoring produced no wrong VIN either — its failures are all refusals.
+
+On `crop` — the symbol alone, which the app never sees — the same rows read 261/360 shipped against 241/360 on `frame`. The SB-8 ledger row's percentages were taken on that layout, before this probe composited the frame; the frame is the number that describes the product.
+
+A leading-FNC1 read, verbatim, after the strip: `1HGCM82633A004352`.
+
+What this cannot say is how many real labels open with FNC1. That is §13.7's R5 question (b) and it stays §7 item 4: one photographed door-jamb label settles it.
 
 ## Decode time
 
 | Scope | Decodes | Mean ms | p95 ms |
 |---|---:|---:|---:|
-| canvas: all | 4200 | 47.1 | 96.2 |
-| canvas: clean | 1400 | 36.5 | 75.5 |
-| canvas: moderate | 1400 | 41.2 | 92.3 |
-| canvas: severe | 1400 | 63.4 | 107.6 |
-| yuv: all | 4200 | 49.0 | 109.5 |
-| yuv: clean | 1400 | 35.7 | 68.0 |
-| yuv: moderate | 1400 | 44.3 | 106.1 |
-| yuv: severe | 1400 | 67.1 | 132.8 |
-| rgb: all | 4200 | 20.6 | 41.7 |
-| rgb: clean | 1400 | 13.5 | 18.6 |
-| rgb: moderate | 1400 | 18.6 | 44.2 |
-| rgb: severe | 1400 | 29.6 | 42.0 |
+| canvas: all | 4200 | 170.4 | 448.7 |
+| canvas: clean | 1400 | 108.2 | 228.2 |
+| canvas: moderate | 1400 | 141.9 | 411.2 |
+| canvas: severe | 1400 | 261.1 | 522.3 |
+| yuv: all | 4200 | 170.0 | 464.0 |
+| yuv: clean | 1400 | 101.9 | 217.7 |
+| yuv: moderate | 1400 | 142.4 | 427.6 |
+| yuv: severe | 1400 | 265.7 | 556.1 |
+| rgb: all | 4200 | 43.6 | 82.0 |
+| rgb: clean | 1400 | 30.8 | 42.9 |
+| rgb: moderate | 1400 | 40.3 | 85.4 |
+| rgb: severe | 1400 | 59.6 | 86.8 |
 
-Times cover the ZXing read only — binarisation and the decode — and exclude getting the frame onto the canvas, because the app never parses a PNG either: it draws a video frame it already has. Timings are the one part of this report that is not bit-reproducible; no threshold rides on them. §13.4's mean **time-to-confirm** is not here: confirmation is two agreeing reads inside §6.3's window, which run (b) — the Playwright fake-camera pass — is what exercises. This run measures one frame at a time.
+Times cover the ZXing read only — binarisation and the decode — and exclude getting the frame onto the canvas, because the app never parses a PNG either: it draws a video frame it already has. Timings are the one part of this report that is not bit-reproducible; no threshold rides on them. This run measures one frame at a time, so §13.4's mean **time-to-confirm** is not one of these numbers: it is two agreeing reads inside §6.3's window, which run (b) exercises — the section below (SB-5).
+
+## Time to confirm (§13.4 run b, SB-5)
+
+**Quoted, not measured by this run (SB-11).** Confirmation is a property of a stream, not of a frame: §6.3 confirms on two agreeing reads inside 1500 ms, so the number below comes from run (b) — the built app, Chromium's fake capture device, a fresh browser context per repeat so the 10 s cooldown is not what gets timed, and the clock running from the first frame the `<video>` can supply to the hash change only the `confirmed` transition performs.
+
+| | |
+|---|---|
+| Taken by | `bun run bench/confirm-probe.ts --repeats 8 --symbologies code_39_i,code_128 --tiers clean,moderate,severe` |
+| Build measured | `66a0aa9` |
+| Scene | VIN `1HGCM82633A004352`, 12 distinct degraded poses at 10 fps, 1920x1080, 8 contexts per cell, giving up at 25000 ms |
+| Machine | 4 cores, load 9.8 / 7.9 / 5.9 at recording — milliseconds here are wall clock on a shared box, and only the comparison between cells is load-free |
+| Still current? | no commit has touched `src/` since that build |
+
+| Symbology | Tier | Confirmed | Mean ms | Min ms | Max ms | Harness faults |
+|---|---|---:|---:|---:|---:|---:|
+| code_39_i | clean | 8/8 | 374 | 323 | 487 | 0 |
+| code_39_i | moderate | 8/8 | 416 | 346 | 610 | 0 |
+| code_39_i | severe | 8/8 | 1352 | 694 | 3316 | 0 |
+| code_128 | clean | 8/8 | 358 | 328 | 399 | 0 |
+| code_128 | moderate | 8/8 | 478 | 334 | 951 | 0 |
+| code_128 | severe | 8/8 | 2561 | 970 | 4880 | 0 |
+
+**Overall: 48 of 48 confirmed, mean 923 ms.** No harness faults.
+
+**A mean here is a tail statistic.** The widest cell in this recording is `code_128` severe, 970-4880 ms over 8 repeats — a 5.0x spread on one scene at one build. Confirmation needs *two* decodable poses inside one window, so on a hard label it waits for a coincidence, and the mean is set by how long that takes. Read these as orders of magnitude; a 20% move between recordings is noise, the same way a 5 pp move in a severe decode cell is (SB-7).
+
+**`code_128` severe sits above §6.3's 1500 ms agreement window** — mean 2561 ms. A candidate that old has lapsed, so confirmation on those labels typically restarts at least once: the user holds the phone still through more than one window. That is the number a confirmation change (§6.3) would be aiming at.
+
+A y4m loop is not a hand (§13.7): fixed frame rate, repeating poses, nobody moving the phone toward the label. This bounds the confirmation logic; it does not close §7 item 4.
 
 ## §13.6 verdict
 
@@ -276,6 +389,6 @@ Times cover the ZXing read only — binarisation and the decode — and exclude 
 - qr_code clean: 98.5% < 99.0% (197/200 correct, -0.5 pp)
 - qr_code severe: 43.0% < 70.0% (86/200 correct, -27.0 pp)
 
-These numbers came out of `canvas` — the app's path — Chromium, `BrowserMultiFormatReader.decodeFromCanvas`, `HTMLCanvasElementLuminanceSource`, `decodeWithState` — on the 1920x1080 field the app's decoder is handed (SB-2). That is the app's decoder, in the app's engine, on the app's frame geometry; the bench's node path was none of those (B2) and the crop layout was not the last of them. What it still is not is a **camera frame**. The app draws a `<video>` whose pixels came off a sensor through an ISP and YUV 4:2:0; this composites a PNG onto a uniform white field. A real jamb is a darker, textured surround, and a clean white field is the *easier* of the two for a row-histogram binariser, so even these rates are a ceiling and not a floor. `bench/camera-probe.ts` measures the colour step on a subset — the same frames through Chromium's own fake capture device and a real `<video>` — and finds the camera reads slightly *worse*, deterministically. Nothing here models a lens, and nothing here is a label.
+These numbers came out of `canvas` — the app's path — Chromium, `ScanFrameReader.decodeFromCanvas`, `FrameLuminanceSource`, `decodeWithState` — on the 1920x1080 field the app's decoder is handed (SB-2). That is the app's decoder, in the app's engine, on the app's frame geometry; the bench's node path was none of those (B2) and the crop layout was not the last of them. What it still is not is a **camera frame**. The app draws a `<video>` whose pixels came off a sensor through an ISP and YUV 4:2:0; this composites a PNG onto a uniform white field. A real jamb is a darker, textured surround, and a clean white field is the *easier* of the two for a row-histogram binariser, so even these rates are a ceiling and not a floor. `bench/camera-probe.ts` measures the colour step on a subset — the same frames through Chromium's own fake capture device and a real `<video>` — and finds the camera reads slightly *worse*, deterministically. Nothing here models a lens, and nothing here is a label.
 
 Synthetic is not real (§13.4, §13.7). This bench tunes hints, ROI cropping and confirmation logic; real door-jamb labels on real trucks stay §7 item 4, and stay human.
