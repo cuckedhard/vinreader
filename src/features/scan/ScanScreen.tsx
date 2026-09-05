@@ -4,7 +4,7 @@ import { PayloadError, encodePayload, parseCarrier } from "../../lib/payload/cod
 import { getSettings } from "../../lib/storage/settings";
 import type { ExtractResult } from "../../lib/vin/types";
 import { Banner } from "../../ui/Banner";
-import { Button } from "../../ui/Button";
+import { Button, TAP_LG_TARGET } from "../../ui/Button";
 import { CameraView } from "./CameraView";
 import { ManualEntry } from "./ManualEntry";
 import { scanFeedback } from "./feedback";
@@ -222,7 +222,9 @@ export function ScanScreen() {
             Type or paste the VIN from the door jamb label — spaces and a leading I are fine.
           </p>
           <ManualEntry />
-          <Button variant="secondary" full onClick={showCamera}>
+          {/* §6.1 names Scan in the ≥ 56 px list. This is that action on the typed screen —
+              the way back to the camera — and `secondary` is 48 by variant (R6-SA-3). */}
+          <Button variant="secondary" full style={TAP_LG_TARGET} onClick={showCamera}>
             Scan with the camera
           </Button>
         </>

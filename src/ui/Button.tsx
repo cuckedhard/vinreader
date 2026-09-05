@@ -1,4 +1,4 @@
-import type { ComponentPropsWithRef } from "react";
+import type { ComponentPropsWithRef, CSSProperties } from "react";
 
 export type ButtonVariant = "primary" | "secondary" | "danger" | "ghost";
 
@@ -77,6 +77,19 @@ const VARIANTS: Record<ButtonVariant, string> = {
   ghost:
     "[--tap-target:var(--tap)] min-h-[var(--tap-target)] border-transparent bg-transparent text-accent text-base",
 };
+
+/**
+ * §6.1's ≥ 56 px list names five *actions* — Scan, Use as-is, Share, Copy, Sign in — and a
+ * variant cannot know which of them a given button is. This is how a call site says so, and
+ * the only supported way to raise a target: it sets the same `--tap-target` the variants
+ * declare, so the button and any container reading that target (see `Banner`) agree, and
+ * being inline it cannot lose a cascade race to either. A `min-h-…` in `className` can and
+ * does — Tailwind emits `min-h-[var(--tap-lg)]` *before* `min-h-[var(--tap-target)]`, so the
+ * variant would win and the override would silently do nothing (F4 in the other direction).
+ *
+ * The 56 px itself stays in tokens.css (§7 item 5); this only points at it.
+ */
+export const TAP_LG_TARGET = { "--tap-target": "var(--tap-lg)" } as CSSProperties;
 
 export function Button({
   variant = "primary",
