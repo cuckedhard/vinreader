@@ -72,6 +72,29 @@ export function scanEventRow(event: ScanEvent, origin: ScanEventPayload["origin"
 }
 
 /**
+ * [G3] The outbox id of a VIN's meta row, and the reason there is only ever one.
+ *
+ * §4.12 resolves `vehicle_meta` **last-writer-wins per VIN**, so of all the rows queued
+ * for one VIN only the newest can change anything on the server — every older one is a
+ * fact the account either already has or is about to be given. Keying the row by its VIN
+ * makes a re-queue replace rather than append, exactly as `scanEventRow` reuses the event
+ * id for its own idempotence, and it costs the scan path nothing: one `put` by primary
+ * key, no read, no scan of the table (N7, P1).
+ *
+ * Without it a signed-out phone — never drained, since `push.ts` runs only from the sync
+ * engine — kept a whole copy of the §4.7 decode block per re-scan: measured, 51 scans of
+ * one decoded VIN left 51 meta rows carrying 2 distinct payloads and ~6 KB of the 5,003
+ * -byte decode per scan, growing without bound and invisibly (§6.4 gives a signed-out
+ * device no sync chip) until `QuotaExceededError` landed on the scan path itself.
+ *
+ * The prefix keeps this id out of the space `newId()` draws from, so it can never collide
+ * with a §5.2 event id.
+ */
+export function vehicleMetaRowId(vin: string): string {
+  return `vehicle_meta:${vin}`;
+}
+
+/**
  * The row for everything about a vehicle the server does not derive from events (§4.12:
  * `scan_count`, `first_scanned_at` and `last_scanned_at` are aggregates the client never
  * pushes). It is copied from the record as written, so what is queued is what is stored.
@@ -81,14 +104,19 @@ export function scanEventRow(event: ScanEvent, origin: ScanEventPayload["origin"
  * account on the next write for that VIN — not the moment it lands.
  */
 export function vehicleMetaRow(record: VehicleRecord): OutboxRow {
-  return outboxRow("vehicle_meta", record.vin, {
-    p_vin: record.vin,
-    p_unit: record.unit,
-    p_notes: record.notes,
-    p_meta_updated_at: record.metaUpdatedAt,
-    p_structural: record.structural,
-    p_decode: record.decode,
-  });
+  return outboxRow(
+    "vehicle_meta",
+    record.vin,
+    {
+      p_vin: record.vin,
+      p_unit: record.unit,
+      p_notes: record.notes,
+      p_meta_updated_at: record.metaUpdatedAt,
+      p_structural: record.structural,
+      p_decode: record.decode,
+    },
+    vehicleMetaRowId(record.vin),
+  );
 }
 
 /** The row for a soft delete. §4.12: any later scan event clears the tombstone. */
@@ -159,9 +187,32 @@ export async function dueRows(query: DueQuery = {}): Promise<OutboxRow[]> {
     .slice(0, query.limit ?? OUTBOX_BATCH);
 }
 
-/** Drop rows the server has accepted (§4.12: "Remove on success"). */
-export async function removeOutboxRows(ids: string[]): Promise<void> {
-  await db.outbox.bulkDelete(ids);
+/**
+ * Drop rows the server has accepted (§4.12: "Remove on success").
+ *
+ * [G3] By row and not by id. A `vehicle_meta` row is keyed by its VIN, so a scan or a
+ * unit/notes edit that lands while the push is in flight replaces it under the same id —
+ * and deleting that id would drop a fact the account was never sent, silently, with
+ * nothing left to notice the gap. A stored row whose payload is still the one that was
+ * pushed is redundant and goes; one carrying anything else is newer than the push and
+ * stays queued for the next drain. Every other kind has a payload fixed by its id (a §5.2
+ * event, a tombstone), so for them this is the delete it always was.
+ *
+ * A payload that compares unequal for any other reason keeps a row that could have gone:
+ * the next drain pushes it again, and both RPCs are idempotent (§4.12), so the cost of
+ * being wrong here is one request and never a lost write.
+ */
+export async function removeOutboxRows(rows: OutboxRow[]): Promise<void> {
+  await db.transaction("rw", db.outbox, async () => {
+    const stored = await db.outbox.bulkGet(rows.map((row) => row.id));
+    const accepted = rows.filter((row, index) => {
+      const current = stored[index];
+      return (
+        current !== undefined && JSON.stringify(current.payload) === JSON.stringify(row.payload)
+      );
+    });
+    await db.outbox.bulkDelete(accepted.map((row) => row.id));
+  });
 }
 
 /**

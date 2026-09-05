@@ -28,6 +28,7 @@ import {
   scanEventRow,
   vehicleDeleteRow,
   vehicleMetaRow,
+  vehicleMetaRowId,
 } from "./outbox";
 import { upsertVehicle, type UpsertInput } from "./upsert";
 
@@ -133,10 +134,22 @@ describe("§4.12 payloads — an outbox row is the push call's argument, already
     });
   });
 
-  it("gives every row an id of its own, and a distinct one to each meta row", async () => {
+  /**
+   * [G3] WAS: "gives every row an id of its own, and a distinct one to each meta row",
+   * asserting `ids.size === 2`. That distinctness is the defect, not a property: §4.12
+   * resolves `vehicle_meta` last-writer-wins per VIN, so a second row for a VIN can only
+   * ever say what the first said or be superseded by it, and a signed-out phone — which
+   * nothing drains — kept one per scan, decode block and all.
+   */
+  it("gives one meta row per VIN, so a re-queue replaces rather than appends", async () => {
     const record = await upsertVehicle(scan());
     const ids = new Set([vehicleMetaRow(record).id, vehicleMetaRow(record).id]);
-    expect(ids.size).toBe(2);
+    expect(ids.size).toBe(1);
+    expect(vehicleMetaRow(record).id).toBe(vehicleMetaRowId(VIN));
+    // Per VIN, not per app: two vehicles keep two rows.
+    expect(vehicleMetaRow({ ...record, vin: VIN_B }).id).not.toBe(vehicleMetaRow(record).id);
+    // And it cannot collide with a §5.2 event id, which is what the other keyed row uses.
+    expect(vehicleMetaRow(record).id).not.toBe(scanEventRow(event(), "scan").id);
   });
 });
 
@@ -159,9 +172,38 @@ describe("§5.7 the queue", () => {
   it("removes what the server accepted and leaves the rest", async () => {
     const [a, b] = [vehicleDeleteRow(VIN), vehicleDeleteRow(VIN_B)];
     await appendOutbox([a, b]);
-    await removeOutboxRows([a.id]);
+    await removeOutboxRows([a]);
 
     expect((await db.outbox.toArray()).map((row) => row.vin)).toEqual([VIN_B]);
+  });
+
+  /**
+   * [G3] The hazard the VIN-keyed meta row creates, and the reason the removal is by row
+   * and not by id: a scan or an edit landing while a push is in flight replaces the row
+   * under the same id, and deleting that id would drop a fact the account never received.
+   */
+  it("leaves a meta row that changed under an in-flight push", async () => {
+    const record = await upsertVehicle(scan());
+    const pushed = (await db.outbox.toArray()).find((row) => row.kind === "vehicle_meta")!;
+
+    // What the push engine sent is `pushed`; this lands while the request is in flight.
+    const edited = { ...record, unit: "TRK-118", metaUpdatedAt: T2 };
+    await appendOutbox([vehicleMetaRow(edited)]);
+    await removeOutboxRows([pushed]);
+
+    const left = await db.outbox.where("kind").equals("vehicle_meta").toArray();
+    expect(left).toHaveLength(1);
+    expect(left[0].payload).toMatchObject({ p_unit: "TRK-118", p_meta_updated_at: T2 });
+  });
+
+  it("still removes a row the push found unchanged", async () => {
+    const record = await upsertVehicle(scan());
+    const pushed = (await db.outbox.toArray()).find((row) => row.kind === "vehicle_meta")!;
+    // The same record queued again while the push was in flight: the account has it.
+    await appendOutbox([vehicleMetaRow(record)]);
+    await removeOutboxRows([pushed]);
+
+    expect(await db.outbox.where("kind").equals("vehicle_meta").count()).toBe(0);
   });
 
   it("clears the queue without touching the records it describes", async () => {
@@ -366,11 +408,16 @@ describe("N7 / P1 — the queue fills with no account and no network", () => {
     // offer because the queue filled while nobody was signed in. Nothing throttles it.
     for (let i = 0; i < 14; i += 1) await upsertVehicle(scan({ vin: VIN_B, at: T1 }));
 
-    // Two rows per write, as §4.12 asks for: fourteen events, and fourteen meta rows that
-    // each carry the record as it stood. The queue is not coalesced — the merge rules are
-    // last-writer-wins, so a superseded meta row is harmless, and collapsing them would be
-    // merge behaviour on the write path.
-    expect(await pendingCount()).toBe(28);
+    // [G3] WAS 28, on the argument that "a superseded meta row is harmless". It is not:
+    // nothing drains the queue signed out, the row carries the whole §4.7 decode block,
+    // and fourteen re-scans of one truck queued fourteen copies of it. Fifteen rows now —
+    // the §5.2 log is append-only, so all fourteen events stay, and the one meta row is
+    // the one §4.12's last-writer-wins can act on. This is keying, not merging: the row
+    // is replaced by its key exactly as a re-queued scan event is, and no merge rule
+    // moved to the write path.
+    expect(await pendingCount()).toBe(15);
+    expect(await db.scanEvents.count()).toBe(14);
+    expect(await db.outbox.where("kind").equals("vehicle_meta").count()).toBe(1);
     expect(await db.vehicles.count()).toBe(1);
   });
 });

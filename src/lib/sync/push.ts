@@ -205,7 +205,7 @@ async function pushBatch(
 
     const { error } = await send(context, kind, live);
     if (error === null) {
-      await removeOutboxRows(live.map((row) => row.id));
+      await removeOutboxRows(live);
       state.pushed += live.length;
       continue;
     }
@@ -220,7 +220,7 @@ async function pushBatch(
       for (const row of live) {
         const single = await send(context, kind, [row]);
         if (single.error === null) {
-          await removeOutboxRows([row.id]);
+          await removeOutboxRows([row]);
           state.pushed += 1;
           continue;
         }

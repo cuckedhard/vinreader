@@ -79,7 +79,12 @@ describe("an offline day, flushed in order on reconnect", () => {
     expect((await engine.sync()).status).toBe("offline");
     expect(server.requests).toHaveLength(0);
     const queued = await db.outbox.count();
-    expect(queued).toBe(9); // four scans (event + meta each) and one edit
+    // [G3] WAS 9 — four scans queuing an event and a meta row each, plus the edit. A meta
+    // row is now keyed by its VIN (§4.12 resolves it last-writer-wins per VIN), so the
+    // second scan of VIN and the edit that followed it replace the row rather than pile
+    // up: four events, three meta rows, one per truck. Everything the account ends up
+    // with, asserted below, is unchanged — including the edit, which is on the row.
+    expect(queued).toBe(7);
 
     online = true;
     const snapshot = await engine.sync();

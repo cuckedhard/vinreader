@@ -73,12 +73,22 @@ async function seedLocal(queued: unknown[]): Promise<void> {
   await db.vehicles.put({ ...record, metaUpdatedAt: T1 });
   await db.outbox.clear();
   await db.outbox.bulkPut(
-    queued.map((metaUpdatedAt) => {
+    queued.map((metaUpdatedAt, index) => {
       // Built through the real row builder so the payload shape is the one that is pushed,
       // then the one field this rule reads is set — including to values a string field
       // should never hold, which is the case the `typeof` test exists for.
+      //
+      // [G3] The id is overridden because `vehicleMetaRow` now keys a meta row by its VIN,
+      // so a write path can no longer queue two of them for one vehicle. This fold still
+      // has to handle several: a database written by a build before that change holds one
+      // row per scan, and it is still there after the app updates. The state below is that
+      // database, which is the state a real device upgrades from.
       const row = vehicleMetaRow(record);
-      return { ...row, payload: { ...row.payload, p_meta_updated_at: metaUpdatedAt } };
+      return {
+        ...row,
+        id: `legacy-${index}-${row.id}`,
+        payload: { ...row.payload, p_meta_updated_at: metaUpdatedAt },
+      };
     }),
   );
 }
