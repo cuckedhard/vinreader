@@ -37,6 +37,14 @@
  *
  * Deterministic: one literal payload, and one seeded measurement through the repo's single
  * approved generator. No clock, no timers, no `Math.random`.
+ *
+ * CLOSED. The fix is in the recogniser and nowhere else (`carrier.ts`): `TEXT_CARRIER_RE`
+ * takes any separator a base64url body cannot begin with, `URL_CARRIER_RE` anchors on the
+ * `/i` path segment as well as on `#`, and `matchCarrier` asks the grammar a second time
+ * with the percent-escapes undone. §4.2 and §4.9 are both unchanged — the escaped and
+ * stripped links now decode to the record that was sent, and nothing on this path hands a
+ * base64url body to `extractVin`. Every assertion below that used to pin the defect now
+ * pins its absence, and the one that records what §4.2 still does is marked as such.
  */
 import { describe, expect, it } from "vitest";
 import { checkDigitApplies } from "../vin/checkDigit";
@@ -73,7 +81,20 @@ const MANGLED = [
   ["text separator damaged", SEPARATOR_DAMAGED],
 ] as const;
 
-describe("[G2] a §4.9 carrier damaged in transit is still mined by §4.2", () => {
+/**
+ * The D14 order, as both callers run it: `useScanner.readScanResult` and
+ * `ImportScreen.readPaste` ask the §4.9 guard first and only hand `extractVin` what it
+ * refuses. The finding is stated over this pipeline and not over `extractVin` alone,
+ * because §4.2 is a §4 constant and is not what was wrong: `extractVin` mines any long run
+ * of §4.1-legal characters by design, which is exactly why D14 puts the guard in front of
+ * it. A VIN out of here is a fabricated VIN; there is no other way for one to come out.
+ */
+function readAsCaller(raw: string): "carrier" | "vin" | "nothing" {
+  if (isPayloadCarrier(raw)) return "carrier";
+  return extractVin(raw) === null ? "nothing" : "vin";
+}
+
+describe("[G2] a §4.9 carrier damaged in transit no longer reaches §4.2", () => {
   it("carries an intact body: only the wrapper is damaged", () => {
     // The evidence that this is a recogniser problem and not a corrupt payload — repair
     // the wrapper and the same bytes decode to the record that was sent.
@@ -82,31 +103,54 @@ describe("[G2] a §4.9 carrier damaged in transit is still mined by §4.2", () =
   });
 
   it.each(MANGLED)("refuses to mine a VIN out of a %s carrier", (_name, raw) => {
-    // The guard does not fire, so nothing stops §4.2.
-    expect(isPayloadCarrier(raw)).toBe(false);
-    expect(matchCarrier(raw)).toBeNull();
-    // TODAY: { vin: "WWFYZCB0CNVJAYAXM", checkDigitValid: false }. Nothing on the label,
-    // nothing in the payload and nothing a human could read off the screen is that number.
-    expect(extractVin(raw)).toBeNull();
+    // WAS: false, null, and a VIN — the guard did not fire, so nothing stopped §4.2.
+    expect(isPayloadCarrier(raw)).toBe(true);
+    expect(matchCarrier(raw)).not.toBeNull();
+    expect(readAsCaller(raw)).toBe("carrier");
+    // The wrapper is damaged and the body is not, so all three even import: the damage
+    // §4.9 cares about is to the body, and the version check owns the rest (P6).
+    expect(parseCarrier(raw)).toEqual(PAYLOAD);
   });
 
-  it("the fabricated read reaches storage with no banner at all (D03 never fires)", () => {
-    const read = extractVin(PERCENT_ESCAPED);
-    // Guarded so the assertion below cannot pass by the read having gone away.
-    expect(read).not.toBeNull();
-    const vin = read?.vin ?? "";
-    // §6.3's mismatch banner is gated on `!checkDigitValid && checkDigitApplies(vin)`
-    // (`useVinCommit.request`). Position 9 here is a letter, so the second half is false:
-    // the write happens straight away, with the success beep and "Got it ✓".
-    expect(checkDigitApplies(vin)).toBe(false);
-    // The finding, stated as the thing that must not be true.
-    expect(read).toBeNull();
+  it("keeps the guard load-bearing: §4.2 still mines the body if anything asks it", () => {
+    // WHY THE FIX IS IN THE GUARD, kept executable. §4.2 is authoritative (CLAUDE.md rule
+    // 2) and untouched by this finding: asked directly, `extractVin` still returns a VIN
+    // for the percent-escaped carrier, and it is a number no label carries (N2).
+    const mined = extractVin(PERCENT_ESCAPED);
+    expect(mined?.vin).toBe("WWFYZCB0CNVJAYAXM");
+    // And it would have arrived with no banner at all. §6.3's mismatch banner is gated on
+    // `!checkDigitValid && checkDigitApplies(vin)` (`useVinCommit.request`); position 9 is
+    // a letter, so the second half is false and the write happens straight away, with the
+    // success beep and "Got it ✓". Nothing else downstream would have said a word — which
+    // is why the recogniser, not a banner, is where this had to be fixed.
+    expect(checkDigitApplies(mined?.vin ?? "")).toBe(false);
+    // The finding, stated as the thing that must not be true: no caller asks.
+    expect(readAsCaller(PERCENT_ESCAPED)).not.toBe("vin");
   });
 
-  it("fabricates a VIN from ~3% of seeded payloads, nearly all of them silently", () => {
+  it("still reads a VIN off text that only looks like a carrier", () => {
+    // The cost of the widening, bounded. A line carrying a `%` that is not an escape still
+    // reaches §4.2 and still reads: `matchCarrier` asks `decodeURIComponent` about every
+    // string that is not already a carrier, and a throw there may not cost a read.
+    expect(readAsCaller("100% 1HGCM82633A004352")).toBe("vin");
+    // The text prefix ahead of a VIN is a human writing a sentence, so the separator is
+    // required and whitespace is not one: this stays a non-carrier. (§4.2 then refuses it
+    // for its own reasons — step 1 strips the space and R4-A refuses the fused run.)
+    expect(isPayloadCarrier("VINRELAY1 1HGCM82633A004352")).toBe(false);
+    // And the route is still a route: a `d` parameter somewhere else in an ordinary URL
+    // does not make one. (What §4.2 does with a base64url body it is handed directly is
+    // the standing §4.2 hazard `carrier.ts` documents, and is not this finding.)
+    expect(isPayloadCarrier(`https://example.com/parts?id=99&d=${BODY}`)).toBe(false);
+    expect(readAsCaller("https://example.com/parts?id=99")).toBe("nothing");
+  });
+
+  it("fabricates a VIN from none of 2,000 seeded payloads, and imports every one", () => {
     // 2,000 trials here for suite time; the ledger's 3.17% / 2.88% and their intervals are
-    // the same code at 20,000. At this N it measures 76 fabricated, 70 of them silent.
-    // R4-B: the one approved generator, so this rate is reproducible and its sample is real.
+    // the same code at 20,000. WAS, through `extractVin` alone at this N: 76 fabricated, 70
+    // of them silent. Now the guard answers first, as both callers do, and the count is the
+    // §13.6 criterion-4 zero. The two counters below are what keeps that zero honest — a
+    // recogniser that stopped recognising, or a generator that degenerated (R4-B), would
+    // reach zero fabrications too, and `recognised`/`imported` would not follow it.
     const rng = countingRandom(20260904);
     const alphabet = "ABCDEFGHJKLMNPRSTUVWXYZ0123456789";
     const makes = ["HONDA", "FORD", "FREIGHTLINER", "INTERNATIONAL", "VOLVO", "CATERPILLAR"];
@@ -115,6 +159,8 @@ describe("[G2] a §4.9 carrier damaged in transit is still mined by §4.2", () =
     const trials = 2000;
     let fabricated = 0;
     let silent = 0;
+    let recognised = 0;
+    let imported = 0;
     for (let i = 0; i < trials; i += 1) {
       let vin = "";
       for (let c = 0; c < 17; c += 1) vin += pick([...alphabet]);
@@ -129,6 +175,11 @@ describe("[G2] a §4.9 carrier damaged in transit is still mined by §4.2", () =
         by: `Crew phone ${Math.floor(rng.next() * 99)}`,
       };
       const raw = `https://vinrelay.example/%23/i%3Fd%3D${encodePayload(payload)}`;
+      if (isPayloadCarrier(raw)) {
+        recognised += 1;
+        if (parseCarrier(raw)?.vin === vin) imported += 1;
+        continue;
+      }
       const read = extractVin(raw);
       if (read === null) continue;
       fabricated += 1;
@@ -137,7 +188,13 @@ describe("[G2] a §4.9 carrier damaged in transit is still mined by §4.2", () =
     // A degenerate stream would make the rate meaningless (R4-B), so the sample is pinned.
     expect(rng.distinct()).toBeGreaterThan(trials * 10);
     // §13.6 criterion 4 asks for zero false accepts. This is the same number, off the
-    // handoff path rather than the camera path.
-    expect({ fabricated, silent }).toEqual({ fabricated: 0, silent: 0 });
+    // handoff path rather than the camera path — and every one of those 2,000 mangled
+    // links now hands over the VIN that was actually sent instead.
+    expect({ fabricated, silent, recognised, imported }).toEqual({
+      fabricated: 0,
+      silent: 0,
+      recognised: trials,
+      imported: trials,
+    });
   });
 });

@@ -48,8 +48,18 @@ describe("isPayloadCarrier", () => {
     expect(isPayloadCarrier("https://vpic.nhtsa.dot.gov/api/vehicles/decodevin/" + VIN)).toBe(
       false,
     );
-    // `d` in the query rather than the fragment is not the §4.9 shape.
-    expect(isPayloadCarrier("https://vinrelay.example/i?d=" + BODY)).toBe(false);
+    // A `d` that is not on the `/i` route is not the §4.9 shape and is still read for a VIN.
+    expect(isPayloadCarrier("https://example.com/parts?id=99&d=" + BODY)).toBe(false);
+  });
+
+  it("recognizes the §4.9 route with its fragment stripped", () => {
+    // G2. This assertion used to read `toBe(false)` on the grounds that "`d` in the query
+    // rather than the fragment is not the §4.9 shape". §4.9 is unchanged — the fragment
+    // form is still the only one this app writes — but a chat client or a preview fetcher
+    // forwards the link with the `#` dropped, and the body survives that. Refusing to
+    // recognise it sent the base64url body to `extractVin`, which mined a VIN out of it
+    // (N2): measured 3.17% of realistic payloads, 2.88% with no banner at all.
+    expect(isPayloadCarrier("https://vinrelay.example/i?d=" + BODY)).toBe(true);
   });
 
   it("rejects another app route", () => {
