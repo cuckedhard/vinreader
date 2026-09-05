@@ -103,24 +103,60 @@ test("the palette and the browser's own chrome change together", async ({ page }
 interface FirstFrame {
   theme: string | undefined;
   background: string;
+}
+
+/** One write of `data-theme`, and how much of the document existed when it happened. */
+interface ThemeWrite {
+  value: string | null;
+  /** `#root`'s child count, or -1 when there is no `#root` in the document yet. */
   rendered: number;
 }
 
 /**
- * Records the document as it stood for the first frame the browser drew. `requestAnimationFrame`
- * from an init script runs before that frame is painted, and `rendered` is how many children
- * `#root` had at the time — 0 means React had not mounted yet, which is what stops this test
- * from being satisfied by the post-hydration writer in `Shell`.
+ * Records two things about a load, from an init script that runs before any script of the
+ * page's own — including the pre-paint bootstrap in `index.html`:
+ *
+ *  - the document as it stood for the first frame the browser drew (`requestAnimationFrame`
+ *    from here runs before that frame is painted);
+ *  - every write of `data-theme`, in order, with the state of `#root` at each one.
+ *
+ * The second is what proves the theme was not the post-hydration writer in `Shell`, and it
+ * replaces the guard that used to do it — `#root`'s child count at the first frame, asserted
+ * to be 0 (G6 / R6-SA-2). That was a race between the browser's first paint and React's
+ * mount, not a property of the app: with the bundle warm in the HTTP cache React sometimes
+ * won, and the assertion failed with "React had already rendered, so this proves nothing".
+ * Measured 2 failures in 12 repeats before this change, 0 in 40 after. `desktop` lists
+ * `light` in its `dependencies` (playwright.config.ts), so each of those failures skipped
+ * the whole of `bun run test:e2e` — scan, offline, import and share included.
+ *
+ * The replacement is not a race: `index.html`'s bootstrap is an inline script in `<head>`,
+ * so at the moment it writes `data-theme` the parser has not reached `<body>` and `#root`
+ * does not exist. A theme that arrived from React instead would carry a count of 0 or more,
+ * on any machine, at any cache temperature.
  */
-async function recordFirstFrame(page: Page): Promise<void> {
+async function recordLoad(page: Page): Promise<void> {
   await page.addInitScript(() => {
-    const target = window as unknown as { __firstFrame: FirstFrame | null };
+    const target = window as unknown as {
+      __firstFrame: FirstFrame | null;
+      __themeWrites: ThemeWrite[];
+    };
     target.__firstFrame = null;
+    target.__themeWrites = [];
+    // `document`, not `documentElement`, which does not exist yet this early; a subtree
+    // observer on the document sees the attribute wherever `<html>` turns up.
+    new MutationObserver((records) => {
+      for (const record of records) {
+        if (record.attributeName !== "data-theme") continue;
+        target.__themeWrites.push({
+          value: document.documentElement.getAttribute("data-theme"),
+          rendered: document.getElementById("root")?.childElementCount ?? -1,
+        });
+      }
+    }).observe(document, { subtree: true, attributes: true, attributeFilter: ["data-theme"] });
     requestAnimationFrame(() => {
       target.__firstFrame = {
         theme: document.documentElement.dataset.theme,
         background: getComputedStyle(document.body).backgroundColor,
-        rendered: document.getElementById("root")?.childElementCount ?? -1,
       };
     });
   });
@@ -134,6 +170,15 @@ async function firstFrame(page: Page): Promise<FirstFrame> {
   return frame as FirstFrame;
 }
 
+/** The first write of `data-theme` on the load being inspected — the one that must be ours. */
+async function firstThemeWrite(page: Page): Promise<ThemeWrite> {
+  const writes = await page.evaluate(
+    () => (window as unknown as { __themeWrites: ThemeWrite[] }).__themeWrites,
+  );
+  expect(writes.length, "nothing ever wrote data-theme on this load").toBeGreaterThan(0);
+  return writes[0] as ThemeWrite;
+}
+
 /**
  * FINDING 2. The choice lives in Dexie (§5.6), which cannot answer before the first paint,
  * so a light-theme user was shown the dark palette on every launch until it did. Both
@@ -141,23 +186,32 @@ async function firstFrame(page: Page): Promise<FirstFrame> {
  * majority who never open the setting — is not made to flash by the machinery that fixes it.
  */
 test("the stored theme is already in force on the first painted frame", async ({ page }) => {
-  await recordFirstFrame(page);
+  await recordLoad(page);
 
   await chooseTheme(page, "Light");
   await page.reload();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
   const cold = await firstFrame(page);
-  expect(cold.rendered, "React had already rendered, so this proves nothing").toBe(0);
   expect(cold.theme).toBe("light");
   expect(cold.background).toBe(await backgroundToken(page));
+  // And it was in force before there was anything for React to have rendered into, so the
+  // two assertions above cannot be satisfied by `Shell` re-applying the row after Dexie
+  // answers 63–441 ms later.
+  expect(await firstThemeWrite(page), "the first write was not the pre-paint bootstrap").toEqual({
+    value: "light",
+    rendered: -1,
+  });
 
   await chooseTheme(page, "Dark");
   await page.reload();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
   const back = await firstFrame(page);
-  expect(back.rendered).toBe(0);
   expect(back.theme).toBe("dark");
   expect(back.background).toBe(await backgroundToken(page));
+  expect(await firstThemeWrite(page), "the first write was not the pre-paint bootstrap").toEqual({
+    value: "dark",
+    rendered: -1,
+  });
 });
 
 interface ContrastFailure {
