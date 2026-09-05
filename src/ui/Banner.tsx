@@ -6,7 +6,14 @@ export interface BannerProps {
   tone: BannerTone;
   title: string;
   children?: ReactNode;
-  /** Rendered below the text; each action keeps its own ≥ 48 px target (§6.1). */
+  /**
+   * Rendered below the text; each action keeps its own target, and never less than §6.1's
+   * 48 px floor. The row asks the child for the target it declares (`--tap-target`, which
+   * every `Button` variant sets) and supplies 48 px only where the child declares none — a
+   * plain `<a>`, say. A flat `min-h-[var(--tap)]` on the children instead is what F4 was:
+   * it landed on a primary `Button` at the same specificity as the button's own 56 px and
+   * won on source order, so the row silently *lowered* an action's target.
+   */
   actions?: ReactNode;
   className?: string;
 }
@@ -33,7 +40,9 @@ export function Banner({ tone, title, children, actions, className }: BannerProp
       <p className={`text-lg leading-tight font-bold ${titleTone}`}>{title}</p>
       {children ? <div className="mt-2 text-base leading-snug text-fg">{children}</div> : null}
       {actions ? (
-        <div className="mt-4 flex flex-wrap gap-3 [&>*]:min-h-[var(--tap)]">{actions}</div>
+        <div className="mt-4 flex flex-wrap gap-3 [&>*]:min-h-[var(--tap-target,var(--tap))]">
+          {actions}
+        </div>
       ) : null}
     </div>
   );

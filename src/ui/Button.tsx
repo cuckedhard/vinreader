@@ -52,12 +52,30 @@ const BASE =
   // tap that worked. Pinned to no change rather than left to the browser.
   "disabled:text-[var(--disabled-fg)] disabled:active:opacity-100";
 
-/** §6.1: primary is the screen's main action, so it gets the 56 px target; the rest get 48 px. */
+/**
+ * §6.1: primary is the screen's main action, so it gets the 56 px target; the rest get 48 px.
+ *
+ * Each variant *declares* its target as `--tap-target` and then sizes itself from that
+ * declaration, rather than writing the token straight into `min-h`. The two lines say the
+ * same thing to this element, but the first one also says it to the element's container:
+ * `Banner`'s action row floors its children at `var(--tap-target, var(--tap))`, so it reads
+ * the target the button asked for and supplies 48 px only where a child asked for nothing.
+ *
+ * Writing `min-h-[var(--tap-lg)]` here instead is what F4 was: the row's rule and the
+ * button's rule land on the same element at the same specificity, the row's is emitted
+ * later, and a primary inside a Banner rendered 48 px while its class list said 56. Six call
+ * sites had grown an `h-14` pin to paper over it and the seventh shipped without one.
+ * Measured in tests/e2e/banner-targets.spec.ts.
+ */
 const VARIANTS: Record<ButtonVariant, string> = {
-  primary: "min-h-[var(--tap-lg)] border-accent bg-accent text-bg text-lg",
-  secondary: "min-h-[var(--tap)] border-border bg-bg-elev text-fg text-base",
-  danger: "min-h-[var(--tap)] border-danger bg-danger text-bg text-base",
-  ghost: "min-h-[var(--tap)] border-transparent bg-transparent text-accent text-base",
+  primary:
+    "[--tap-target:var(--tap-lg)] min-h-[var(--tap-target)] border-accent bg-accent text-bg text-lg",
+  secondary:
+    "[--tap-target:var(--tap)] min-h-[var(--tap-target)] border-border bg-bg-elev text-fg text-base",
+  danger:
+    "[--tap-target:var(--tap)] min-h-[var(--tap-target)] border-danger bg-danger text-bg text-base",
+  ghost:
+    "[--tap-target:var(--tap)] min-h-[var(--tap-target)] border-transparent bg-transparent text-accent text-base",
 };
 
 export function Button({

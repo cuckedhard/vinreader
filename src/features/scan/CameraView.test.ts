@@ -113,9 +113,16 @@ function buttonClasses(html: string, label: string): string[] | null {
   return match === null ? null : match[1]!.split(" ");
 }
 
-/** §6.1: primary is the 56 px target (`--tap-lg`), everything else 48 px (`--tap`). */
+/**
+ * §6.1: primary is the 56 px target (`--tap-lg`), everything else 48 px (`--tap`).
+ *
+ * A `Button` declares its target as `--tap-target` and sizes itself from that declaration,
+ * so the declaration is what names the variant here (F4). This says which weight the markup
+ * asks for; what a browser then computes for it is measured in
+ * tests/e2e/banner-targets.spec.ts, because a class list cannot answer that.
+ */
 function isPrimary(html: string, label: string): boolean {
-  return buttonClasses(html, label)?.includes("min-h-[var(--tap-lg)]") ?? false;
+  return buttonClasses(html, label)?.includes("[--tap-target:var(--tap-lg)]") ?? false;
 }
 
 /** Whether the camera preview is collapsed. A whole class token, not a substring of one. */

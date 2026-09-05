@@ -181,16 +181,11 @@ export function ScanScreen() {
               title="Check digit doesn't match."
               actions={
                 <>
-                  {/* h-14 pins the §6.1 56 px target: the Banner action row sets its children
-                      to a 48 px minimum, which would otherwise win over the Button's own. */}
-                  <Button
-                    variant="primary"
-                    className="h-14"
-                    onClick={handleRescan}
-                    disabled={saving}
-                  >
+                  <Button variant="primary" onClick={handleRescan} disabled={saving}>
                     Rescan
                   </Button>
+                  {/* §6.1 names Use as-is in the ≥ 56 px list, and this is a secondary — so
+                      the pin says something the variant does not, and stays. */}
                   <Button
                     variant="secondary"
                     className="h-14"
@@ -211,7 +206,7 @@ export function ScanScreen() {
               tone="danger"
               title="Couldn't save this VIN"
               actions={
-                <Button variant="primary" className="h-14" onClick={handleScanAgain}>
+                <Button variant="primary" onClick={handleScanAgain}>
                   Scan again
                 </Button>
               }

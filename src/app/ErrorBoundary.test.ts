@@ -105,11 +105,13 @@ describe("what the notice says", () => {
     expect(markup).toContain('role="alert"');
     expect(markup).toContain("Reload");
     // The *size* of that action is deliberately not asserted here. A class token in static
-    // markup says nothing about the rendered box: `Banner`'s action row carries
-    // `[&>*]:min-h-[var(--tap)]` at (0,1,1), which outranks the primary variant's own
-    // `min-h-[var(--tap-lg)]` at (0,1,0), so this markup can contain the 56 px class while
-    // the pixels are 48 — which is exactly what it did. That is the dead-guard class the
-    // ledger records at R4-H' and R4-B: an assurance whose instrument could not fail.
+    // markup says nothing about the rendered box: `Banner`'s action row used to carry a flat
+    // `[&>*]:min-h-[var(--tap)]`, which landed on the primary variant's own 56 px at the same
+    // specificity and won on source order, so this markup could contain the 56 px class while
+    // the pixels were 48 — which is exactly what it did (F4). That is the dead-guard class the
+    // ledger records at R4-H' and R4-B: an assurance whose instrument could not fail. The row
+    // now reads the target the child declares, and that is still not something this file can
+    // see.
     // The 56 px is measured in a real cascade, in Chromium, by
     // `tests/e2e/storage-unavailable.spec.ts` ("the Reload out of the notice is a 56 px
     // target"), which measures the box and goes red at 48.
