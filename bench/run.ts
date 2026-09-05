@@ -976,6 +976,7 @@ function markdownReport(
   attempts: readonly Attempt[],
   vinCount: number,
   failures: readonly string[],
+  diagnosticReasons: readonly string[],
 ): string {
   const app = options.paths[0];
   const others = options.paths.slice(1);
@@ -991,6 +992,15 @@ function markdownReport(
 
   out.push("# §13.4 scan-robustness bench");
   out.push("");
+  if (diagnosticReasons.length > 0) {
+    out.push(
+      "> **DIAGNOSTIC RUN — NOT §13.6 EVIDENCE.** This is not the canonical `bun run bench`: " +
+        `${diagnosticReasons.join("; ")}. The verdict below is the verdict *of this run*, ` +
+        "over whatever subset it measured, and it says nothing about the thresholds. The " +
+        "tracked artifacts were not written (SB-6).",
+    );
+    out.push("");
+  }
   out.push(
     failures.length === 0
       ? "**PASS** — every §13.6 threshold met, zero false accepts."
@@ -1225,6 +1235,7 @@ function jsonReport(
   attempts: readonly Attempt[],
   vinCount: number,
   failures: readonly string[],
+  diagnosticReasons: readonly string[],
 ): string {
   const app = options.paths[0];
   const others = options.paths.slice(1);
@@ -1235,6 +1246,8 @@ function jsonReport(
   return `${JSON.stringify(
     {
       spec: "§13.4 scan-robustness bench",
+      canonical: diagnosticReasons.length === 0,
+      nonCanonicalReasons: diagnosticReasons,
       config: {
         seed: options.seed,
         seedHex: `0x${options.seed.toString(16)}`,
@@ -1335,6 +1348,53 @@ function checkThresholds(
   return failures;
 }
 
+/**
+ * Why a run is not the canonical §13.6 run, or an empty list when it is.
+ *
+ * R2-E gave the tracked report a guard and keyed it on the three flags that had broken it —
+ * `--quick`, `--severe-extras`, a non-app decode path. `--seed`, `--count`, `--tiers`,
+ * `--symbologies` and `--paths` were not in it, so a diagnostic could and did overwrite
+ * `bench/report.md` with a headline reading "**PASS** — every §13.6 threshold met." over
+ * `Attempts | 2` (SB-6 — the fourth occurrence of the class, after the round-1 review's
+ * N-01, R2-E itself and the Z1 commit message).
+ *
+ * So the guard is no longer a list of the flags that have burned someone. It is the
+ * definition of the canonical run — exactly what `bun run bench` does with no further
+ * arguments — and any deviation from it, through any flag, present or added later, sends
+ * the output to the diagnostic paths. A new flag is non-canonical unless someone adds it
+ * here deliberately, which is the opposite of the failure this keeps repeating.
+ *
+ * The reasons are returned rather than a bare boolean so the run can say out loud which
+ * artifact it is writing and why, in stderr and in the report itself: a diagnostic that
+ * announces itself cannot be mistaken for evidence later.
+ */
+function nonCanonicalReasons(options: Options, app: DecodePath): string[] {
+  const reasons: string[] = [];
+  if (options.quick) reasons.push("--quick");
+  if (options.severeExtras !== null) {
+    reasons.push(`--severe-extras ${options.severeExtras.join(",")} forces the severe tier`);
+  }
+  if (app !== APP_PATH) reasons.push(`the verdict path is ${app}, not the app's ${APP_PATH}`);
+  if (options.seed !== DEFAULT_SEED) {
+    reasons.push(`--seed 0x${options.seed.toString(16)}, not 0x${DEFAULT_SEED.toString(16)}`);
+  }
+  if (options.count !== DEFAULT_COUNT) {
+    reasons.push(`--count ${options.count}, not ${DEFAULT_COUNT}`);
+  }
+  if (options.tiers.length !== TIERS.length) {
+    reasons.push(`--tiers ${options.tiers.join(",")}, not all ${TIERS.length} of ${TIERS.join(",")}`);
+  }
+  if (options.symbologies.length !== BENCH_SYMBOLOGIES.length) {
+    reasons.push(
+      `--symbologies ${options.symbologies.join(",")}, not all ${BENCH_SYMBOLOGIES.length}`,
+    );
+  }
+  if (options.paths.length !== DEFAULT_PATHS.length) {
+    reasons.push(`--paths ${options.paths.join(",")}, not all of ${DEFAULT_PATHS.join(",")}`);
+  }
+  return reasons;
+}
+
 async function main(): Promise<number> {
   let options: Options | null;
   try {
@@ -1409,18 +1469,21 @@ async function main(): Promise<number> {
   // An uncaught error in the page means the bundle, not the barcode, decided the outcome.
   for (const message of pageErrors) failures.push(`browser page error: ${message}`);
 
-  // A --quick run never writes the tracked full-corpus artifacts: the `bench` script
-  // hardcodes --json, so without this an 8-VIN loop overwrites the §13.6 criterion-4
-  // evidence through the flag instead of through the report path. --severe-extras is on
-  // the same footing for the same reason: it forces the tier to be something §13.4 does
-  // not define, so its numbers are a diagnostic and must not land in the tracked report.
-  // The decode path joins them (B2): a report whose verdict came from an instrument other
-  // than the app's is a diagnostic, and the tracked artifact must never be one.
-  const nonCanonical = options.quick || options.severeExtras !== null || app !== APP_PATH;
+  // A run that is not exactly `bun run bench` never writes the tracked full-corpus
+  // artifacts — see `nonCanonicalReasons`. The reasons are printed, and carried into the
+  // report, so a diagnostic can never be read later as evidence.
+  const reasons = nonCanonicalReasons(options, app);
+  const nonCanonical = reasons.length > 0;
+  if (nonCanonical) {
+    process.stderr.write(
+      `bench: DIAGNOSTIC RUN — ${reasons.join("; ")}\n` +
+        `bench: the tracked §13.6 artifacts are untouched; writing ${QUICK_REPORT_PATH}\n`,
+    );
+  }
 
   await writeFile(
     nonCanonical ? QUICK_REPORT_PATH : REPORT_PATH,
-    markdownReport(options, { executable }, cells, timings, attempts, vinCount, failures),
+    markdownReport(options, { executable }, cells, timings, attempts, vinCount, failures, reasons),
     "utf8",
   );
   const jsonPath =
@@ -1433,7 +1496,7 @@ async function main(): Promise<number> {
   if (jsonPath !== null) {
     await writeFile(
       resolve(process.cwd(), jsonPath),
-      jsonReport(options, { executable }, cells, timings, attempts, vinCount, failures),
+      jsonReport(options, { executable }, cells, timings, attempts, vinCount, failures, reasons),
       "utf8",
     );
   }
@@ -1489,7 +1552,10 @@ async function main(): Promise<number> {
   }
   const all = timings[0];
   lines.push(`  decode time (${all.scope}): mean ${ms(all.meanMs)} ms, p95 ${ms(all.p95Ms)} ms`);
-  lines.push(`  report: ${nonCanonical ? QUICK_REPORT_PATH : REPORT_PATH}`);
+  lines.push(
+    `  report: ${nonCanonical ? QUICK_REPORT_PATH : REPORT_PATH}` +
+      (nonCanonical ? `  (diagnostic — ${reasons.join("; ")})` : "  (canonical §13.6 evidence)"),
+  );
   if (jsonPath !== null) lines.push(`  json:   ${resolve(process.cwd(), jsonPath)}`);
   lines.push("");
   if (failures.length === 0) {
