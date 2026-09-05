@@ -82,8 +82,23 @@ function describe(error: unknown): string {
   return String(error);
 }
 
-export function FailureNotice({ error }: { error: unknown }) {
-  const copy = isStorageError(error) ? STORAGE_COPY : RENDER_COPY;
+interface FailureNoticeProps {
+  error: unknown;
+  /**
+   * The caller already knows this came from storage, so nothing is inferred from it.
+   *
+   * The boundary has to infer, and `isStorageError` is deliberately narrow about it: it
+   * catches whatever a render threw, and calling a `TypeError` "storage" would be a guess
+   * shown as a fact (N2). A caller that awaited `db.open()` is in the other position — it
+   * knows where the rejection came from, and `indexedDB.open` throwing a bare
+   * `SecurityError` never passes through a Dexie error type at all, so inference would put
+   * the wrong sentence on the one fault this flag exists for (F1-b).
+   */
+  fromStorage?: boolean;
+}
+
+export function FailureNotice({ error, fromStorage = false }: FailureNoticeProps) {
+  const copy = fromStorage || isStorageError(error) ? STORAGE_COPY : RENDER_COPY;
   return (
     <div className="p-4">
       <Banner

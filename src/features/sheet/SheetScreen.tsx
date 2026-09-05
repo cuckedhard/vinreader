@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useNavigate, useParams } from "react-router";
+import { FailureNotice } from "../../app/ErrorBoundary";
+import { useStorageFailure } from "../../app/useStorageFailure";
 import { db } from "../../lib/storage/db";
 import { normalizeVehicle } from "../../lib/storage/normalize";
 import { refreshDecode } from "../../lib/storage/decodeQueue";
@@ -244,6 +246,13 @@ export default function SheetScreen({ vin: vinProp, onDeleted }: SheetScreenProp
   const vin = (vinProp ?? params.vin ?? "").trim().toUpperCase();
   const back = embedded ? undefined : () => void navigate("/history");
 
+  // F1-b: the live query below never emits when the database never opened — Dexie filters
+  // `DatabaseClosedError` before `observer.error`, so nothing throws and the boundary above
+  // this screen is never reached. Without this signal `record` stays `undefined` and the
+  // early return below rendered an empty `<main>`: no heading, no message, no error, for
+  // the rest of the session, on the route a scan lands on.
+  const storageFailure = useStorageFailure();
+
   // `undefined` is "the query has not answered yet" and `null` is "no such record";
   // without the sentinel the two look alike and the screen flashes "No record" on load.
   const record = useLiveQuery(async () => {
@@ -253,7 +262,13 @@ export default function SheetScreen({ vin: vinProp, onDeleted }: SheetScreenProp
     return row ? normalizeVehicle(row, new Date().getFullYear()) : null;
   }, [vin]);
 
-  if (record === undefined) return null;
+  // `undefined` still means "no answer yet" and renders nothing while the query is in
+  // flight; it only stops meaning that once storage has said it cannot answer at all (P7).
+  if (record === undefined) {
+    return storageFailure === null ? null : (
+      <FailureNotice error={storageFailure.cause} fromStorage />
+    );
+  }
   if (record === null) return <NoRecord vin={vin} onBack={back} />;
   // §4.12: a tombstoned record is gone as far as the user's history is concerned — but it
   // is not the same fact as a VIN this device never had, and only one of the two is undone

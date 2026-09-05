@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { Link, useNavigate } from "react-router";
+import { FailureNotice } from "../../app/ErrorBoundary";
+import { useStorageFailure } from "../../app/useStorageFailure";
 import { buildExportBundle, toCsv } from "../../lib/payload/exportBundle";
 import { db, nowIso } from "../../lib/storage/db";
 import { normalizeVehicle } from "../../lib/storage/normalize";
@@ -297,6 +299,12 @@ export default function HistoryScreen() {
   const wide = useWide();
   const nowMs = useNow();
 
+  // F1-b: `liveQuery` never emits when the database never opened (Dexie filters
+  // `DatabaseClosedError` before `observer.error`), so `records` stays `undefined` and this
+  // screen rendered its heading and then nothing at all — no rows, no "Nothing scanned
+  // yet", no error, permanently. Nothing throws, so the boundary cannot say it either.
+  const storageFailure = useStorageFailure();
+
   const records = useLiveQuery(async () => {
     const rows = await db.vehicles.orderBy("lastScannedAt").reverse().toArray();
     // db.ts: IndexedDB does not index null, so live records are absent from the
@@ -463,7 +471,12 @@ export default function HistoryScreen() {
     ) : null;
 
   let body: ReactNode = null;
-  if (records !== undefined) {
+  if (records === undefined) {
+    // Still `null` while the query is merely in flight; a notice only once storage has said
+    // it cannot answer at all (§6.4, P7).
+    if (storageFailure !== null)
+      body = <FailureNotice error={storageFailure.cause} fromStorage />;
+  } else {
     if (total === 0) {
       body = <EmptyHistory />;
     } else if (visible.length === 0) {

@@ -38,10 +38,44 @@ const NO_INDEXEDDB = () => {
   Object.defineProperty(window, "indexedDB", { value: undefined, configurable: true });
 };
 
+/** §4.11's fixture VIN, the one every other spec here saves and reads back. */
+const VIN = "1HGCM82633A004352";
+
+/** The §6.4-tone notice supplied under §0 rule 4 and pinned by `src/app/ErrorBoundary.test.ts`. */
+const STORAGE_TITLE = "Storage isn't available";
+
 for (const [name, script] of [
   ["indexedDB.open throws", OPEN_THROWS],
   ["indexedDB is absent", NO_INDEXEDDB],
 ] as const) {
+  /**
+   * [F1-b] The Sheet is where a scan lands, and under this fault it rendered NOTHING —
+   * `main.innerHTML.length` was 0, no heading, no message, no error, for the rest of the
+   * session — because `SheetScreen` reads `record === undefined` as "still loading" and
+   * `liveQuery` never emits when the database never opened. The boundary cannot reach it:
+   * Dexie filters `DatabaseClosedError` before `observer.error`, so nothing is ever thrown.
+   */
+  test(`[F1-b] the Sheet says why it is empty when ${name}`, async ({ page }) => {
+    await page.addInitScript(script);
+    await page.goto(`/#/v/${VIN}`);
+
+    const notice = page.getByRole("alert").filter({ hasText: STORAGE_TITLE });
+    await expect(notice).toBeVisible({ timeout: 10_000 });
+    // The measurement from the ledger, as the thing that must stop being true.
+    expect(await page.locator("main").innerHTML()).not.toBe("");
+  });
+
+  /** [F1-b] History as the row originally recorded it: its heading, and then nothing. */
+  test(`[F1-b] History says why it is empty when ${name}`, async ({ page }) => {
+    await page.addInitScript(script);
+    await page.goto("/#/history");
+
+    await expect(page.getByRole("heading", { name: "History" })).toBeVisible();
+    await expect(page.getByRole("alert").filter({ hasText: STORAGE_TITLE })).toBeVisible({
+      timeout: 10_000,
+    });
+  });
+
   test(`[G5] Settings says why it is empty when ${name}`, async ({ page }) => {
     await page.addInitScript(script);
     await page.goto("/#/settings");
