@@ -97,7 +97,7 @@ No substitutions without an explicit decision from Zach.
 Display grouping (always, monospace): `WMI VDS C Y P SERIAL` → e.g. `1HG CM826 3 3 A 004352`
 
 ### 4.2 Normalization: raw scan → VIN (`extractVin(raw)`)
-1. Uppercase. Strip whitespace and `*` (Code 39 start/stop, if a decoder ever passes them through).
+1. Uppercase, **ASCII-only**: map `a`–`z` to `A`–`Z` and leave every other code point untouched. **Never `String.prototype.toUpperCase`.** It is a *length-changing* map, and fifteen code points outside §4.1 uppercase **into** the alphabet — six of them into two or three characters: `ß`→`SS`, `ﬀ`→`FF`, `ﬁ`→`FI`, `ﬂ`→`FL`, `ﬃ`→`FFI`, `ﬄ`→`FFL`. Because this step runs *before* step 2 splits into runs, a Unicode uppercase manufactures §4.1 characters the scanned bytes never carried and can grow a 16-character run into a 17-character window that validates. Ruled by Zach, 2026-09-05, on ledger row G1 (S1). Applies at every point a VIN is normalised, not only in `extractVin` — typed entry and the route parameter normalise too. Strip whitespace and `*` (Code 39 start/stop, if a decoder ever passes them through).
 2. Split the string into **runs** of allowed characters (`[A-HJ-NPR-Z0-9]+`). Any other character is a separator.
 3. Over every run of length ≥ 17, slide a 17-char window. Collect windows that match the grammar.
 4. Choose, in order: (a) if exactly one **distinct** VIN among the windows has a valid check digit **and that window is an entire run**, that VIN; (b) if none has, and exactly one grammar-valid window exists at all, that window with `checkDigitValid = false`; (c) otherwise → `NO_VIN`.
