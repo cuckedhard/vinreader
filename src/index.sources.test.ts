@@ -23,6 +23,15 @@
  *
  * Measured on this tree: with the directives, 26,581 bytes and neither stray rule; with them
  * deleted, 27,052 bytes, both rules, and 12 files scanned out of `docs/`.
+ *
+ * [F3-a] And prose is a source too. Markdown is scanned like anything else, so a bare word in
+ * a sentence is a class candidate — which meant the hardening ledger could not name a rule it
+ * was reporting on without re-emitting that rule. Writing the F3 row put both strays straight
+ * back into the shipped stylesheet: 21,696 bytes against 21,451, 186 rules against 184. The
+ * row is committed, so the two names below are now planted in the tree twice over — in the
+ * ledger as prose and in each build directory as markup — and one `@source not` for every
+ * `.md` in the repo is what holds them out. It takes the scan from 234 files to 213 and
+ * changes no rule: the same 184, none added, none dropped.
  */
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -42,6 +51,10 @@ const BUILD_DIRS = ["dist", "docs", "dist-demo", "dev-dist"];
 const PROBE_CLASS = ["mx-", "[1357px]"].join("");
 const PROBE_FILE = "tailwind-source-probe.html";
 
+/** [F3-a] The prose a hardening round writes: the root documents, and the ledgers beside them. */
+const MD_PROBE_FILES = ["tailwind-source-probe.md", "hardening/tailwind-source-probe.md"];
+const MD_PROBE_CLASS = ["py-", "[2468px]"].join("");
+
 /** The two rules the leak actually shipped, one a font style and one a filter. */
 const STRAYS = [
   ["ital", "ic"],
@@ -59,12 +72,24 @@ beforeAll(() => {
     }
     writeFileSync(resolve(path, PROBE_FILE), `<div class="${PROBE_CLASS}">probe</div>\n`);
   }
+  // A ledger row reporting on a rule, written the way a ledger row writes one.
+  for (const file of MD_PROBE_FILES) {
+    writeFileSync(
+      resolve(ROOT, file),
+      `| P | S4 | build/css | the stylesheet ships \`${MD_PROBE_CLASS}\` and nothing uses it |\n`,
+    );
+  }
 });
 
 afterAll(() => {
   for (const dir of BUILD_DIRS) rmSync(resolve(ROOT, dir, PROBE_FILE), { force: true });
   for (const path of created) rmSync(path, { recursive: true, force: true });
+  for (const file of MD_PROBE_FILES) rmSync(resolve(ROOT, file), { force: true });
 });
+
+/** One scan for the file: the assertions differ, the tree and the probes they read do not. */
+let built: Promise<{ css: string; scanned: string[] }> | null = null;
+const stylesheet = () => (built ??= buildStylesheet());
 
 /** The Vite plugin's own composition of the auto-detected root with the `@source` directives. */
 async function buildStylesheet(): Promise<{ css: string; scanned: string[] }> {
@@ -84,7 +109,7 @@ async function buildStylesheet(): Promise<{ css: string; scanned: string[] }> {
 }
 
 it("builds the stylesheet from the source tree and not from its own output", async () => {
-  const { css, scanned } = await buildStylesheet();
+  const { css, scanned } = await stylesheet();
 
   // The scan reached the app: without this the assertions below pass on an empty result.
   expect(css, "no utility was emitted at all — the scan found nothing").toMatch(/\.flex\s*\{/);
@@ -101,4 +126,17 @@ it("builds the stylesheet from the source tree and not from its own output", asy
       new RegExp(`\\.${stray}\\s*\\{`),
     );
   }
+});
+
+it("does not build the stylesheet out of the prose that reports on it", async () => {
+  const { css, scanned } = await stylesheet();
+
+  // Same floor as above: without it every assertion here passes on an empty stylesheet.
+  expect(css, "no utility was emitted at all — the scan found nothing").toMatch(/\.flex\s*\{/);
+
+  const prose = scanned.filter((file) => file.endsWith(".md"));
+  expect(prose, "a Markdown file was scanned as a source").toEqual([]);
+
+  // Planted in a root document and in a ledger, so neither location can pass by absence.
+  expect(css, "a class named in prose reached the stylesheet").not.toContain("2468px");
 });

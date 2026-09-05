@@ -27,6 +27,29 @@
 @source not "../dist-demo";
 @source not "../dev-dist";
 
+/* Markdown is prose, but the scanner cannot tell prose from markup: a bare word in a sentence
+   is a class candidate like any other. So the ledger above could not name a rule it was
+   reporting on without putting that rule straight back into the stylesheet — writing the F3
+   row re-emitted the two utilities F3 had just removed. A ledger that changes the artifact it
+   audits is not measuring it.
+
+   Measured with `bun run build`, then `md5sum dist/assets/*.css` and the emitted selector set
+   via `grep -oE '\.[a-zA-Z][a-zA-Z0-9\\!:_.-]*\{' | sort -u`. Before the Round 6 section:
+   21,451 bytes, 184 rules. With the section on disk and without this line: 21,696 bytes, 186
+   rules — the two extras exactly the two the row names, 245 bytes of prose. With this line the
+   section stays on disk and the stylesheet is 21,451 bytes again, md5
+   732376a7d5b1ccbba771a391609ad310, the same 184 rules: none added, none dropped. 21 files
+   leave the scan.
+
+   One glob and not a list of directories, because every `.md` here is prose — the ledgers, the
+   bootstrap, the anchor, the agent definitions — and the next one will be too. Scoping
+   positively instead (`@import "tailwindcss" source(".")` plus an `@source` for the root
+   `index.html`) was measured as well: 182 rules, dropping `.transform` and `.transition`.
+   Nothing renders those two, but that form makes every file outside `src/` a non-source, so
+   markup added anywhere else loses its classes with nothing to catch it — `index.html` needing
+   to be handed back by name is that failure on the first day. This subtracts prose instead. */
+@source not "../**/*.md";
+
 @theme inline {
   --color-bg: var(--bg);
   --color-bg-elev: var(--bg-elev);
