@@ -37,7 +37,7 @@
     ],
     "appPath": "canvas",
     "pathNotes": {
-      "canvas": "the app's path — Chromium, `ScanFrameReader.decodeFromCanvas`, `FrameLuminanceSource`, `decodeWithState`",
+      "canvas": "the app's path — Chromium, `ScanFrameReader.decodeFromCanvas` — §9-S1's ROI band (90% x 40%, SB-3) first and the whole frame after it — `FrameLuminanceSource`, `decodeWithState`",
       "yuv": "`canvas`, with the frame first put through a **modelled** BT.601 studio-swing I420 round trip — the colour half of a camera capture, not a camera",
       "rgb": "node, `RGBLuminanceSource` + `MultiFormatReader.decode` — the control, not the app"
     },
@@ -70,8 +70,8 @@
   "totals": {
     "attempts": 12600,
     "appPathAttempts": 4200,
-    "hits": 2623,
-    "misses": 1577,
+    "hits": 2678,
+    "misses": 1522,
     "falseAccepts": 0,
     "errors": 0,
     "aimIdentifiersStripped": 0
@@ -118,15 +118,15 @@
       "symbology": "code_39",
       "tier": "severe",
       "attempts": 200,
-      "hits": 60,
-      "misses": 140,
+      "hits": 68,
+      "misses": 132,
       "falseAccepts": 0,
       "errors": 0,
-      "decodeRate": 0.3,
+      "decodeRate": 0.34,
       "threshold": 0.7,
       "pass": false,
       "missReasons": {
-        "no_decode": 140,
+        "no_decode": 132,
         "no_vin": 0,
         "carrier": 0
       }
@@ -172,16 +172,16 @@
       "symbology": "code_39_i",
       "tier": "severe",
       "attempts": 200,
-      "hits": 47,
-      "misses": 153,
+      "hits": 57,
+      "misses": 143,
       "falseAccepts": 0,
       "errors": 0,
-      "decodeRate": 0.235,
+      "decodeRate": 0.285,
       "threshold": 0.7,
       "pass": false,
       "missReasons": {
-        "no_decode": 153,
-        "no_vin": 0,
+        "no_decode": 141,
+        "no_vin": 2,
         "carrier": 0
       }
     },
@@ -226,16 +226,16 @@
       "symbology": "code_39_check",
       "tier": "severe",
       "attempts": 200,
-      "hits": 14,
-      "misses": 186,
+      "hits": 17,
+      "misses": 183,
       "falseAccepts": 0,
       "errors": 0,
-      "decodeRate": 0.07,
+      "decodeRate": 0.085,
       "threshold": 0.7,
       "pass": false,
       "missReasons": {
-        "no_decode": 138,
-        "no_vin": 48,
+        "no_decode": 124,
+        "no_vin": 59,
         "carrier": 0
       }
     },
@@ -262,15 +262,15 @@
       "symbology": "code_128",
       "tier": "moderate",
       "attempts": 200,
-      "hits": 161,
-      "misses": 39,
+      "hits": 162,
+      "misses": 38,
       "falseAccepts": 0,
       "errors": 0,
-      "decodeRate": 0.805,
+      "decodeRate": 0.81,
       "threshold": 0.9,
       "pass": false,
       "missReasons": {
-        "no_decode": 39,
+        "no_decode": 38,
         "no_vin": 0,
         "carrier": 0
       }
@@ -280,16 +280,16 @@
       "symbology": "code_128",
       "tier": "severe",
       "attempts": 200,
-      "hits": 50,
-      "misses": 150,
+      "hits": 62,
+      "misses": 138,
       "falseAccepts": 0,
       "errors": 0,
-      "decodeRate": 0.25,
+      "decodeRate": 0.31,
       "threshold": 0.7,
       "pass": false,
       "missReasons": {
-        "no_decode": 150,
-        "no_vin": 0,
+        "no_decode": 137,
+        "no_vin": 1,
         "carrier": 0
       }
     },
@@ -316,16 +316,16 @@
       "symbology": "code_128_fnc1",
       "tier": "moderate",
       "attempts": 200,
-      "hits": 142,
-      "misses": 58,
+      "hits": 151,
+      "misses": 49,
       "falseAccepts": 0,
       "errors": 0,
-      "decodeRate": 0.71,
+      "decodeRate": 0.755,
       "threshold": 0.9,
       "pass": false,
       "missReasons": {
-        "no_decode": 57,
-        "no_vin": 1,
+        "no_decode": 49,
+        "no_vin": 0,
         "carrier": 0
       }
     },
@@ -370,15 +370,15 @@
       "symbology": "data_matrix",
       "tier": "moderate",
       "attempts": 200,
-      "hits": 198,
-      "misses": 2,
+      "hits": 199,
+      "misses": 1,
       "falseAccepts": 0,
       "errors": 0,
-      "decodeRate": 0.99,
+      "decodeRate": 0.995,
       "threshold": 0.9,
       "pass": true,
       "missReasons": {
-        "no_decode": 2,
+        "no_decode": 1,
         "no_vin": 0,
         "carrier": 0
       }
@@ -388,15 +388,15 @@
       "symbology": "data_matrix",
       "tier": "severe",
       "attempts": 200,
-      "hits": 74,
-      "misses": 126,
+      "hits": 80,
+      "misses": 120,
       "falseAccepts": 0,
       "errors": 0,
-      "decodeRate": 0.37,
+      "decodeRate": 0.4,
       "threshold": 0.7,
       "pass": false,
       "missReasons": {
-        "no_decode": 126,
+        "no_decode": 120,
         "no_vin": 0,
         "carrier": 0
       }
@@ -442,15 +442,15 @@
       "symbology": "qr_code",
       "tier": "severe",
       "attempts": 200,
-      "hits": 86,
-      "misses": 114,
+      "hits": 91,
+      "misses": 109,
       "falseAccepts": 0,
       "errors": 0,
-      "decodeRate": 0.43,
+      "decodeRate": 0.455,
       "threshold": 0.7,
       "pass": false,
       "missReasons": {
-        "no_decode": 114,
+        "no_decode": 109,
         "no_vin": 0,
         "carrier": 0
       }
@@ -496,15 +496,15 @@
       "symbology": "code_39",
       "tier": "severe",
       "attempts": 200,
-      "hits": 60,
-      "misses": 140,
+      "hits": 69,
+      "misses": 131,
       "falseAccepts": 0,
       "errors": 0,
-      "decodeRate": 0.3,
+      "decodeRate": 0.345,
       "threshold": 0.7,
       "pass": false,
       "missReasons": {
-        "no_decode": 140,
+        "no_decode": 131,
         "no_vin": 0,
         "carrier": 0
       }
@@ -550,16 +550,16 @@
       "symbology": "code_39_i",
       "tier": "severe",
       "attempts": 200,
-      "hits": 47,
-      "misses": 153,
+      "hits": 59,
+      "misses": 141,
       "falseAccepts": 0,
       "errors": 0,
-      "decodeRate": 0.235,
+      "decodeRate": 0.295,
       "threshold": 0.7,
       "pass": false,
       "missReasons": {
-        "no_decode": 153,
-        "no_vin": 0,
+        "no_decode": 140,
+        "no_vin": 1,
         "carrier": 0
       }
     },
@@ -604,16 +604,16 @@
       "symbology": "code_39_check",
       "tier": "severe",
       "attempts": 200,
-      "hits": 14,
-      "misses": 186,
+      "hits": 17,
+      "misses": 183,
       "falseAccepts": 0,
       "errors": 0,
-      "decodeRate": 0.07,
+      "decodeRate": 0.085,
       "threshold": 0.7,
       "pass": false,
       "missReasons": {
-        "no_decode": 139,
-        "no_vin": 47,
+        "no_decode": 126,
+        "no_vin": 57,
         "carrier": 0
       }
     },
@@ -640,15 +640,15 @@
       "symbology": "code_128",
       "tier": "moderate",
       "attempts": 200,
-      "hits": 161,
-      "misses": 39,
+      "hits": 162,
+      "misses": 38,
       "falseAccepts": 0,
       "errors": 0,
-      "decodeRate": 0.805,
+      "decodeRate": 0.81,
       "threshold": 0.9,
       "pass": false,
       "missReasons": {
-        "no_decode": 39,
+        "no_decode": 38,
         "no_vin": 0,
         "carrier": 0
       }
@@ -658,15 +658,15 @@
       "symbology": "code_128",
       "tier": "severe",
       "attempts": 200,
-      "hits": 49,
-      "misses": 151,
+      "hits": 60,
+      "misses": 140,
       "falseAccepts": 0,
       "errors": 0,
-      "decodeRate": 0.245,
+      "decodeRate": 0.3,
       "threshold": 0.7,
       "pass": false,
       "missReasons": {
-        "no_decode": 151,
+        "no_decode": 140,
         "no_vin": 0,
         "carrier": 0
       }
@@ -694,15 +694,15 @@
       "symbology": "code_128_fnc1",
       "tier": "moderate",
       "attempts": 200,
-      "hits": 144,
-      "misses": 56,
+      "hits": 153,
+      "misses": 47,
       "falseAccepts": 0,
       "errors": 0,
-      "decodeRate": 0.72,
+      "decodeRate": 0.765,
       "threshold": 0.9,
       "pass": false,
       "missReasons": {
-        "no_decode": 56,
+        "no_decode": 47,
         "no_vin": 0,
         "carrier": 0
       }
@@ -748,15 +748,15 @@
       "symbology": "data_matrix",
       "tier": "moderate",
       "attempts": 200,
-      "hits": 198,
-      "misses": 2,
+      "hits": 199,
+      "misses": 1,
       "falseAccepts": 0,
       "errors": 0,
-      "decodeRate": 0.99,
+      "decodeRate": 0.995,
       "threshold": 0.9,
       "pass": true,
       "missReasons": {
-        "no_decode": 2,
+        "no_decode": 1,
         "no_vin": 0,
         "carrier": 0
       }
@@ -766,15 +766,15 @@
       "symbology": "data_matrix",
       "tier": "severe",
       "attempts": 200,
-      "hits": 74,
-      "misses": 126,
+      "hits": 79,
+      "misses": 121,
       "falseAccepts": 0,
       "errors": 0,
-      "decodeRate": 0.37,
+      "decodeRate": 0.395,
       "threshold": 0.7,
       "pass": false,
       "missReasons": {
-        "no_decode": 126,
+        "no_decode": 121,
         "no_vin": 0,
         "carrier": 0
       }
@@ -820,15 +820,15 @@
       "symbology": "qr_code",
       "tier": "severe",
       "attempts": 200,
-      "hits": 87,
-      "misses": 113,
+      "hits": 91,
+      "misses": 109,
       "falseAccepts": 0,
       "errors": 0,
-      "decodeRate": 0.435,
+      "decodeRate": 0.455,
       "threshold": 0.7,
       "pass": false,
       "missReasons": {
-        "no_decode": 113,
+        "no_decode": 109,
         "no_vin": 0,
         "carrier": 0
       }
@@ -1356,11 +1356,11 @@
     {
       "symbology": "code_39",
       "tier": "severe",
-      "decodeRate": 0.3,
+      "decodeRate": 0.34,
       "estimated": {
-        "low": 0.24074644243406385,
-        "high": 0.3667919599332645,
-        "halfWidth": 0.06302275874960034,
+        "low": 0.2779143922159556,
+        "high": 0.40811632967790723,
+        "halfWidth": 0.06510096873097582,
         "deterministic": false
       },
       "measured": null
@@ -1392,11 +1392,11 @@
     {
       "symbology": "code_39_i",
       "tier": "severe",
-      "decodeRate": 0.235,
+      "decodeRate": 0.285,
       "estimated": {
-        "low": 0.18157345326946356,
-        "high": 0.29841492986724655,
-        "halfWidth": 0.058420738298891495,
+        "low": 0.22694905173277297,
+        "high": 0.3511547308121051,
+        "halfWidth": 0.062102839539666055,
         "deterministic": false
       },
       "measured": null
@@ -1428,11 +1428,11 @@
     {
       "symbology": "code_39_check",
       "tier": "severe",
-      "decodeRate": 0.07,
+      "decodeRate": 0.085,
       "estimated": {
-        "low": 0.04215178292291873,
-        "high": 0.11405578216683726,
-        "halfWidth": 0.03595199962195926,
+        "low": 0.05374529946985246,
+        "high": 0.13189688544235392,
+        "halfWidth": 0.03907579298625073,
         "deterministic": false
       },
       "measured": null
@@ -1452,11 +1452,11 @@
     {
       "symbology": "code_128",
       "tier": "moderate",
-      "decodeRate": 0.805,
+      "decodeRate": 0.81,
       "estimated": {
-        "low": 0.744558352034882,
-        "high": 0.8539455843549424,
-        "halfWidth": 0.05469361616003021,
+        "low": 0.7499864142552062,
+        "high": 0.8583290620754351,
+        "halfWidth": 0.05417132391011448,
         "deterministic": false
       },
       "measured": null
@@ -1464,11 +1464,11 @@
     {
       "symbology": "code_128",
       "tier": "severe",
-      "decodeRate": 0.25,
+      "decodeRate": 0.31,
       "estimated": {
-        "low": 0.19508076816296532,
-        "high": 0.3143422347961952,
-        "halfWidth": 0.05963073331661495,
+        "low": 0.24998842733633997,
+        "high": 0.377173054912622,
+        "halfWidth": 0.06359231378814101,
         "deterministic": false
       },
       "measured": null
@@ -1488,11 +1488,11 @@
     {
       "symbology": "code_128_fnc1",
       "tier": "moderate",
-      "decodeRate": 0.71,
+      "decodeRate": 0.755,
       "estimated": {
-        "low": 0.6436239464268834,
-        "high": 0.7684607310874219,
-        "halfWidth": 0.062418392330269246,
+        "low": 0.6909563161285153,
+        "high": 0.809432220853141,
+        "halfWidth": 0.059237952362312885,
         "deterministic": false
       },
       "measured": null
@@ -1524,11 +1524,11 @@
     {
       "symbology": "data_matrix",
       "tier": "moderate",
-      "decodeRate": 0.99,
+      "decodeRate": 0.995,
       "estimated": {
-        "low": 0.9642775148038205,
-        "high": 0.9972533993962251,
-        "halfWidth": 0.016487942296202318,
+        "low": 0.9722256001302286,
+        "high": 0.999116854010634,
+        "halfWidth": 0.013445626940202682,
         "deterministic": false
       },
       "measured": null
@@ -1536,11 +1536,11 @@
     {
       "symbology": "data_matrix",
       "tier": "severe",
-      "decodeRate": 0.37,
+      "decodeRate": 0.4,
       "estimated": {
-        "low": 0.3061249750375241,
-        "high": 0.43877498650123936,
-        "halfWidth": 0.06632500573185762,
+        "low": 0.3346046396837895,
+        "high": 0.46916456149987484,
+        "halfWidth": 0.06727996090804267,
         "deterministic": false
       },
       "measured": null
@@ -1572,11 +1572,11 @@
     {
       "symbology": "qr_code",
       "tier": "severe",
-      "decodeRate": 0.43,
+      "decodeRate": 0.455,
       "estimated": {
-        "low": 0.36334204488394795,
-        "high": 0.49929639594461706,
-        "halfWidth": 0.06797717553033455,
+        "low": 0.38748099090226035,
+        "high": 0.5242151496303886,
+        "halfWidth": 0.06836707936406414,
         "deterministic": false
       },
       "measured": null
@@ -1586,81 +1586,81 @@
     {
       "scope": "canvas: all",
       "decodes": 4200,
-      "meanMs": 170.39235714284482,
-      "p95Ms": 448.69999999925494
+      "meanMs": 122.83421428572963,
+      "p95Ms": 412.69999999925494
     },
     {
       "scope": "canvas: clean",
       "decodes": 1400,
-      "meanMs": 108.16014285713035,
-      "p95Ms": 228.19999999925494
+      "meanMs": 29.34100000000559,
+      "p95Ms": 60
     },
     {
       "scope": "canvas: moderate",
       "decodes": 1400,
-      "meanMs": 141.90499999998934,
-      "p95Ms": 411.20000000018626
+      "meanMs": 85.60571428573292,
+      "p95Ms": 426.90000000037253
     },
     {
       "scope": "canvas: severe",
       "decodes": 1400,
-      "meanMs": 261.11192857141475,
-      "p95Ms": 522.2999999998137
+      "meanMs": 253.55592857145038,
+      "p95Ms": 433
     },
     {
       "scope": "yuv: all",
       "decodes": 4200,
-      "meanMs": 169.9920952380982,
-      "p95Ms": 464
+      "meanMs": 117.76697619047991,
+      "p95Ms": 392.59999999962747
     },
     {
       "scope": "yuv: clean",
       "decodes": 1400,
-      "meanMs": 101.93714285714884,
-      "p95Ms": 217.70000000018626
+      "meanMs": 24.615000000011975,
+      "p95Ms": 46.19999999925494
     },
     {
       "scope": "yuv: moderate",
       "decodes": 1400,
-      "meanMs": 142.3843571428602,
-      "p95Ms": 427.59999999962747
+      "meanMs": 81.98464285713088,
+      "p95Ms": 395.5
     },
     {
       "scope": "yuv: severe",
       "decodes": 1400,
-      "meanMs": 265.65478571428554,
-      "p95Ms": 556.1000000000931
+      "meanMs": 246.7012857142969,
+      "p95Ms": 418.80000000074506
     },
     {
       "scope": "rgb: all",
       "decodes": 4200,
-      "meanMs": 43.56029409523764,
-      "p95Ms": 81.989029999997
+      "meanMs": 39.70307573857205,
+      "p95Ms": 75.90733700001147
     },
     {
       "scope": "rgb: clean",
       "decodes": 1400,
-      "meanMs": 30.832184046428566,
-      "p95Ms": 42.929484000080265
+      "meanMs": 27.836132603571624,
+      "p95Ms": 39.41387199994642
     },
     {
       "scope": "rgb: moderate",
       "decodes": 1400,
-      "meanMs": 40.27030281857036,
-      "p95Ms": 85.3762299999944
+      "meanMs": 36.471207696429325,
+      "p95Ms": 80.0702159999928
     },
     {
       "scope": "rgb: severe",
       "decodes": 1400,
-      "meanMs": 59.578395420714,
-      "p95Ms": 86.82288099988364
+      "meanMs": 54.801886915715194,
+      "p95Ms": 75.52001799998106
     }
   ],
   "timeToConfirm": {
     "quoted": true,
     "command": "bun run bench/confirm-probe.ts --repeats 8 --symbologies code_39_i,code_128 --tiers clean,moderate,severe",
     "build": {
-      "commit": "66a0aa9fdb2a5261b8c92ea8ef5996d4e5b2d299",
+      "commit": "88306a7bae03b1f5466e2274e596d01dbfa5baff",
       "dirty": false
     },
     "srcCommitsSince": 0,
@@ -1671,9 +1671,9 @@
       "confirmed": 48,
       "notConfirmed": 0,
       "faults": 0,
-      "meanMs": 923.2708333333334,
-      "minMs": 323,
-      "maxMs": 4880
+      "meanMs": 864.875,
+      "minMs": 261,
+      "maxMs": 2198
     },
     "cells": [
       {
@@ -1683,9 +1683,9 @@
         "confirmed": 8,
         "notConfirmed": 0,
         "faults": 0,
-        "meanMs": 373.5,
-        "minMs": 323,
-        "maxMs": 487
+        "meanMs": 270.5,
+        "minMs": 261,
+        "maxMs": 276
       },
       {
         "symbology": "code_39_i",
@@ -1694,9 +1694,9 @@
         "confirmed": 8,
         "notConfirmed": 0,
         "faults": 0,
-        "meanMs": 416,
-        "minMs": 346,
-        "maxMs": 610
+        "meanMs": 1148.5,
+        "minMs": 1112,
+        "maxMs": 1237
       },
       {
         "symbology": "code_39_i",
@@ -1705,9 +1705,9 @@
         "confirmed": 8,
         "notConfirmed": 0,
         "faults": 0,
-        "meanMs": 1352.25,
-        "minMs": 694,
-        "maxMs": 3316
+        "meanMs": 1428.75,
+        "minMs": 1047,
+        "maxMs": 1558
       },
       {
         "symbology": "code_128",
@@ -1716,9 +1716,9 @@
         "confirmed": 8,
         "notConfirmed": 0,
         "faults": 0,
-        "meanMs": 358.375,
-        "minMs": 328,
-        "maxMs": 399
+        "meanMs": 271.625,
+        "minMs": 265,
+        "maxMs": 293
       },
       {
         "symbology": "code_128",
@@ -1727,9 +1727,9 @@
         "confirmed": 8,
         "notConfirmed": 0,
         "faults": 0,
-        "meanMs": 478.125,
-        "minMs": 334,
-        "maxMs": 951
+        "meanMs": 283.5,
+        "minMs": 272,
+        "maxMs": 354
       },
       {
         "symbology": "code_128",
@@ -1738,9 +1738,9 @@
         "confirmed": 8,
         "notConfirmed": 0,
         "faults": 0,
-        "meanMs": 2561.375,
-        "minMs": 970,
-        "maxMs": 4880
+        "meanMs": 1786.375,
+        "minMs": 1007,
+        "maxMs": 2198
       }
     ],
     "confirmWindowMs": 1500
@@ -2023,12 +2023,12 @@
       "path": "yuv",
       "symbology": "code_39",
       "tier": "severe",
-      "appRate": 0.3,
-      "otherRate": 0.3,
-      "appOnly": 1,
+      "appRate": 0.34,
+      "otherRate": 0.345,
+      "appOnly": 0,
       "otherOnly": 1,
-      "both": 59,
-      "neither": 139
+      "both": 68,
+      "neither": 131
     },
     {
       "path": "yuv",
@@ -2056,12 +2056,12 @@
       "path": "yuv",
       "symbology": "code_39_i",
       "tier": "severe",
-      "appRate": 0.235,
-      "otherRate": 0.235,
+      "appRate": 0.285,
+      "otherRate": 0.295,
       "appOnly": 2,
-      "otherOnly": 2,
-      "both": 45,
-      "neither": 151
+      "otherOnly": 4,
+      "both": 55,
+      "neither": 139
     },
     {
       "path": "yuv",
@@ -2089,12 +2089,12 @@
       "path": "yuv",
       "symbology": "code_39_check",
       "tier": "severe",
-      "appRate": 0.07,
-      "otherRate": 0.07,
-      "appOnly": 0,
-      "otherOnly": 0,
-      "both": 14,
-      "neither": 186
+      "appRate": 0.085,
+      "otherRate": 0.085,
+      "appOnly": 1,
+      "otherOnly": 1,
+      "both": 16,
+      "neither": 182
     },
     {
       "path": "yuv",
@@ -2111,23 +2111,23 @@
       "path": "yuv",
       "symbology": "code_128",
       "tier": "moderate",
-      "appRate": 0.805,
-      "otherRate": 0.805,
+      "appRate": 0.81,
+      "otherRate": 0.81,
       "appOnly": 0,
       "otherOnly": 0,
-      "both": 161,
-      "neither": 39
+      "both": 162,
+      "neither": 38
     },
     {
       "path": "yuv",
       "symbology": "code_128",
       "tier": "severe",
-      "appRate": 0.25,
-      "otherRate": 0.245,
-      "appOnly": 1,
+      "appRate": 0.31,
+      "otherRate": 0.3,
+      "appOnly": 2,
       "otherOnly": 0,
-      "both": 49,
-      "neither": 150
+      "both": 60,
+      "neither": 138
     },
     {
       "path": "yuv",
@@ -2144,12 +2144,12 @@
       "path": "yuv",
       "symbology": "code_128_fnc1",
       "tier": "moderate",
-      "appRate": 0.71,
-      "otherRate": 0.72,
+      "appRate": 0.755,
+      "otherRate": 0.765,
       "appOnly": 0,
       "otherOnly": 2,
-      "both": 142,
-      "neither": 56
+      "both": 151,
+      "neither": 47
     },
     {
       "path": "yuv",
@@ -2177,23 +2177,23 @@
       "path": "yuv",
       "symbology": "data_matrix",
       "tier": "moderate",
-      "appRate": 0.99,
-      "otherRate": 0.99,
+      "appRate": 0.995,
+      "otherRate": 0.995,
       "appOnly": 0,
       "otherOnly": 0,
-      "both": 198,
-      "neither": 2
+      "both": 199,
+      "neither": 1
     },
     {
       "path": "yuv",
       "symbology": "data_matrix",
       "tier": "severe",
-      "appRate": 0.37,
-      "otherRate": 0.37,
-      "appOnly": 0,
+      "appRate": 0.4,
+      "otherRate": 0.395,
+      "appOnly": 1,
       "otherOnly": 0,
-      "both": 74,
-      "neither": 126
+      "both": 79,
+      "neither": 120
     },
     {
       "path": "yuv",
@@ -2221,12 +2221,12 @@
       "path": "yuv",
       "symbology": "qr_code",
       "tier": "severe",
-      "appRate": 0.43,
-      "otherRate": 0.435,
-      "appOnly": 1,
-      "otherOnly": 2,
-      "both": 85,
-      "neither": 112
+      "appRate": 0.455,
+      "otherRate": 0.455,
+      "appOnly": 0,
+      "otherOnly": 0,
+      "both": 91,
+      "neither": 109
     },
     {
       "path": "rgb",
@@ -2254,12 +2254,12 @@
       "path": "rgb",
       "symbology": "code_39",
       "tier": "severe",
-      "appRate": 0.3,
+      "appRate": 0.34,
       "otherRate": 0.3,
-      "appOnly": 0,
+      "appOnly": 8,
       "otherOnly": 0,
       "both": 60,
-      "neither": 140
+      "neither": 132
     },
     {
       "path": "rgb",
@@ -2287,12 +2287,12 @@
       "path": "rgb",
       "symbology": "code_39_i",
       "tier": "severe",
-      "appRate": 0.235,
+      "appRate": 0.285,
       "otherRate": 0.235,
-      "appOnly": 0,
-      "otherOnly": 0,
-      "both": 47,
-      "neither": 153
+      "appOnly": 11,
+      "otherOnly": 1,
+      "both": 46,
+      "neither": 142
     },
     {
       "path": "rgb",
@@ -2320,12 +2320,12 @@
       "path": "rgb",
       "symbology": "code_39_check",
       "tier": "severe",
-      "appRate": 0.07,
+      "appRate": 0.085,
       "otherRate": 0.07,
-      "appOnly": 0,
+      "appOnly": 3,
       "otherOnly": 0,
       "both": 14,
-      "neither": 186
+      "neither": 183
     },
     {
       "path": "rgb",
@@ -2342,23 +2342,23 @@
       "path": "rgb",
       "symbology": "code_128",
       "tier": "moderate",
-      "appRate": 0.805,
+      "appRate": 0.81,
       "otherRate": 0.805,
-      "appOnly": 0,
+      "appOnly": 1,
       "otherOnly": 0,
       "both": 161,
-      "neither": 39
+      "neither": 38
     },
     {
       "path": "rgb",
       "symbology": "code_128",
       "tier": "severe",
-      "appRate": 0.25,
+      "appRate": 0.31,
       "otherRate": 0.25,
-      "appOnly": 0,
+      "appOnly": 12,
       "otherOnly": 0,
       "both": 50,
-      "neither": 150
+      "neither": 138
     },
     {
       "path": "rgb",
@@ -2375,12 +2375,12 @@
       "path": "rgb",
       "symbology": "code_128_fnc1",
       "tier": "moderate",
-      "appRate": 0.71,
+      "appRate": 0.755,
       "otherRate": 0.71,
-      "appOnly": 0,
+      "appOnly": 9,
       "otherOnly": 0,
       "both": 142,
-      "neither": 58
+      "neither": 49
     },
     {
       "path": "rgb",
@@ -2408,23 +2408,23 @@
       "path": "rgb",
       "symbology": "data_matrix",
       "tier": "moderate",
-      "appRate": 0.99,
+      "appRate": 0.995,
       "otherRate": 0.99,
-      "appOnly": 0,
+      "appOnly": 1,
       "otherOnly": 0,
       "both": 198,
-      "neither": 2
+      "neither": 1
     },
     {
       "path": "rgb",
       "symbology": "data_matrix",
       "tier": "severe",
-      "appRate": 0.37,
+      "appRate": 0.4,
       "otherRate": 0.37,
-      "appOnly": 0,
+      "appOnly": 6,
       "otherOnly": 0,
       "both": 74,
-      "neither": 126
+      "neither": 120
     },
     {
       "path": "rgb",
@@ -2452,30 +2452,15 @@
       "path": "rgb",
       "symbology": "qr_code",
       "tier": "severe",
-      "appRate": 0.43,
+      "appRate": 0.455,
       "otherRate": 0.43,
-      "appOnly": 0,
+      "appOnly": 5,
       "otherOnly": 0,
       "both": 86,
-      "neither": 114
+      "neither": 109
     }
   ],
   "disagreements": [
-    {
-      "path": "yuv",
-      "vin": "XU0XKN2C8N93SLYFA",
-      "symbology": "code_39",
-      "tier": "severe",
-      "seed": 1381297609,
-      "severeExtras": [
-        "glare",
-        "jpeg"
-      ],
-      "appVerdict": "hit",
-      "appText": "XU0XKN2C8N93SLYFA",
-      "otherVerdict": "miss",
-      "otherText": null
-    },
     {
       "path": "yuv",
       "vin": "0W4B348U890HX2JC1",
@@ -2493,33 +2478,33 @@
     },
     {
       "path": "yuv",
-      "vin": "J5XW697S5ZPFJL4RA",
+      "vin": "1FUJA6CK14LM12345",
       "symbology": "code_39_i",
       "tier": "severe",
-      "seed": 3754485252,
+      "seed": 3184022621,
       "severeExtras": [
-        "glare",
-        "jpeg"
+        "warp",
+        "glare"
       ],
       "appVerdict": "hit",
-      "appText": "IJ5XW697S5ZPFJL4RA",
+      "appText": "I1FUJA6CK14LM12345",
       "otherVerdict": "miss",
       "otherText": null
     },
     {
       "path": "yuv",
-      "vin": "L9TV9RC15W5ABHG1U",
+      "vin": "B33ZSLFN0H2NHWFEE",
       "symbology": "code_39_i",
       "tier": "severe",
-      "seed": 620237608,
+      "seed": 2506599691,
       "severeExtras": [
         "warp",
-        "jpeg"
+        "glare"
       ],
       "appVerdict": "miss",
-      "appText": null,
+      "appText": "IB33ZSLF$0H2NHWFEE",
       "otherVerdict": "hit",
-      "otherText": "IL9TV9RC15W5ABHG1U"
+      "otherText": "IB33ZSLFN0H2NHWFEE"
     },
     {
       "path": "yuv",
@@ -2553,63 +2538,78 @@
     },
     {
       "path": "yuv",
-      "vin": "DNUDA92B2W9V0SN9G",
-      "symbology": "code_39_check",
+      "vin": "VSJ0D0W00NXMJZ916",
+      "symbology": "code_39_i",
       "tier": "severe",
-      "seed": 2944065184,
+      "seed": 3124652396,
       "severeExtras": [
         "warp",
         "jpeg"
       ],
       "appVerdict": "miss",
       "appText": null,
-      "otherVerdict": "miss",
-      "otherText": "DNUDA92B2W9V0SN9G3"
+      "otherVerdict": "hit",
+      "otherText": "IVSJ0D0W00NXMJZ916"
     },
     {
       "path": "yuv",
-      "vin": "YW7Y7WHY16E85C9HE",
-      "symbology": "code_39_check",
+      "vin": "ZNCNNV4N0XSW7LSGF",
+      "symbology": "code_39_i",
       "tier": "severe",
-      "seed": 1742827065,
+      "seed": 3160275913,
       "severeExtras": [
         "warp",
         "jpeg"
       ],
       "appVerdict": "miss",
       "appText": null,
-      "otherVerdict": "miss",
-      "otherText": "YW7Y7WHY16E85C9HEP"
+      "otherVerdict": "hit",
+      "otherText": "IZNCNNV4N0XSW7LSGF"
     },
     {
       "path": "yuv",
-      "vin": "40WF0NRH3TRUXSNF2",
+      "vin": "YDKU00AD5JDBRYVNR",
       "symbology": "code_39_check",
       "tier": "severe",
-      "seed": 1431386438,
-      "severeExtras": [
-        "glare",
-        "jpeg"
-      ],
-      "appVerdict": "miss",
-      "appText": "40WF0NRH3TRUXSNF27",
-      "otherVerdict": "miss",
-      "otherText": null
-    },
-    {
-      "path": "yuv",
-      "vin": "JG1HZGN1XCZMJTYAN",
-      "symbology": "code_39_check",
-      "tier": "severe",
-      "seed": 2587907996,
+      "seed": 3078978436,
       "severeExtras": [
         "warp",
         "glare"
       ],
       "appVerdict": "miss",
-      "appText": "JG1HZGN1XCZMJTYAN1",
+      "appText": "YDKU00AD5JDBRYVNR9",
       "otherVerdict": "miss",
       "otherText": null
+    },
+    {
+      "path": "yuv",
+      "vin": "1AN1P0C26RBSXXCVL",
+      "symbology": "code_39_check",
+      "tier": "severe",
+      "seed": 4062863114,
+      "severeExtras": [
+        "glare",
+        "jpeg"
+      ],
+      "appVerdict": "hit",
+      "appText": "1AN1P0C26RBSXXCVLI",
+      "otherVerdict": "miss",
+      "otherText": null
+    },
+    {
+      "path": "yuv",
+      "vin": "VAJ260MW4Z4JC1L7G",
+      "symbology": "code_39_check",
+      "tier": "severe",
+      "seed": 3170170875,
+      "severeExtras": [
+        "warp",
+        "jpeg"
+      ],
+      "appVerdict": "miss",
+      "appText": null,
+      "otherVerdict": "hit",
+      "otherText": "VAJ260MW4Z4JC1L7GQ"
     },
     {
       "path": "yuv",
@@ -2628,6 +2628,600 @@
     },
     {
       "path": "yuv",
+      "vin": "K8TBG7DT77102AAC8",
+      "symbology": "code_128",
+      "tier": "severe",
+      "seed": 2845711809,
+      "severeExtras": [
+        "glare",
+        "jpeg"
+      ],
+      "appVerdict": "miss",
+      "appText": "K8TBG\"D177102A,C8",
+      "otherVerdict": "miss",
+      "otherText": null
+    },
+    {
+      "path": "yuv",
+      "vin": "EE37XVLL3E7XTYSNH",
+      "symbology": "code_128",
+      "tier": "severe",
+      "seed": 847487979,
+      "severeExtras": [
+        "glare",
+        "jpeg"
+      ],
+      "appVerdict": "hit",
+      "appText": "EE37XVLL3E7XTYSNH",
+      "otherVerdict": "miss",
+      "otherText": null
+    },
+    {
+      "path": "yuv",
+      "vin": "MDM8MX585CNH40H0K",
+      "symbology": "code_128",
+      "tier": "severe",
+      "seed": 2415052589,
+      "severeExtras": [
+        "glare",
+        "jpeg"
+      ],
+      "appVerdict": "hit",
+      "appText": "MDM8MX585CNH40H0K",
+      "otherVerdict": "miss",
+      "otherText": null
+    },
+    {
+      "path": "yuv",
+      "vin": "8YUR04UN0VBADRZFF",
+      "symbology": "code_128_fnc1",
+      "tier": "moderate",
+      "seed": 2257218396,
+      "severeExtras": null,
+      "appVerdict": "miss",
+      "appText": null,
+      "otherVerdict": "hit",
+      "otherText": "8YUR04UN0VBADRZFF\u001d1P84203911"
+    },
+    {
+      "path": "yuv",
+      "vin": "R5MLG5KM7FCG14EDZ",
+      "symbology": "code_128_fnc1",
+      "tier": "moderate",
+      "seed": 313510485,
+      "severeExtras": null,
+      "appVerdict": "miss",
+      "appText": null,
+      "otherVerdict": "hit",
+      "otherText": "R5MLG5KM7FCG14EDZ\u001d1P84203911"
+    },
+    {
+      "path": "yuv",
+      "vin": "90DMJDGR15GNNNB4H",
+      "symbology": "data_matrix",
+      "tier": "severe",
+      "seed": 2735108613,
+      "severeExtras": [
+        "glare",
+        "low_light"
+      ],
+      "appVerdict": "hit",
+      "appText": "90DMJDGR15GNNNB4H",
+      "otherVerdict": "miss",
+      "otherText": null
+    },
+    {
+      "path": "rgb",
+      "vin": "1HTMMAAL67H412345",
+      "symbology": "code_39",
+      "tier": "severe",
+      "seed": 510672364,
+      "severeExtras": [
+        "warp",
+        "jpeg"
+      ],
+      "appVerdict": "hit",
+      "appText": "1HTMMAAL67H412345",
+      "otherVerdict": "miss",
+      "otherText": null
+    },
+    {
+      "path": "rgb",
+      "vin": "4B31UKKD5LXDZ8GV9",
+      "symbology": "code_39",
+      "tier": "severe",
+      "seed": 711740309,
+      "severeExtras": [
+        "warp",
+        "glare"
+      ],
+      "appVerdict": "hit",
+      "appText": "4B31UKKD5LXDZ8GV9",
+      "otherVerdict": "miss",
+      "otherText": null
+    },
+    {
+      "path": "rgb",
+      "vin": "XFEBNVLS708P97PF0",
+      "symbology": "code_39",
+      "tier": "severe",
+      "seed": 862922798,
+      "severeExtras": [
+        "warp",
+        "glare"
+      ],
+      "appVerdict": "hit",
+      "appText": "XFEBNVLS708P97PF0",
+      "otherVerdict": "miss",
+      "otherText": null
+    },
+    {
+      "path": "rgb",
+      "vin": "2HP17JK7X7PJTFMBM",
+      "symbology": "code_39",
+      "tier": "severe",
+      "seed": 1234127570,
+      "severeExtras": [
+        "warp",
+        "glare"
+      ],
+      "appVerdict": "hit",
+      "appText": "2HP17JK7X7PJTFMBM",
+      "otherVerdict": "miss",
+      "otherText": null
+    },
+    {
+      "path": "rgb",
+      "vin": "510FT7G86F0D7V641",
+      "symbology": "code_39",
+      "tier": "severe",
+      "seed": 2202036643,
+      "severeExtras": [
+        "warp",
+        "glare"
+      ],
+      "appVerdict": "hit",
+      "appText": "510FT7G86F0D7V641",
+      "otherVerdict": "miss",
+      "otherText": null
+    },
+    {
+      "path": "rgb",
+      "vin": "N86ZEF3D4K4WDWJM5",
+      "symbology": "code_39",
+      "tier": "severe",
+      "seed": 1226403084,
+      "severeExtras": [
+        "warp",
+        "glare"
+      ],
+      "appVerdict": "hit",
+      "appText": "N86ZEF3D4K4WDWJM5",
+      "otherVerdict": "miss",
+      "otherText": null
+    },
+    {
+      "path": "rgb",
+      "vin": "MCM48HWY79NC3T20M",
+      "symbology": "code_39",
+      "tier": "severe",
+      "seed": 1688248017,
+      "severeExtras": [
+        "warp",
+        "jpeg"
+      ],
+      "appVerdict": "hit",
+      "appText": "MCM48HWY79NC3T20M",
+      "otherVerdict": "miss",
+      "otherText": null
+    },
+    {
+      "path": "rgb",
+      "vin": "P3TGSDXH4V216PFFM",
+      "symbology": "code_39",
+      "tier": "severe",
+      "seed": 3767252240,
+      "severeExtras": [
+        "warp",
+        "glare"
+      ],
+      "appVerdict": "hit",
+      "appText": "P3TGSDXH4V216PFFM",
+      "otherVerdict": "miss",
+      "otherText": null
+    },
+    {
+      "path": "rgb",
+      "vin": "1FUJA6CK14LM12345",
+      "symbology": "code_39_i",
+      "tier": "severe",
+      "seed": 3184022621,
+      "severeExtras": [
+        "warp",
+        "glare"
+      ],
+      "appVerdict": "hit",
+      "appText": "I1FUJA6CK14LM12345",
+      "otherVerdict": "miss",
+      "otherText": null
+    },
+    {
+      "path": "rgb",
+      "vin": "H9VN5BC78K3DYNFKJ",
+      "symbology": "code_39_i",
+      "tier": "severe",
+      "seed": 1945755297,
+      "severeExtras": [
+        "warp",
+        "glare"
+      ],
+      "appVerdict": "hit",
+      "appText": "IH9VN5BC78K3DYNFKJ",
+      "otherVerdict": "miss",
+      "otherText": null
+    },
+    {
+      "path": "rgb",
+      "vin": "1ECMLARY2S25WWSD8",
+      "symbology": "code_39_i",
+      "tier": "severe",
+      "seed": 1826949108,
+      "severeExtras": [
+        "warp",
+        "glare"
+      ],
+      "appVerdict": "hit",
+      "appText": "I1ECMLARY2S25WWSD8",
+      "otherVerdict": "miss",
+      "otherText": null
+    },
+    {
+      "path": "rgb",
+      "vin": "1SNCGKK7969N1EUWK",
+      "symbology": "code_39_i",
+      "tier": "severe",
+      "seed": 672715629,
+      "severeExtras": [
+        "warp",
+        "glare"
+      ],
+      "appVerdict": "hit",
+      "appText": "I1SNCGKK7969N1EUWK",
+      "otherVerdict": "miss",
+      "otherText": null
+    },
+    {
+      "path": "rgb",
+      "vin": "B33ZSLFN0H2NHWFEE",
+      "symbology": "code_39_i",
+      "tier": "severe",
+      "seed": 2506599691,
+      "severeExtras": [
+        "warp",
+        "glare"
+      ],
+      "appVerdict": "miss",
+      "appText": "IB33ZSLF$0H2NHWFEE",
+      "otherVerdict": "miss",
+      "otherText": null
+    },
+    {
+      "path": "rgb",
+      "vin": "L9TV9RC15W5ABHG1U",
+      "symbology": "code_39_i",
+      "tier": "severe",
+      "seed": 620237608,
+      "severeExtras": [
+        "warp",
+        "jpeg"
+      ],
+      "appVerdict": "hit",
+      "appText": "IL9TV9RC15W5ABHG1U",
+      "otherVerdict": "miss",
+      "otherText": null
+    },
+    {
+      "path": "rgb",
+      "vin": "G2ZR0XES8SD3V91CX",
+      "symbology": "code_39_i",
+      "tier": "severe",
+      "seed": 4158792539,
+      "severeExtras": [
+        "glare",
+        "jpeg"
+      ],
+      "appVerdict": "miss",
+      "appText": "IG2ZR0XES8SD$V91CX",
+      "otherVerdict": "hit",
+      "otherText": "IG2ZR0XES8SD3V91CX"
+    },
+    {
+      "path": "rgb",
+      "vin": "4B31UKKD5LXDZ8GV9",
+      "symbology": "code_39_i",
+      "tier": "severe",
+      "seed": 3075372601,
+      "severeExtras": [
+        "warp",
+        "glare"
+      ],
+      "appVerdict": "hit",
+      "appText": "I4B31UKKD5LXDZ8GV9",
+      "otherVerdict": "miss",
+      "otherText": null
+    },
+    {
+      "path": "rgb",
+      "vin": "40WF0NRH3TRUXSNF2",
+      "symbology": "code_39_i",
+      "tier": "severe",
+      "seed": 2229888303,
+      "severeExtras": [
+        "glare",
+        "jpeg"
+      ],
+      "appVerdict": "hit",
+      "appText": "I40WF0NRH3TRUXSNF2",
+      "otherVerdict": "miss",
+      "otherText": null
+    },
+    {
+      "path": "rgb",
+      "vin": "G8E3JL45605BEFHWV",
+      "symbology": "code_39_i",
+      "tier": "severe",
+      "seed": 896943156,
+      "severeExtras": [
+        "warp",
+        "glare"
+      ],
+      "appVerdict": "hit",
+      "appText": "IG8E3JL45605BEFHWV",
+      "otherVerdict": "miss",
+      "otherText": null
+    },
+    {
+      "path": "rgb",
+      "vin": "1Y00XGXL4CLXA5AJC",
+      "symbology": "code_39_i",
+      "tier": "severe",
+      "seed": 2033926115,
+      "severeExtras": [
+        "glare",
+        "jpeg"
+      ],
+      "appVerdict": "hit",
+      "appText": "I1Y00XGXL4CLXA5AJC",
+      "otherVerdict": "miss",
+      "otherText": null
+    },
+    {
+      "path": "rgb",
+      "vin": "LG66KF0T9M146ZT5U",
+      "symbology": "code_39_i",
+      "tier": "severe",
+      "seed": 2127455650,
+      "severeExtras": [
+        "glare",
+        "jpeg"
+      ],
+      "appVerdict": "hit",
+      "appText": "ILG66KF0T9M146ZT5U",
+      "otherVerdict": "miss",
+      "otherText": null
+    },
+    {
+      "path": "rgb",
+      "vin": "H0CZ4K787ZE2FTYBJ",
+      "symbology": "code_39_i",
+      "tier": "severe",
+      "seed": 993813817,
+      "severeExtras": [
+        "warp",
+        "glare"
+      ],
+      "appVerdict": "hit",
+      "appText": "IH0CZ4K787ZE2FTYBJ",
+      "otherVerdict": "miss",
+      "otherText": null
+    },
+    {
+      "path": "rgb",
+      "vin": "UAT6LS0W829XPGLJM",
+      "symbology": "code_39_check",
+      "tier": "severe",
+      "seed": 1167855547,
+      "severeExtras": [
+        "warp",
+        "glare"
+      ],
+      "appVerdict": "miss",
+      "appText": "UAT6LS0W829XPGLJMA",
+      "otherVerdict": "miss",
+      "otherText": null
+    },
+    {
+      "path": "rgb",
+      "vin": "DNUDA92B2W9V0SN9G",
+      "symbology": "code_39_check",
+      "tier": "severe",
+      "seed": 2944065184,
+      "severeExtras": [
+        "warp",
+        "jpeg"
+      ],
+      "appVerdict": "miss",
+      "appText": "DNUDA92B2W9V0SN9G3",
+      "otherVerdict": "miss",
+      "otherText": null
+    },
+    {
+      "path": "rgb",
+      "vin": "71D4V49ZXRSV6G30V",
+      "symbology": "code_39_check",
+      "tier": "severe",
+      "seed": 1229063854,
+      "severeExtras": [
+        "glare",
+        "jpeg"
+      ],
+      "appVerdict": "miss",
+      "appText": "71D4V49ZXRSV6G30VL",
+      "otherVerdict": "miss",
+      "otherText": null
+    },
+    {
+      "path": "rgb",
+      "vin": "2H9JDU23880R6LMDM",
+      "symbology": "code_39_check",
+      "tier": "severe",
+      "seed": 1052697939,
+      "severeExtras": [
+        "warp",
+        "jpeg"
+      ],
+      "appVerdict": "miss",
+      "appText": "2H9JDU23880R6LMDM7",
+      "otherVerdict": "miss",
+      "otherText": null
+    },
+    {
+      "path": "rgb",
+      "vin": "YDKU00AD5JDBRYVNR",
+      "symbology": "code_39_check",
+      "tier": "severe",
+      "seed": 3078978436,
+      "severeExtras": [
+        "warp",
+        "glare"
+      ],
+      "appVerdict": "miss",
+      "appText": "YDKU00AD5JDBRYVNR9",
+      "otherVerdict": "miss",
+      "otherText": null
+    },
+    {
+      "path": "rgb",
+      "vin": "YW7Y7WHY16E85C9HE",
+      "symbology": "code_39_check",
+      "tier": "severe",
+      "seed": 1742827065,
+      "severeExtras": [
+        "warp",
+        "jpeg"
+      ],
+      "appVerdict": "miss",
+      "appText": "YW7Y7WHY16E85C9HEP",
+      "otherVerdict": "miss",
+      "otherText": null
+    },
+    {
+      "path": "rgb",
+      "vin": "EXVCYE76X9N38SYBW",
+      "symbology": "code_39_check",
+      "tier": "severe",
+      "seed": 1349967666,
+      "severeExtras": [
+        "glare",
+        "jpeg"
+      ],
+      "appVerdict": "miss",
+      "appText": "EXVCYE76X9N38SYBWV",
+      "otherVerdict": "miss",
+      "otherText": null
+    },
+    {
+      "path": "rgb",
+      "vin": "1AN1P0C26RBSXXCVL",
+      "symbology": "code_39_check",
+      "tier": "severe",
+      "seed": 4062863114,
+      "severeExtras": [
+        "glare",
+        "jpeg"
+      ],
+      "appVerdict": "hit",
+      "appText": "1AN1P0C26RBSXXCVLI",
+      "otherVerdict": "miss",
+      "otherText": null
+    },
+    {
+      "path": "rgb",
+      "vin": "Z4K0AL2E3LJKV8L8E",
+      "symbology": "code_39_check",
+      "tier": "severe",
+      "seed": 2487406064,
+      "severeExtras": [
+        "glare",
+        "jpeg"
+      ],
+      "appVerdict": "hit",
+      "appText": "Z4K0AL2E3LJKV8L8E-",
+      "otherVerdict": "miss",
+      "otherText": null
+    },
+    {
+      "path": "rgb",
+      "vin": "2X93VCG15ETBA0ZC7",
+      "symbology": "code_39_check",
+      "tier": "severe",
+      "seed": 775884878,
+      "severeExtras": [
+        "warp",
+        "glare"
+      ],
+      "appVerdict": "miss",
+      "appText": "2X93VCG15ETBA0ZC7F",
+      "otherVerdict": "miss",
+      "otherText": null
+    },
+    {
+      "path": "rgb",
+      "vin": "FA21JK5S9G0VHV71G",
+      "symbology": "code_39_check",
+      "tier": "severe",
+      "seed": 1221058566,
+      "severeExtras": [
+        "warp",
+        "jpeg"
+      ],
+      "appVerdict": "miss",
+      "appText": "FA21JK5S9G0VHV71GD",
+      "otherVerdict": "miss",
+      "otherText": null
+    },
+    {
+      "path": "rgb",
+      "vin": "JZWUFSXX609NT4KBA",
+      "symbology": "code_39_check",
+      "tier": "severe",
+      "seed": 79442972,
+      "severeExtras": [
+        "warp",
+        "glare"
+      ],
+      "appVerdict": "hit",
+      "appText": "JZWUFSXX609NT4KBA-",
+      "otherVerdict": "miss",
+      "otherText": null
+    },
+    {
+      "path": "rgb",
+      "vin": "0W4B348U890HX2JC1",
+      "symbology": "code_39_check",
+      "tier": "severe",
+      "seed": 2901442826,
+      "severeExtras": [
+        "warp",
+        "jpeg"
+      ],
+      "appVerdict": "miss",
+      "appText": "0W4B348U890HX2JC1L",
+      "otherVerdict": "miss",
+      "otherText": null
+    },
+    {
+      "path": "rgb",
       "vin": "HC1G7NUM1NCCFZJTZ",
       "symbology": "code_39_check",
       "tier": "severe",
@@ -2637,66 +3231,429 @@
         "glare"
       ],
       "appVerdict": "miss",
-      "appText": null,
+      "appText": "HC1G7NUM1NCCFZJTZ8",
       "otherVerdict": "miss",
-      "otherText": "HC1G7NUM1NCCFZJTZ8"
+      "otherText": null
     },
     {
-      "path": "yuv",
-      "vin": "EDAE3UP78M3612D3E",
-      "symbology": "code_39_check",
+      "path": "rgb",
+      "vin": "3H9SKJWD16C3XJNH0",
+      "symbology": "code_128",
+      "tier": "moderate",
+      "seed": 1761318175,
+      "severeExtras": null,
+      "appVerdict": "hit",
+      "appText": "3H9SKJWD16C3XJNH0",
+      "otherVerdict": "miss",
+      "otherText": null
+    },
+    {
+      "path": "rgb",
+      "vin": "K8TBG7DT77102AAC8",
+      "symbology": "code_128",
       "tier": "severe",
-      "seed": 3395141101,
+      "seed": 2845711809,
       "severeExtras": [
         "glare",
         "jpeg"
       ],
       "appVerdict": "miss",
-      "appText": "EDAE3UP78M3612D3EG",
+      "appText": "K8TBG\"D177102A,C8",
       "otherVerdict": "miss",
       "otherText": null
     },
     {
-      "path": "yuv",
-      "vin": "74J7N9M86K6S0AUTE",
+      "path": "rgb",
+      "vin": "MU56LSLV40DE2XA1M",
       "symbology": "code_128",
       "tier": "severe",
-      "seed": 279873535,
+      "seed": 4135436850,
+      "severeExtras": [
+        "warp",
+        "glare"
+      ],
+      "appVerdict": "hit",
+      "appText": "MU56LSLV40DE2XA1M",
+      "otherVerdict": "miss",
+      "otherText": null
+    },
+    {
+      "path": "rgb",
+      "vin": "1SNCGKK7969N1EUWK",
+      "symbology": "code_128",
+      "tier": "severe",
+      "seed": 2916326360,
       "severeExtras": [
         "glare",
         "jpeg"
       ],
       "appVerdict": "hit",
-      "appText": "74J7N9M86K6S0AUTE",
+      "appText": "1SNCGKK7969N1EUWK",
       "otherVerdict": "miss",
       "otherText": null
     },
     {
-      "path": "yuv",
+      "path": "rgb",
+      "vin": "JSV06FB1XBWC4N26K",
+      "symbology": "code_128",
+      "tier": "severe",
+      "seed": 889705837,
+      "severeExtras": [
+        "glare",
+        "jpeg"
+      ],
+      "appVerdict": "hit",
+      "appText": "JSV06FB1XBWC4N26K",
+      "otherVerdict": "miss",
+      "otherText": null
+    },
+    {
+      "path": "rgb",
+      "vin": "3H9SKJWD16C3XJNH0",
+      "symbology": "code_128",
+      "tier": "severe",
+      "seed": 1942706270,
+      "severeExtras": [
+        "warp",
+        "jpeg"
+      ],
+      "appVerdict": "hit",
+      "appText": "3H9SKJWD16C3XJNH0",
+      "otherVerdict": "miss",
+      "otherText": null
+    },
+    {
+      "path": "rgb",
+      "vin": "288YGF7N5S46ZJGM3",
+      "symbology": "code_128",
+      "tier": "severe",
+      "seed": 1486801678,
+      "severeExtras": [
+        "glare",
+        "jpeg"
+      ],
+      "appVerdict": "hit",
+      "appText": "288YGF7N5S46ZJGM3",
+      "otherVerdict": "miss",
+      "otherText": null
+    },
+    {
+      "path": "rgb",
+      "vin": "EXVCYE76X9N38SYBW",
+      "symbology": "code_128",
+      "tier": "severe",
+      "seed": 4228017806,
+      "severeExtras": [
+        "warp",
+        "glare"
+      ],
+      "appVerdict": "hit",
+      "appText": "EXVCYE76X9N38SYBW",
+      "otherVerdict": "miss",
+      "otherText": null
+    },
+    {
+      "path": "rgb",
+      "vin": "J94XY1CR8TU5J0HKY",
+      "symbology": "code_128",
+      "tier": "severe",
+      "seed": 40804888,
+      "severeExtras": [
+        "warp",
+        "glare"
+      ],
+      "appVerdict": "hit",
+      "appText": "J94XY1CR8TU5J0HKY",
+      "otherVerdict": "miss",
+      "otherText": null
+    },
+    {
+      "path": "rgb",
+      "vin": "EE37XVLL3E7XTYSNH",
+      "symbology": "code_128",
+      "tier": "severe",
+      "seed": 847487979,
+      "severeExtras": [
+        "glare",
+        "jpeg"
+      ],
+      "appVerdict": "hit",
+      "appText": "EE37XVLL3E7XTYSNH",
+      "otherVerdict": "miss",
+      "otherText": null
+    },
+    {
+      "path": "rgb",
+      "vin": "L6E30VGM0F2A6YULH",
+      "symbology": "code_128",
+      "tier": "severe",
+      "seed": 3522098051,
+      "severeExtras": [
+        "warp",
+        "glare"
+      ],
+      "appVerdict": "hit",
+      "appText": "L6E30VGM0F2A6YULH",
+      "otherVerdict": "miss",
+      "otherText": null
+    },
+    {
+      "path": "rgb",
+      "vin": "MCM48HWY79NC3T20M",
+      "symbology": "code_128",
+      "tier": "severe",
+      "seed": 964807592,
+      "severeExtras": [
+        "glare",
+        "jpeg"
+      ],
+      "appVerdict": "hit",
+      "appText": "MCM48HWY79NC3T20M",
+      "otherVerdict": "miss",
+      "otherText": null
+    },
+    {
+      "path": "rgb",
+      "vin": "LRS0DSW04WUYE6Z9A",
+      "symbology": "code_128",
+      "tier": "severe",
+      "seed": 3578855675,
+      "severeExtras": [
+        "glare",
+        "jpeg"
+      ],
+      "appVerdict": "hit",
+      "appText": "LRS0DSW04WUYE6Z9A",
+      "otherVerdict": "miss",
+      "otherText": null
+    },
+    {
+      "path": "rgb",
+      "vin": "MDM8MX585CNH40H0K",
+      "symbology": "code_128",
+      "tier": "severe",
+      "seed": 2415052589,
+      "severeExtras": [
+        "glare",
+        "jpeg"
+      ],
+      "appVerdict": "hit",
+      "appText": "MDM8MX585CNH40H0K",
+      "otherVerdict": "miss",
+      "otherText": null
+    },
+    {
+      "path": "rgb",
+      "vin": "NR0LFZRN9LKWMYAG8",
+      "symbology": "code_128_fnc1",
+      "tier": "moderate",
+      "seed": 3180707385,
+      "severeExtras": null,
+      "appVerdict": "hit",
+      "appText": "NR0LFZRN9LKWMYAG8\u001d1P84203911",
+      "otherVerdict": "miss",
+      "otherText": null
+    },
+    {
+      "path": "rgb",
+      "vin": "G73N6T2P9GN39HT18",
+      "symbology": "code_128_fnc1",
+      "tier": "moderate",
+      "seed": 1269755034,
+      "severeExtras": null,
+      "appVerdict": "hit",
+      "appText": "G73N6T2P9GN39HT18\u001d1P84203911",
+      "otherVerdict": "miss",
+      "otherText": null
+    },
+    {
+      "path": "rgb",
       "vin": "6LTYUHPR0V8E05RZX",
       "symbology": "code_128_fnc1",
       "tier": "moderate",
       "seed": 358326800,
       "severeExtras": null,
-      "appVerdict": "miss",
-      "appText": null,
-      "otherVerdict": "hit",
-      "otherText": "6LTYUHPR0V8E05RZX\u001d1P84203911"
+      "appVerdict": "hit",
+      "appText": "6LTYUHPR0V8E05RZX\u001d1P84203911",
+      "otherVerdict": "miss",
+      "otherText": null
     },
     {
-      "path": "yuv",
+      "path": "rgb",
+      "vin": "6AVS3VZK4ZGPSWDN7",
+      "symbology": "code_128_fnc1",
+      "tier": "moderate",
+      "seed": 326857682,
+      "severeExtras": null,
+      "appVerdict": "hit",
+      "appText": "6AVS3VZK4ZGPSWDN7\u001d1P84203911",
+      "otherVerdict": "miss",
+      "otherText": null
+    },
+    {
+      "path": "rgb",
+      "vin": "HWCGVEBF6PRFZ31ZN",
+      "symbology": "code_128_fnc1",
+      "tier": "moderate",
+      "seed": 1520202198,
+      "severeExtras": null,
+      "appVerdict": "hit",
+      "appText": "HWCGVEBF6PRFZ31ZN\u001d1P84203911",
+      "otherVerdict": "miss",
+      "otherText": null
+    },
+    {
+      "path": "rgb",
+      "vin": "1Y00XGXL4CLXA5AJC",
+      "symbology": "code_128_fnc1",
+      "tier": "moderate",
+      "seed": 2432917776,
+      "severeExtras": null,
+      "appVerdict": "hit",
+      "appText": "1Y00XGXL4CLXA5AJC\u001d1P84203911",
+      "otherVerdict": "miss",
+      "otherText": null
+    },
+    {
+      "path": "rgb",
+      "vin": "0W4B348U890HX2JC1",
+      "symbology": "code_128_fnc1",
+      "tier": "moderate",
+      "seed": 465607496,
+      "severeExtras": null,
+      "appVerdict": "hit",
+      "appText": "0W4B348U890HX2JC1\u001d1P84203911",
+      "otherVerdict": "miss",
+      "otherText": null
+    },
+    {
+      "path": "rgb",
       "vin": "EH8U2YHX60HU8VGWD",
       "symbology": "code_128_fnc1",
       "tier": "moderate",
       "seed": 21362190,
       "severeExtras": null,
-      "appVerdict": "miss",
-      "appText": "!H8U2Y!X60HU8VGWD\u001d1P84203911",
-      "otherVerdict": "hit",
-      "otherText": "EH8U2YHX60HU8VGWD\u001d1P84203911"
+      "appVerdict": "hit",
+      "appText": "EH8U2YHX60HU8VGWD\u001d1P84203911",
+      "otherVerdict": "miss",
+      "otherText": "!H8U2Y!X60HU8VGWD\u001d1P84203911"
     },
     {
-      "path": "yuv",
+      "path": "rgb",
+      "vin": "GZL0ZFC68AX72HTXG",
+      "symbology": "code_128_fnc1",
+      "tier": "moderate",
+      "seed": 1952379171,
+      "severeExtras": null,
+      "appVerdict": "hit",
+      "appText": "GZL0ZFC68AX72HTXG\u001d1P84203911",
+      "otherVerdict": "miss",
+      "otherText": null
+    },
+    {
+      "path": "rgb",
+      "vin": "MUUW9H4N0DSL1S1KV",
+      "symbology": "data_matrix",
+      "tier": "moderate",
+      "seed": 164461444,
+      "severeExtras": null,
+      "appVerdict": "hit",
+      "appText": "MUUW9H4N0DSL1S1KV",
+      "otherVerdict": "miss",
+      "otherText": null
+    },
+    {
+      "path": "rgb",
+      "vin": "XK405ZFV7ZUPPCVMB",
+      "symbology": "data_matrix",
+      "tier": "severe",
+      "seed": 2061949533,
+      "severeExtras": [
+        "warp",
+        "glare"
+      ],
+      "appVerdict": "hit",
+      "appText": "XK405ZFV7ZUPPCVMB",
+      "otherVerdict": "miss",
+      "otherText": null
+    },
+    {
+      "path": "rgb",
+      "vin": "90DMJDGR15GNNNB4H",
+      "symbology": "data_matrix",
+      "tier": "severe",
+      "seed": 2735108613,
+      "severeExtras": [
+        "glare",
+        "low_light"
+      ],
+      "appVerdict": "hit",
+      "appText": "90DMJDGR15GNNNB4H",
+      "otherVerdict": "miss",
+      "otherText": null
+    },
+    {
+      "path": "rgb",
+      "vin": "288YGF7N5S46ZJGM3",
+      "symbology": "data_matrix",
+      "tier": "severe",
+      "seed": 2558853601,
+      "severeExtras": [
+        "warp",
+        "glare"
+      ],
+      "appVerdict": "hit",
+      "appText": "288YGF7N5S46ZJGM3",
+      "otherVerdict": "miss",
+      "otherText": null
+    },
+    {
+      "path": "rgb",
+      "vin": "G8E3JL45605BEFHWV",
+      "symbology": "data_matrix",
+      "tier": "severe",
+      "seed": 1532201178,
+      "severeExtras": [
+        "glare",
+        "jpeg"
+      ],
+      "appVerdict": "hit",
+      "appText": "G8E3JL45605BEFHWV",
+      "otherVerdict": "miss",
+      "otherText": null
+    },
+    {
+      "path": "rgb",
+      "vin": "91C9VLPL0ZBGANPSG",
+      "symbology": "data_matrix",
+      "tier": "severe",
+      "seed": 2079122217,
+      "severeExtras": [
+        "warp",
+        "glare"
+      ],
+      "appVerdict": "hit",
+      "appText": "91C9VLPL0ZBGANPSG",
+      "otherVerdict": "miss",
+      "otherText": null
+    },
+    {
+      "path": "rgb",
+      "vin": "P3TGSDXH4V216PFFM",
+      "symbology": "data_matrix",
+      "tier": "severe",
+      "seed": 2792314834,
+      "severeExtras": [
+        "warp",
+        "glare"
+      ],
+      "appVerdict": "hit",
+      "appText": "P3TGSDXH4V216PFFM",
+      "otherVerdict": "miss",
+      "otherText": null
+    },
+    {
+      "path": "rgb",
       "vin": "B33ZSLFN0H2NHWFEE",
       "symbology": "qr_code",
       "tier": "severe",
@@ -2705,13 +3662,43 @@
         "glare",
         "low_light"
       ],
-      "appVerdict": "miss",
-      "appText": null,
-      "otherVerdict": "hit",
-      "otherText": "B33ZSLFN0H2NHWFEE"
+      "appVerdict": "hit",
+      "appText": "B33ZSLFN0H2NHWFEE",
+      "otherVerdict": "miss",
+      "otherText": null
     },
     {
-      "path": "yuv",
+      "path": "rgb",
+      "vin": "JSYBK8875S5JFH5C0",
+      "symbology": "qr_code",
+      "tier": "severe",
+      "seed": 4096028677,
+      "severeExtras": [
+        "low_light",
+        "jpeg"
+      ],
+      "appVerdict": "hit",
+      "appText": "JSYBK8875S5JFH5C0",
+      "otherVerdict": "miss",
+      "otherText": null
+    },
+    {
+      "path": "rgb",
+      "vin": "YEKPKTE13B04VXLL9",
+      "symbology": "qr_code",
+      "tier": "severe",
+      "seed": 3672831472,
+      "severeExtras": [
+        "low_light",
+        "jpeg"
+      ],
+      "appVerdict": "hit",
+      "appText": "YEKPKTE13B04VXLL9",
+      "otherVerdict": "miss",
+      "otherText": null
+    },
+    {
+      "path": "rgb",
       "vin": "CKSP99BH62U3XH21L",
       "symbology": "qr_code",
       "tier": "severe",
@@ -2720,23 +3707,23 @@
         "low_light",
         "jpeg"
       ],
-      "appVerdict": "miss",
-      "appText": null,
-      "otherVerdict": "hit",
-      "otherText": "CKSP99BH62U3XH21L"
+      "appVerdict": "hit",
+      "appText": "CKSP99BH62U3XH21L",
+      "otherVerdict": "miss",
+      "otherText": null
     },
     {
-      "path": "yuv",
-      "vin": "L6E30VGM0F2A6YULH",
+      "path": "rgb",
+      "vin": "AMDF6A2D9Z7ENJTYW",
       "symbology": "qr_code",
       "tier": "severe",
-      "seed": 3953016241,
+      "seed": 3154918374,
       "severeExtras": [
-        "glare",
-        "low_light"
+        "low_light",
+        "jpeg"
       ],
       "appVerdict": "hit",
-      "appText": "L6E30VGM0F2A6YULH",
+      "appText": "AMDF6A2D9Z7ENJTYW",
       "otherVerdict": "miss",
       "otherText": null
     }
@@ -2746,18 +3733,18 @@
   "pass": false,
   "failures": [
     "code_39 moderate: 77.5% < 90.0% (155/200 correct, -12.5 pp)",
-    "code_39 severe: 30.0% < 70.0% (60/200 correct, -40.0 pp)",
+    "code_39 severe: 34.0% < 70.0% (68/200 correct, -36.0 pp)",
     "code_39_i moderate: 79.0% < 90.0% (158/200 correct, -11.0 pp)",
-    "code_39_i severe: 23.5% < 70.0% (47/200 correct, -46.5 pp)",
+    "code_39_i severe: 28.5% < 70.0% (57/200 correct, -41.5 pp)",
     "code_39_check clean: 24.0% < 99.0% (48/200 correct, -75.0 pp)",
     "code_39_check moderate: 18.5% < 90.0% (37/200 correct, -71.5 pp)",
-    "code_39_check severe: 7.0% < 70.0% (14/200 correct, -63.0 pp)",
-    "code_128 moderate: 80.5% < 90.0% (161/200 correct, -9.5 pp)",
-    "code_128 severe: 25.0% < 70.0% (50/200 correct, -45.0 pp)",
-    "code_128_fnc1 moderate: 71.0% < 90.0% (142/200 correct, -19.0 pp)",
+    "code_39_check severe: 8.5% < 70.0% (17/200 correct, -61.5 pp)",
+    "code_128 moderate: 81.0% < 90.0% (162/200 correct, -9.0 pp)",
+    "code_128 severe: 31.0% < 70.0% (62/200 correct, -39.0 pp)",
+    "code_128_fnc1 moderate: 75.5% < 90.0% (151/200 correct, -14.5 pp)",
     "code_128_fnc1 severe: 0.0% < 70.0% (0/200 correct, -70.0 pp)",
-    "data_matrix severe: 37.0% < 70.0% (74/200 correct, -33.0 pp)",
+    "data_matrix severe: 40.0% < 70.0% (80/200 correct, -30.0 pp)",
     "qr_code clean: 98.5% < 99.0% (197/200 correct, -0.5 pp)",
-    "qr_code severe: 43.0% < 70.0% (86/200 correct, -27.0 pp)"
+    "qr_code severe: 45.5% < 70.0% (91/200 correct, -24.5 pp)"
   ]
 }

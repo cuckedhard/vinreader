@@ -2,16 +2,16 @@
   "probe": "bench/confirm-probe.ts",
   "command": "bun run bench/confirm-probe.ts --repeats 8 --symbologies code_39_i,code_128 --tiers clean,moderate,severe",
   "provenance": {
-    "commit": "66a0aa9fdb2a5261b8c92ea8ef5996d4e5b2d299",
+    "commit": "88306a7bae03b1f5466e2274e596d01dbfa5baff",
     "dirty": false
   },
-  "dist": "/tmp/claude-0/-home-user-vinreader/c79fd7d1-8827-5e7c-aa59-8ca5f7602e93/scratchpad/wt-head/dist",
+  "dist": "/home/user/vinreader/dist",
   "machine": {
     "cpus": 4,
     "loadavg": [
-      9.77,
-      7.87,
-      5.89
+      0.57,
+      2.3,
+      3.41
     ]
   },
   "config": {
@@ -41,9 +41,9 @@
     "confirmed": 48,
     "notConfirmed": 0,
     "faults": 0,
-    "meanMs": 923.2708333333334,
-    "minMs": 323,
-    "maxMs": 4880
+    "meanMs": 864.875,
+    "minMs": 261,
+    "maxMs": 2198
   },
   "cells": [
     {
@@ -53,9 +53,9 @@
       "confirmed": 8,
       "notConfirmed": 0,
       "faults": 0,
-      "meanMs": 373.5,
-      "minMs": 323,
-      "maxMs": 487
+      "meanMs": 270.5,
+      "minMs": 261,
+      "maxMs": 276
     },
     {
       "symbology": "code_39_i",
@@ -64,9 +64,9 @@
       "confirmed": 8,
       "notConfirmed": 0,
       "faults": 0,
-      "meanMs": 416,
-      "minMs": 346,
-      "maxMs": 610
+      "meanMs": 1148.5,
+      "minMs": 1112,
+      "maxMs": 1237
     },
     {
       "symbology": "code_39_i",
@@ -75,9 +75,9 @@
       "confirmed": 8,
       "notConfirmed": 0,
       "faults": 0,
-      "meanMs": 1352.25,
-      "minMs": 694,
-      "maxMs": 3316
+      "meanMs": 1428.75,
+      "minMs": 1047,
+      "maxMs": 1558
     },
     {
       "symbology": "code_128",
@@ -86,9 +86,9 @@
       "confirmed": 8,
       "notConfirmed": 0,
       "faults": 0,
-      "meanMs": 358.375,
-      "minMs": 328,
-      "maxMs": 399
+      "meanMs": 271.625,
+      "minMs": 265,
+      "maxMs": 293
     },
     {
       "symbology": "code_128",
@@ -97,9 +97,9 @@
       "confirmed": 8,
       "notConfirmed": 0,
       "faults": 0,
-      "meanMs": 478.125,
-      "minMs": 334,
-      "maxMs": 951
+      "meanMs": 283.5,
+      "minMs": 272,
+      "maxMs": 354
     },
     {
       "symbology": "code_128",
@@ -108,9 +108,9 @@
       "confirmed": 8,
       "notConfirmed": 0,
       "faults": 0,
-      "meanMs": 2561.375,
-      "minMs": 970,
-      "maxMs": 4880
+      "meanMs": 1786.375,
+      "minMs": 1007,
+      "maxMs": 2198
     }
   ],
   "measurements": [
@@ -119,7 +119,7 @@
       "tier": "clean",
       "repeat": 0,
       "outcome": "confirmed",
-      "ms": 369,
+      "ms": 271,
       "fault": null,
       "attempts": 1
     },
@@ -128,7 +128,7 @@
       "tier": "clean",
       "repeat": 1,
       "outcome": "confirmed",
-      "ms": 323,
+      "ms": 261,
       "fault": null,
       "attempts": 1
     },
@@ -137,7 +137,7 @@
       "tier": "clean",
       "repeat": 2,
       "outcome": "confirmed",
-      "ms": 333,
+      "ms": 276,
       "fault": null,
       "attempts": 1
     },
@@ -146,7 +146,7 @@
       "tier": "clean",
       "repeat": 3,
       "outcome": "confirmed",
-      "ms": 363,
+      "ms": 270,
       "fault": null,
       "attempts": 1
     },
@@ -155,7 +155,7 @@
       "tier": "clean",
       "repeat": 4,
       "outcome": "confirmed",
-      "ms": 371,
+      "ms": 270,
       "fault": null,
       "attempts": 1
     },
@@ -164,7 +164,7 @@
       "tier": "clean",
       "repeat": 5,
       "outcome": "confirmed",
-      "ms": 487,
+      "ms": 276,
       "fault": null,
       "attempts": 1
     },
@@ -173,7 +173,7 @@
       "tier": "clean",
       "repeat": 6,
       "outcome": "confirmed",
-      "ms": 380,
+      "ms": 271,
       "fault": null,
       "attempts": 1
     },
@@ -182,7 +182,7 @@
       "tier": "clean",
       "repeat": 7,
       "outcome": "confirmed",
-      "ms": 362,
+      "ms": 269,
       "fault": null,
       "attempts": 1
     },
@@ -191,7 +191,7 @@
       "tier": "moderate",
       "repeat": 0,
       "outcome": "confirmed",
-      "ms": 349,
+      "ms": 1237,
       "fault": null,
       "attempts": 1
     },
@@ -200,7 +200,7 @@
       "tier": "moderate",
       "repeat": 1,
       "outcome": "confirmed",
-      "ms": 366,
+      "ms": 1141,
       "fault": null,
       "attempts": 1
     },
@@ -209,7 +209,7 @@
       "tier": "moderate",
       "repeat": 2,
       "outcome": "confirmed",
-      "ms": 346,
+      "ms": 1117,
       "fault": null,
       "attempts": 1
     },
@@ -218,7 +218,7 @@
       "tier": "moderate",
       "repeat": 3,
       "outcome": "confirmed",
-      "ms": 583,
+      "ms": 1137,
       "fault": null,
       "attempts": 1
     },
@@ -227,7 +227,7 @@
       "tier": "moderate",
       "repeat": 4,
       "outcome": "confirmed",
-      "ms": 364,
+      "ms": 1112,
       "fault": null,
       "attempts": 1
     },
@@ -236,7 +236,7 @@
       "tier": "moderate",
       "repeat": 5,
       "outcome": "confirmed",
-      "ms": 358,
+      "ms": 1120,
       "fault": null,
       "attempts": 1
     },
@@ -245,7 +245,7 @@
       "tier": "moderate",
       "repeat": 6,
       "outcome": "confirmed",
-      "ms": 352,
+      "ms": 1122,
       "fault": null,
       "attempts": 1
     },
@@ -254,7 +254,7 @@
       "tier": "moderate",
       "repeat": 7,
       "outcome": "confirmed",
-      "ms": 610,
+      "ms": 1202,
       "fault": null,
       "attempts": 1
     },
@@ -263,7 +263,7 @@
       "tier": "severe",
       "repeat": 0,
       "outcome": "confirmed",
-      "ms": 735,
+      "ms": 1558,
       "fault": null,
       "attempts": 1
     },
@@ -272,7 +272,7 @@
       "tier": "severe",
       "repeat": 1,
       "outcome": "confirmed",
-      "ms": 1234,
+      "ms": 1047,
       "fault": null,
       "attempts": 1
     },
@@ -281,7 +281,7 @@
       "tier": "severe",
       "repeat": 2,
       "outcome": "confirmed",
-      "ms": 694,
+      "ms": 1462,
       "fault": null,
       "attempts": 1
     },
@@ -290,7 +290,7 @@
       "tier": "severe",
       "repeat": 3,
       "outcome": "confirmed",
-      "ms": 3316,
+      "ms": 1518,
       "fault": null,
       "attempts": 1
     },
@@ -299,7 +299,7 @@
       "tier": "severe",
       "repeat": 4,
       "outcome": "confirmed",
-      "ms": 733,
+      "ms": 1457,
       "fault": null,
       "attempts": 1
     },
@@ -308,7 +308,7 @@
       "tier": "severe",
       "repeat": 5,
       "outcome": "confirmed",
-      "ms": 1143,
+      "ms": 1461,
       "fault": null,
       "attempts": 1
     },
@@ -317,7 +317,7 @@
       "tier": "severe",
       "repeat": 6,
       "outcome": "confirmed",
-      "ms": 1087,
+      "ms": 1442,
       "fault": null,
       "attempts": 1
     },
@@ -326,7 +326,7 @@
       "tier": "severe",
       "repeat": 7,
       "outcome": "confirmed",
-      "ms": 1876,
+      "ms": 1485,
       "fault": null,
       "attempts": 1
     },
@@ -335,7 +335,7 @@
       "tier": "clean",
       "repeat": 0,
       "outcome": "confirmed",
-      "ms": 344,
+      "ms": 265,
       "fault": null,
       "attempts": 1
     },
@@ -344,7 +344,7 @@
       "tier": "clean",
       "repeat": 1,
       "outcome": "confirmed",
-      "ms": 347,
+      "ms": 267,
       "fault": null,
       "attempts": 1
     },
@@ -353,7 +353,7 @@
       "tier": "clean",
       "repeat": 2,
       "outcome": "confirmed",
-      "ms": 328,
+      "ms": 281,
       "fault": null,
       "attempts": 1
     },
@@ -362,7 +362,7 @@
       "tier": "clean",
       "repeat": 3,
       "outcome": "confirmed",
-      "ms": 343,
+      "ms": 267,
       "fault": null,
       "attempts": 1
     },
@@ -371,7 +371,7 @@
       "tier": "clean",
       "repeat": 4,
       "outcome": "confirmed",
-      "ms": 347,
+      "ms": 266,
       "fault": null,
       "attempts": 1
     },
@@ -380,7 +380,7 @@
       "tier": "clean",
       "repeat": 5,
       "outcome": "confirmed",
-      "ms": 365,
+      "ms": 265,
       "fault": null,
       "attempts": 1
     },
@@ -389,7 +389,7 @@
       "tier": "clean",
       "repeat": 6,
       "outcome": "confirmed",
-      "ms": 399,
+      "ms": 293,
       "fault": null,
       "attempts": 1
     },
@@ -398,7 +398,7 @@
       "tier": "clean",
       "repeat": 7,
       "outcome": "confirmed",
-      "ms": 394,
+      "ms": 269,
       "fault": null,
       "attempts": 1
     },
@@ -407,7 +407,7 @@
       "tier": "moderate",
       "repeat": 0,
       "outcome": "confirmed",
-      "ms": 335,
+      "ms": 272,
       "fault": null,
       "attempts": 1
     },
@@ -416,7 +416,7 @@
       "tier": "moderate",
       "repeat": 1,
       "outcome": "confirmed",
-      "ms": 350,
+      "ms": 272,
       "fault": null,
       "attempts": 1
     },
@@ -425,7 +425,7 @@
       "tier": "moderate",
       "repeat": 2,
       "outcome": "confirmed",
-      "ms": 951,
+      "ms": 276,
       "fault": null,
       "attempts": 1
     },
@@ -434,7 +434,7 @@
       "tier": "moderate",
       "repeat": 3,
       "outcome": "confirmed",
-      "ms": 334,
+      "ms": 274,
       "fault": null,
       "attempts": 1
     },
@@ -443,7 +443,7 @@
       "tier": "moderate",
       "repeat": 4,
       "outcome": "confirmed",
-      "ms": 364,
+      "ms": 274,
       "fault": null,
       "attempts": 1
     },
@@ -452,7 +452,7 @@
       "tier": "moderate",
       "repeat": 5,
       "outcome": "confirmed",
-      "ms": 754,
+      "ms": 272,
       "fault": null,
       "attempts": 1
     },
@@ -461,7 +461,7 @@
       "tier": "moderate",
       "repeat": 6,
       "outcome": "confirmed",
-      "ms": 372,
+      "ms": 354,
       "fault": null,
       "attempts": 1
     },
@@ -470,7 +470,7 @@
       "tier": "moderate",
       "repeat": 7,
       "outcome": "confirmed",
-      "ms": 365,
+      "ms": 274,
       "fault": null,
       "attempts": 1
     },
@@ -479,7 +479,7 @@
       "tier": "severe",
       "repeat": 0,
       "outcome": "confirmed",
-      "ms": 2338,
+      "ms": 2109,
       "fault": null,
       "attempts": 1
     },
@@ -488,7 +488,7 @@
       "tier": "severe",
       "repeat": 1,
       "outcome": "confirmed",
-      "ms": 2235,
+      "ms": 2143,
       "fault": null,
       "attempts": 1
     },
@@ -497,7 +497,7 @@
       "tier": "severe",
       "repeat": 2,
       "outcome": "confirmed",
-      "ms": 2050,
+      "ms": 1070,
       "fault": null,
       "attempts": 1
     },
@@ -506,7 +506,7 @@
       "tier": "severe",
       "repeat": 3,
       "outcome": "confirmed",
-      "ms": 970,
+      "ms": 2198,
       "fault": null,
       "attempts": 1
     },
@@ -515,7 +515,7 @@
       "tier": "severe",
       "repeat": 4,
       "outcome": "confirmed",
-      "ms": 2210,
+      "ms": 1007,
       "fault": null,
       "attempts": 1
     },
@@ -524,7 +524,7 @@
       "tier": "severe",
       "repeat": 5,
       "outcome": "confirmed",
-      "ms": 4880,
+      "ms": 2123,
       "fault": null,
       "attempts": 1
     },
@@ -533,7 +533,7 @@
       "tier": "severe",
       "repeat": 6,
       "outcome": "confirmed",
-      "ms": 3768,
+      "ms": 2198,
       "fault": null,
       "attempts": 1
     },
@@ -542,7 +542,7 @@
       "tier": "severe",
       "repeat": 7,
       "outcome": "confirmed",
-      "ms": 2040,
+      "ms": 1443,
       "fault": null,
       "attempts": 1
     }

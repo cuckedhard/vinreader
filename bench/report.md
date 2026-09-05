@@ -11,7 +11,7 @@
 | Symbologies | code_39, code_39_i, code_39_check, code_128, code_128_fnc1, data_matrix, qr_code |
 | Tiers | clean, moderate, severe |
 | Attempts | 12600 (4200 per path) |
-| **Decode path (verdict)** | `canvas` — the app's path — Chromium, `ScanFrameReader.decodeFromCanvas`, `FrameLuminanceSource`, `decodeWithState` |
+| **Decode path (verdict)** | `canvas` — the app's path — Chromium, `ScanFrameReader.decodeFromCanvas` — §9-S1's ROI band (90% x 40%, SB-3) first and the whole frame after it — `FrameLuminanceSource`, `decodeWithState` |
 | **Frame (SB-2)** | `frame` — the symbol composited unscaled and centred on a white 1920x1080 field — what `@zxing/browser` draws from the `<video>` (SB-2) |
 | Symbol fill | 33.6% of the frame width, mean over 4200 frames |
 | Also measured | `yuv` — `canvas`, with the frame first put through a **modelled** BT.601 studio-swing I420 round trip — the colour half of a camera capture, not a camera |
@@ -66,13 +66,13 @@ Neither reads on this instrument, which is what the quoted sweep's explanation r
 
 | Symbology | clean (>= 99.0%) | moderate (>= 90.0%) | severe (>= 70.0%) |
 |---|---|---|---|
-| code_39 | 100.0% exact PASS | 77.5% ±5.8 FAIL | 30.0% ±6.3 FAIL |
-| code_39_i | 100.0% exact PASS | 79.0% ±5.6 FAIL | 23.5% ±5.8 FAIL |
-| code_39_check | 24.0% exact FAIL | 18.5% ±5.4 FAIL | 7.0% ±3.6 FAIL |
-| code_128 | 100.0% exact PASS | 80.5% ±5.5 FAIL | 25.0% ±6.0 FAIL |
-| code_128_fnc1 | 100.0% exact PASS | 71.0% ±6.2 FAIL | 0.0% ±0.9 FAIL |
-| data_matrix | 100.0% exact PASS | 99.0% ±1.6 PASS | 37.0% ±6.6 FAIL |
-| qr_code | 98.5% exact FAIL | 98.0% ±2.1 PASS | 43.0% ±6.8 FAIL |
+| code_39 | 100.0% exact PASS | 77.5% ±5.8 FAIL | 34.0% ±6.5 FAIL |
+| code_39_i | 100.0% exact PASS | 79.0% ±5.6 FAIL | 28.5% ±6.2 FAIL |
+| code_39_check | 24.0% exact FAIL | 18.5% ±5.4 FAIL | 8.5% ±3.9 FAIL |
+| code_128 | 100.0% exact PASS | 81.0% ±5.4 FAIL | 31.0% ±6.4 FAIL |
+| code_128_fnc1 | 100.0% exact PASS | 75.5% ±5.9 FAIL | 0.0% ±0.9 FAIL |
+| data_matrix | 100.0% exact PASS | 99.5% ±1.3 PASS | 40.0% ±6.7 FAIL |
+| qr_code | 98.5% exact FAIL | 98.0% ±2.1 PASS | 45.5% ±6.8 FAIL |
 
 Decode rate is end to end: the fraction of frames that produced the **correct** VIN
 through ZXing and §4.2 `extractVin`, not the fraction that merely decoded.
@@ -87,35 +87,35 @@ Each cell reads `rate ±band PASS/FAIL`. **The band is how far this cell moves w
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|
 | code_39 | clean | 200 | 200 | 0 | 0 | 0 | 100.0% | exact (no randomness) | 99.0% | +1.0 pp | PASS |
 | code_39 | moderate | 200 | 155 | 45 | 0 | 0 | 77.5% | 71.2%-82.7% | 90.0% | -12.5 pp | FAIL |
-| code_39 | severe | 200 | 60 | 140 | 0 | 0 | 30.0% | 24.1%-36.7% | 70.0% | -40.0 pp | FAIL |
+| code_39 | severe | 200 | 68 | 132 | 0 | 0 | 34.0% | 27.8%-40.8% | 70.0% | -36.0 pp | FAIL |
 | code_39_i | clean | 200 | 200 | 0 | 0 | 0 | 100.0% | exact (no randomness) | 99.0% | +1.0 pp | PASS |
 | code_39_i | moderate | 200 | 158 | 42 | 0 | 0 | 79.0% | 72.8%-84.1% | 90.0% | -11.0 pp | FAIL |
-| code_39_i | severe | 200 | 47 | 153 | 0 | 0 | 23.5% | 18.2%-29.8% | 70.0% | -46.5 pp | FAIL |
+| code_39_i | severe | 200 | 57 | 143 | 0 | 0 | 28.5% | 22.7%-35.1% | 70.0% | -41.5 pp | FAIL |
 | code_39_check | clean | 200 | 48 | 152 | 0 | 0 | 24.0% | exact (no randomness) | 99.0% | -75.0 pp | FAIL |
 | code_39_check | moderate | 200 | 37 | 163 | 0 | 0 | 18.5% | 13.7%-24.5% | 90.0% | -71.5 pp | FAIL |
-| code_39_check | severe | 200 | 14 | 186 | 0 | 0 | 7.0% | 4.2%-11.4% | 70.0% | -63.0 pp | FAIL |
+| code_39_check | severe | 200 | 17 | 183 | 0 | 0 | 8.5% | 5.4%-13.2% | 70.0% | -61.5 pp | FAIL |
 | code_128 | clean | 200 | 200 | 0 | 0 | 0 | 100.0% | exact (no randomness) | 99.0% | +1.0 pp | PASS |
-| code_128 | moderate | 200 | 161 | 39 | 0 | 0 | 80.5% | 74.5%-85.4% | 90.0% | -9.5 pp | FAIL |
-| code_128 | severe | 200 | 50 | 150 | 0 | 0 | 25.0% | 19.5%-31.4% | 70.0% | -45.0 pp | FAIL |
+| code_128 | moderate | 200 | 162 | 38 | 0 | 0 | 81.0% | 75.0%-85.8% | 90.0% | -9.0 pp | FAIL |
+| code_128 | severe | 200 | 62 | 138 | 0 | 0 | 31.0% | 25.0%-37.7% | 70.0% | -39.0 pp | FAIL |
 | code_128_fnc1 | clean | 200 | 200 | 0 | 0 | 0 | 100.0% | exact (no randomness) | 99.0% | +1.0 pp | PASS |
-| code_128_fnc1 | moderate | 200 | 142 | 58 | 0 | 0 | 71.0% | 64.4%-76.8% | 90.0% | -19.0 pp | FAIL |
+| code_128_fnc1 | moderate | 200 | 151 | 49 | 0 | 0 | 75.5% | 69.1%-80.9% | 90.0% | -14.5 pp | FAIL |
 | code_128_fnc1 | severe | 200 | 0 | 200 | 0 | 0 | 0.0% | 0.0%-1.9% | 70.0% | -70.0 pp | FAIL |
 | data_matrix | clean | 200 | 200 | 0 | 0 | 0 | 100.0% | exact (no randomness) | 99.0% | +1.0 pp | PASS |
-| data_matrix | moderate | 200 | 198 | 2 | 0 | 0 | 99.0% | 96.4%-99.7% | 90.0% | +9.0 pp | PASS |
-| data_matrix | severe | 200 | 74 | 126 | 0 | 0 | 37.0% | 30.6%-43.9% | 70.0% | -33.0 pp | FAIL |
+| data_matrix | moderate | 200 | 199 | 1 | 0 | 0 | 99.5% | 97.2%-99.9% | 90.0% | +9.5 pp | PASS |
+| data_matrix | severe | 200 | 80 | 120 | 0 | 0 | 40.0% | 33.5%-46.9% | 70.0% | -30.0 pp | FAIL |
 | qr_code | clean | 200 | 197 | 3 | 0 | 0 | 98.5% | exact (no randomness) | 99.0% | -0.5 pp | FAIL |
 | qr_code | moderate | 200 | 196 | 4 | 0 | 0 | 98.0% | 95.0%-99.2% | 90.0% | +8.0 pp | PASS |
-| qr_code | severe | 200 | 86 | 114 | 0 | 0 | 43.0% | 36.3%-49.9% | 70.0% | -27.0 pp | FAIL |
+| qr_code | severe | 200 | 91 | 109 | 0 | 0 | 45.5% | 38.7%-52.4% | 70.0% | -24.5 pp | FAIL |
 
 ### Severe: what each frame drew
 
 | Drawn extras | Frames | code_39 | code_39_i | code_39_check | code_128 | code_128_fnc1 | data_matrix | qr_code |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
-| glare + jpeg | 234 | 74.2% | 61.3% | 5.3% | 41.2% | 0.0% | 96.4% | 100.0% |
-| glare + low_light | 255 | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% | 80.6% |
-| low_light + jpeg | 203 | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% | 74.2% |
-| warp + glare | 236 | 51.5% | 31.0% | 5.6% | 46.7% | 0.0% | 62.5% | 0.0% |
-| warp + jpeg | 229 | 60.6% | 54.3% | 23.8% | 71.0% | 0.0% | 90.0% | 0.0% |
+| glare + jpeg | 234 | 74.2% | 67.7% | 10.5% | 61.8% | 0.0% | 100.0% | 100.0% |
+| glare + low_light | 255 | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% | 2.4% | 83.3% |
+| low_light + jpeg | 203 | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% | 87.1% |
+| warp + glare | 236 | 69.7% | 55.2% | 8.3% | 60.0% | 0.0% | 75.0% | 0.0% |
+| warp + jpeg | 229 | 66.7% | 57.1% | 23.8% | 74.2% | 0.0% | 90.0% | 0.0% |
 | warp + low_light | 243 | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% |
 
 §13.4 lists six degradations for `severe`; two of them — 50% scale and heavier grain — are harder settings of degradations `moderate` already applies, so they are on for every frame and the tier stays a strict superset of `moderate` whatever is drawn. The other four are drawn 2 at a time (Z5): all four at once is not one bad photo, it is every bad photo, and it left no cell above 57%.
@@ -124,7 +124,7 @@ Each cell reads `rate ±band PASS/FAIL`. **The band is how far this cell moves w
 
 Same corpus, same seed, **same degraded pixels** — the frame is warped once and offered to each instrument. `canvas` is the app's decode path; the columns beside it are what the other instruments made of the identical frames. A positive Δ means the app reads more than the other instrument did.
 
-**Why a column can come out identical, and how to tell that is a result rather than a harness fault.** On a grey frame the two luminance sources reduce to the same bytes: `RGBLuminanceSource` takes the green-favouring average `(r + 2g + b) / 4` and `HTMLCanvasElementLuminanceSource` takes `(306r + 601g + 117b + 512) >> 10`, and at `r = g = b = v` both are exactly `v`. This corpus renders grey. What is left between them is `isRotateSupported()` — true only on the canvas source, so `OneDReader` gets a 90°-rotated retry under `TRY_HARDER`, which cannot help a symbol that is already horizontal — and `decodeWithState` against `decode(bitmap, hints)`, which rebuild the same readers from the same hints. The `yuv` column is the control: it is the one path that moves frames, so a delta table that shows it moving is a table that can see a difference when there is one.
+**What is different between the instruments, and what is not.** Not colour: on a grey frame the two luminance sources reduce to the same bytes — `RGBLuminanceSource` takes the green-favouring average `(r + 2g + b) / 4` and the app's `FrameLuminanceSource` takes ZXing's `(306r + 601g + 117b + 512) >> 10`, and at `r = g = b = v` both are exactly `v`. This corpus renders grey. Three things do differ. **(1)** The app decodes §9-S1's ROI band before it decodes the whole frame (SB-3) and the `rgb` control decodes the frame only, which is where a `rgb` delta on this corpus comes from. **(2)** The app's source can rotate, so `OneDReader` takes `TRY_HARDER`'s 90° retry (R6-SA-1, where it used to throw once per miss frame); `RGBLuminanceSource` answers `isRotateSupported()` with false and never takes it. That retry cannot help a symbol which is already horizontal, and every symbol in this corpus is, so it moves no cell here — it is named because it is a real difference between the two instruments, not because it explains a number. **(3)** `decodeWithState` against `decode(bitmap, hints)`, which rebuild the same readers from the same hints. The `yuv` column is the control: it is the one path that moves frames, so a delta table that shows it moving is a table that can see a difference when there is one.
 
 ### `canvas` vs `yuv`
 
@@ -134,27 +134,27 @@ Same corpus, same seed, **same degraded pixels** — the frame is warped once an
 |---|---|---:|---:|---:|---:|---:|---:|---:|
 | code_39 | clean | 100.0% | 100.0% | +0.0 | 0 | 0 | 200 | 0 |
 | code_39 | moderate | 77.5% | 77.5% | +0.0 | 0 | 0 | 155 | 45 |
-| code_39 | severe | 30.0% | 30.0% | +0.0 | 1 | 1 | 59 | 139 |
+| code_39 | severe | 34.0% | 34.5% | -0.5 | 0 | 1 | 68 | 131 |
 | code_39_i | clean | 100.0% | 100.0% | +0.0 | 0 | 0 | 200 | 0 |
 | code_39_i | moderate | 79.0% | 79.0% | +0.0 | 0 | 0 | 158 | 42 |
-| code_39_i | severe | 23.5% | 23.5% | +0.0 | 2 | 2 | 45 | 151 |
+| code_39_i | severe | 28.5% | 29.5% | -1.0 | 2 | 4 | 55 | 139 |
 | code_39_check | clean | 24.0% | 24.0% | +0.0 | 0 | 0 | 48 | 152 |
 | code_39_check | moderate | 18.5% | 18.5% | +0.0 | 0 | 0 | 37 | 163 |
-| code_39_check | severe | 7.0% | 7.0% | +0.0 | 0 | 0 | 14 | 186 |
+| code_39_check | severe | 8.5% | 8.5% | +0.0 | 1 | 1 | 16 | 182 |
 | code_128 | clean | 100.0% | 100.0% | +0.0 | 0 | 0 | 200 | 0 |
-| code_128 | moderate | 80.5% | 80.5% | +0.0 | 0 | 0 | 161 | 39 |
-| code_128 | severe | 25.0% | 24.5% | +0.5 | 1 | 0 | 49 | 150 |
+| code_128 | moderate | 81.0% | 81.0% | +0.0 | 0 | 0 | 162 | 38 |
+| code_128 | severe | 31.0% | 30.0% | +1.0 | 2 | 0 | 60 | 138 |
 | code_128_fnc1 | clean | 100.0% | 100.0% | +0.0 | 0 | 0 | 200 | 0 |
-| code_128_fnc1 | moderate | 71.0% | 72.0% | -1.0 | 0 | 2 | 142 | 56 |
+| code_128_fnc1 | moderate | 75.5% | 76.5% | -1.0 | 0 | 2 | 151 | 47 |
 | code_128_fnc1 | severe | 0.0% | 0.0% | +0.0 | 0 | 0 | 0 | 200 |
 | data_matrix | clean | 100.0% | 100.0% | +0.0 | 0 | 0 | 200 | 0 |
-| data_matrix | moderate | 99.0% | 99.0% | +0.0 | 0 | 0 | 198 | 2 |
-| data_matrix | severe | 37.0% | 37.0% | +0.0 | 0 | 0 | 74 | 126 |
+| data_matrix | moderate | 99.5% | 99.5% | +0.0 | 0 | 0 | 199 | 1 |
+| data_matrix | severe | 40.0% | 39.5% | +0.5 | 1 | 0 | 79 | 120 |
 | qr_code | clean | 98.5% | 98.5% | +0.0 | 0 | 0 | 197 | 3 |
 | qr_code | moderate | 98.0% | 98.0% | +0.0 | 0 | 0 | 196 | 4 |
-| qr_code | severe | 43.0% | 43.5% | -0.5 | 1 | 2 | 85 | 112 |
+| qr_code | severe | 45.5% | 45.5% | +0.0 | 0 | 0 | 91 | 109 |
 
-Over 4200 frames: `canvas` 2623 correct, `yuv` 2625 correct — 5 read only by `canvas`, 7 read only by `yuv`.
+Over 4200 frames: `canvas` 2678 correct, `yuv` 2680 correct — 6 read only by `canvas`, 8 read only by `yuv`.
 
 ### `canvas` vs `rgb`
 
@@ -164,51 +164,52 @@ Over 4200 frames: `canvas` 2623 correct, `yuv` 2625 correct — 5 read only by `
 |---|---|---:|---:|---:|---:|---:|---:|---:|
 | code_39 | clean | 100.0% | 100.0% | +0.0 | 0 | 0 | 200 | 0 |
 | code_39 | moderate | 77.5% | 77.5% | +0.0 | 0 | 0 | 155 | 45 |
-| code_39 | severe | 30.0% | 30.0% | +0.0 | 0 | 0 | 60 | 140 |
+| code_39 | severe | 34.0% | 30.0% | +4.0 | 8 | 0 | 60 | 132 |
 | code_39_i | clean | 100.0% | 100.0% | +0.0 | 0 | 0 | 200 | 0 |
 | code_39_i | moderate | 79.0% | 79.0% | +0.0 | 0 | 0 | 158 | 42 |
-| code_39_i | severe | 23.5% | 23.5% | +0.0 | 0 | 0 | 47 | 153 |
+| code_39_i | severe | 28.5% | 23.5% | +5.0 | 11 | 1 | 46 | 142 |
 | code_39_check | clean | 24.0% | 24.0% | +0.0 | 0 | 0 | 48 | 152 |
 | code_39_check | moderate | 18.5% | 18.5% | +0.0 | 0 | 0 | 37 | 163 |
-| code_39_check | severe | 7.0% | 7.0% | +0.0 | 0 | 0 | 14 | 186 |
+| code_39_check | severe | 8.5% | 7.0% | +1.5 | 3 | 0 | 14 | 183 |
 | code_128 | clean | 100.0% | 100.0% | +0.0 | 0 | 0 | 200 | 0 |
-| code_128 | moderate | 80.5% | 80.5% | +0.0 | 0 | 0 | 161 | 39 |
-| code_128 | severe | 25.0% | 25.0% | +0.0 | 0 | 0 | 50 | 150 |
+| code_128 | moderate | 81.0% | 80.5% | +0.5 | 1 | 0 | 161 | 38 |
+| code_128 | severe | 31.0% | 25.0% | +6.0 | 12 | 0 | 50 | 138 |
 | code_128_fnc1 | clean | 100.0% | 100.0% | +0.0 | 0 | 0 | 200 | 0 |
-| code_128_fnc1 | moderate | 71.0% | 71.0% | +0.0 | 0 | 0 | 142 | 58 |
+| code_128_fnc1 | moderate | 75.5% | 71.0% | +4.5 | 9 | 0 | 142 | 49 |
 | code_128_fnc1 | severe | 0.0% | 0.0% | +0.0 | 0 | 0 | 0 | 200 |
 | data_matrix | clean | 100.0% | 100.0% | +0.0 | 0 | 0 | 200 | 0 |
-| data_matrix | moderate | 99.0% | 99.0% | +0.0 | 0 | 0 | 198 | 2 |
-| data_matrix | severe | 37.0% | 37.0% | +0.0 | 0 | 0 | 74 | 126 |
+| data_matrix | moderate | 99.5% | 99.0% | +0.5 | 1 | 0 | 198 | 1 |
+| data_matrix | severe | 40.0% | 37.0% | +3.0 | 6 | 0 | 74 | 120 |
 | qr_code | clean | 98.5% | 98.5% | +0.0 | 0 | 0 | 197 | 3 |
 | qr_code | moderate | 98.0% | 98.0% | +0.0 | 0 | 0 | 196 | 4 |
-| qr_code | severe | 43.0% | 43.0% | +0.0 | 0 | 0 | 86 | 114 |
+| qr_code | severe | 45.5% | 43.0% | +2.5 | 5 | 0 | 86 | 109 |
 
-Over 4200 frames: `canvas` 2623 correct, `rgb` 2623 correct — 0 read only by `canvas`, 0 read only by `rgb`.
+Over 4200 frames: `canvas` 2678 correct, `rgb` 2623 correct — 56 read only by `canvas`, 1 read only by `rgb`.
 
-### The 19 frames that read differently
+### The 87 frames that read differently (first 20)
 
 | Path | VIN | Symbology | Tier | Drawn extras | app | other | Seed |
 |---|---|---|---|---|---|---|---|
-| yuv | `XU0XKN2C8N93SLYFA` | code_39 | severe | glare + jpeg | hit `XU0XKN2C8N93SLYFA` | miss (no decode) | `0x5254edc9` |
 | yuv | `0W4B348U890HX2JC1` | code_39 | severe | warp + jpeg | miss (no decode) | hit `0W4B348U890HX2JC1` | `0xf1e22a9b` |
-| yuv | `J5XW697S5ZPFJL4RA` | code_39_i | severe | glare + jpeg | hit `IJ5XW697S5ZPFJL4RA` | miss (no decode) | `0xdfc8e604` |
-| yuv | `L9TV9RC15W5ABHG1U` | code_39_i | severe | warp + jpeg | miss (no decode) | hit `IL9TV9RC15W5ABHG1U` | `0x24f81328` |
+| yuv | `1FUJA6CK14LM12345` | code_39_i | severe | warp + glare | hit `I1FUJA6CK14LM12345` | miss (no decode) | `0xbdc8545d` |
+| yuv | `B33ZSLFN0H2NHWFEE` | code_39_i | severe | warp + glare | miss `IB33ZSLF$0H2NHWFEE` | hit `IB33ZSLFN0H2NHWFEE` | `0x9567ad0b` |
 | yuv | `MYTVHJ2823YBUYKE0` | code_39_i | severe | warp + jpeg | miss (no decode) | hit `IMYTVHJ2823YBUYKE0` | `0xfbafea79` |
 | yuv | `4LY6BDTG2RPG54RKP` | code_39_i | severe | glare + jpeg | hit `I4LY6BDTG2RPG54RKP` | miss (no decode) | `0x8bcc2e44` |
-| yuv | `DNUDA92B2W9V0SN9G` | code_39_check | severe | warp + jpeg | miss (no decode) | miss `DNUDA92B2W9V0SN9G3` | `0xaf7adea0` |
-| yuv | `YW7Y7WHY16E85C9HE` | code_39_check | severe | warp + jpeg | miss (no decode) | miss `YW7Y7WHY16E85C9HEP` | `0x67e16e39` |
-| yuv | `40WF0NRH3TRUXSNF2` | code_39_check | severe | glare + jpeg | miss `40WF0NRH3TRUXSNF27` | miss (no decode) | `0x55513946` |
-| yuv | `JG1HZGN1XCZMJTYAN` | code_39_check | severe | warp + glare | miss `JG1HZGN1XCZMJTYAN1` | miss (no decode) | `0x9a40579c` |
+| yuv | `VSJ0D0W00NXMJZ916` | code_39_i | severe | warp + jpeg | miss (no decode) | hit `IVSJ0D0W00NXMJZ916` | `0xba3e696c` |
+| yuv | `ZNCNNV4N0XSW7LSGF` | code_39_i | severe | warp + jpeg | miss (no decode) | hit `IZNCNNV4N0XSW7LSGF` | `0xbc5dfbc9` |
+| yuv | `YDKU00AD5JDBRYVNR` | code_39_check | severe | warp + glare | miss `YDKU00AD5JDBRYVNR9` | miss (no decode) | `0xb7857b84` |
+| yuv | `1AN1P0C26RBSXXCVL` | code_39_check | severe | glare + jpeg | hit `1AN1P0C26RBSXXCVLI` | miss (no decode) | `0xf22a5f0a` |
+| yuv | `VAJ260MW4Z4JC1L7G` | code_39_check | severe | warp + jpeg | miss (no decode) | hit `VAJ260MW4Z4JC1L7GQ` | `0xbcf4f7fb` |
 | yuv | `ZNCNNV4N0XSW7LSGF` | code_39_check | severe | warp + glare | miss `ZNCNNV4N0XSW7LSGFA` | miss (no decode) | `0x91afa7f4` |
-| yuv | `HC1G7NUM1NCCFZJTZ` | code_39_check | severe | warp + glare | miss (no decode) | miss `HC1G7NUM1NCCFZJTZ8` | `0xb053d5c1` |
-| yuv | `EDAE3UP78M3612D3E` | code_39_check | severe | glare + jpeg | miss `EDAE3UP78M3612D3EG` | miss (no decode) | `0xca5dbded` |
-| yuv | `74J7N9M86K6S0AUTE` | code_128 | severe | glare + jpeg | hit `74J7N9M86K6S0AUTE` | miss (no decode) | `0x10ae87ff` |
-| yuv | `6LTYUHPR0V8E05RZX` | code_128_fnc1 | moderate | - | miss (no decode) | hit `6LTYUHPR0V8E05RZX1P84203911` | `0x155ba210` |
-| yuv | `EH8U2YHX60HU8VGWD` | code_128_fnc1 | moderate | - | miss `!H8U2Y!X60HU8VGWD1P84203911` | hit `EH8U2YHX60HU8VGWD1P84203911` | `0x145f60e` |
-| yuv | `B33ZSLFN0H2NHWFEE` | qr_code | severe | glare + low_light | miss (no decode) | hit `B33ZSLFN0H2NHWFEE` | `0x581c3172` |
-| yuv | `CKSP99BH62U3XH21L` | qr_code | severe | low_light + jpeg | miss (no decode) | hit `CKSP99BH62U3XH21L` | `0x3ba6997a` |
-| yuv | `L6E30VGM0F2A6YULH` | qr_code | severe | glare + low_light | hit `L6E30VGM0F2A6YULH` | miss (no decode) | `0xeb9e3db1` |
+| yuv | `K8TBG7DT77102AAC8` | code_128 | severe | glare + jpeg | miss `K8TBG"D177102A,C8` | miss (no decode) | `0xa99e1dc1` |
+| yuv | `EE37XVLL3E7XTYSNH` | code_128 | severe | glare + jpeg | hit `EE37XVLL3E7XTYSNH` | miss (no decode) | `0x3283a3eb` |
+| yuv | `MDM8MX585CNH40H0K` | code_128 | severe | glare + jpeg | hit `MDM8MX585CNH40H0K` | miss (no decode) | `0x8ff2c72d` |
+| yuv | `8YUR04UN0VBADRZFF` | code_128_fnc1 | moderate | - | miss (no decode) | hit `8YUR04UN0VBADRZFF1P84203911` | `0x868a6b5c` |
+| yuv | `R5MLG5KM7FCG14EDZ` | code_128_fnc1 | moderate | - | miss (no decode) | hit `R5MLG5KM7FCG14EDZ1P84203911` | `0x12afca55` |
+| yuv | `90DMJDGR15GNNNB4H` | data_matrix | severe | glare + low_light | hit `90DMJDGR15GNNNB4H` | miss (no decode) | `0xa3067205` |
+| rgb | `1HTMMAAL67H412345` | code_39 | severe | warp + jpeg | hit `1HTMMAAL67H412345` | miss (no decode) | `0x1e703dec` |
+| rgb | `4B31UKKD5LXDZ8GV9` | code_39 | severe | warp + glare | hit `4B31UKKD5LXDZ8GV9` | miss (no decode) | `0x2a6c4b95` |
+| rgb | `XFEBNVLS708P97PF0` | code_39 | severe | warp + glare | hit `XFEBNVLS708P97PF0` | miss (no decode) | `0x336f282e` |
 
 ### Why the misses missed
 
@@ -216,25 +217,25 @@ Over 4200 frames: `canvas` 2623 correct, `rgb` 2623 correct — 0 read only by `
 |---|---|---:|---:|---:|
 | code_39 | clean | 0 | 0 | 0 |
 | code_39 | moderate | 45 | 0 | 0 |
-| code_39 | severe | 140 | 0 | 0 |
+| code_39 | severe | 132 | 0 | 0 |
 | code_39_i | clean | 0 | 0 | 0 |
 | code_39_i | moderate | 42 | 0 | 0 |
-| code_39_i | severe | 153 | 0 | 0 |
+| code_39_i | severe | 141 | 2 | 0 |
 | code_39_check | clean | 0 | 152 | 0 |
 | code_39_check | moderate | 49 | 114 | 0 |
-| code_39_check | severe | 138 | 48 | 0 |
+| code_39_check | severe | 124 | 59 | 0 |
 | code_128 | clean | 0 | 0 | 0 |
-| code_128 | moderate | 39 | 0 | 0 |
-| code_128 | severe | 150 | 0 | 0 |
+| code_128 | moderate | 38 | 0 | 0 |
+| code_128 | severe | 137 | 1 | 0 |
 | code_128_fnc1 | clean | 0 | 0 | 0 |
-| code_128_fnc1 | moderate | 57 | 1 | 0 |
+| code_128_fnc1 | moderate | 49 | 0 | 0 |
 | code_128_fnc1 | severe | 200 | 0 | 0 |
 | data_matrix | clean | 0 | 0 | 0 |
-| data_matrix | moderate | 2 | 0 | 0 |
-| data_matrix | severe | 126 | 0 | 0 |
+| data_matrix | moderate | 1 | 0 | 0 |
+| data_matrix | severe | 120 | 0 | 0 |
 | qr_code | clean | 3 | 0 | 0 |
 | qr_code | moderate | 4 | 0 | 0 |
-| qr_code | severe | 114 | 0 | 0 |
+| qr_code | severe | 109 | 0 | 0 |
 
 `no_decode` — ZXing found no symbol. `no_vin` — text decoded but §4.2 named no VIN. `carrier` — a §4.9 handoff payload, which §6.3 never extracts; nothing in this corpus is one, so any non-zero value here is itself a finding.
 
@@ -248,9 +249,9 @@ A cell above is 200 frames at **one run seed**. Change the seed and every `moder
 
 **This run measured one seed**, so the band on each `moderate` and `severe` cell is estimated from that cell's own sample: a 95% Wilson interval on `hits / attempts`. It estimates the same thing a sweep measures — a cell is n independent frames either way — and it was checked against the sweep rather than trusted. A 95% interval is about 3.9 standard errors wide and the range of five draws is about 2.3, so a five-seed spread should come out near 0.6 of this band; over the twenty-one cells swept it came out at 0.24-1.06, median 0.48. The band is therefore honest and, for a five-run comparison, slightly generous — which is the safe direction. Wilson rather than the normal approximation because cells sit near 0 and near 1 here. To measure it instead of estimating it: `bun run bench/run.ts --seeds a,b,c --paths canvas` — a diagnostic, n runs, which never writes this file.
 
-**The operating rule.** The widest band in this run is `qr_code` severe, 13.6 pp wide. Comparing two runs carries that uncertainty twice, so a before/after difference has to clear roughly 1.4x the band — about 19.2 pp on that cell — before it is a claim rather than a coincidence. Below that, sweep three seeds before it goes in a ledger row. It cuts both ways: a regression inside the band is not a regression either.
+**The operating rule.** The widest band in this run is `qr_code` severe, 13.7 pp wide. Comparing two runs carries that uncertainty twice, so a before/after difference has to clear roughly 1.4x the band — about 19.3 pp on that cell — before it is a claim rather than a coincidence. Below that, sweep three seeds before it goes in a ledger row. It cuts both ways: a regression inside the band is not a regression either.
 
-**No verdict changes inside these bands.** Not one failing cell reaches its threshold at the top of its band; the closest is `code_128` moderate at 80.5%, whose band tops out at 85.4% against 90.0%. And the false-accept threshold is a count, not a rate, so no band applies to it at all: one is one.
+**No verdict changes inside these bands.** Not one failing cell reaches its threshold at the top of its band; the closest is `code_128` moderate at 81.0%, whose band tops out at 85.8% against 90.0%. And the false-accept threshold is a count, not a rate, so no band applies to it at all: one is one.
 
 ## The frame, and the ROI crop somebody is about to write (SB-2 / SB-3 / SB-10)
 
@@ -293,7 +294,7 @@ Three things follow, and the third is the one that matters.
 
 This run's corpus produced **0** reads carrying the §4.6 AIM identifier, because no row in it opens with FNC1. That is not the strip passing a test; it is the strip never being asked. §13.7's R5 list keeps the *frequency* question — do the fleet's labels carry this shape — as §7 item 4, and it is the cost question that a bench can answer.
 
-**Quoted, not measured by this run (SB-11).** `bun run bench/fnc1-probe.ts --count 60 --seed 0x5eed1a7c --tiers clean,moderate,severe --layouts frame,crop`, 60 VINs, decode path `canvas`, §4.6 hints TRY_HARDER, ASSUME_GS1, at build `9eaa432` (dirty tree). No commit has touched `src/lib/vin` or `src/features/scan` since.
+**Quoted, not measured by this run (SB-11).** `bun run bench/fnc1-probe.ts --count 60 --seed 0x5eed1a7c --tiers clean,moderate,severe --layouts frame,crop`, 60 VINs, decode path `canvas`, §4.6 hints TRY_HARDER, ASSUME_GS1, at build `9eaa432` (dirty tree). **3 commits have touched `src/lib/vin` or `src/features/scan` since — re-take it with `bun run bench/fnc1-probe.ts --count 60 --seed 0x5eed1a7c --tiers clean,moderate,severe --layouts frame,crop`.**
 
 On the layout the app decodes (`frame`, SB-2). `shipped` is `extractVin` over the bytes the app sees, `]C1` already removed; `unstripped` is the same bytes with the identifier put back — §4.2 as it was before `stripAimIdentifier` existed.
 
@@ -328,18 +329,18 @@ What this cannot say is how many real labels open with FNC1. That is §13.7's R5
 
 | Scope | Decodes | Mean ms | p95 ms |
 |---|---:|---:|---:|
-| canvas: all | 4200 | 170.4 | 448.7 |
-| canvas: clean | 1400 | 108.2 | 228.2 |
-| canvas: moderate | 1400 | 141.9 | 411.2 |
-| canvas: severe | 1400 | 261.1 | 522.3 |
-| yuv: all | 4200 | 170.0 | 464.0 |
-| yuv: clean | 1400 | 101.9 | 217.7 |
-| yuv: moderate | 1400 | 142.4 | 427.6 |
-| yuv: severe | 1400 | 265.7 | 556.1 |
-| rgb: all | 4200 | 43.6 | 82.0 |
-| rgb: clean | 1400 | 30.8 | 42.9 |
-| rgb: moderate | 1400 | 40.3 | 85.4 |
-| rgb: severe | 1400 | 59.6 | 86.8 |
+| canvas: all | 4200 | 122.8 | 412.7 |
+| canvas: clean | 1400 | 29.3 | 60.0 |
+| canvas: moderate | 1400 | 85.6 | 426.9 |
+| canvas: severe | 1400 | 253.6 | 433.0 |
+| yuv: all | 4200 | 117.8 | 392.6 |
+| yuv: clean | 1400 | 24.6 | 46.2 |
+| yuv: moderate | 1400 | 82.0 | 395.5 |
+| yuv: severe | 1400 | 246.7 | 418.8 |
+| rgb: all | 4200 | 39.7 | 75.9 |
+| rgb: clean | 1400 | 27.8 | 39.4 |
+| rgb: moderate | 1400 | 36.5 | 80.1 |
+| rgb: severe | 1400 | 54.8 | 75.5 |
 
 Times cover the ZXing read only — binarisation and the decode — and exclude getting the frame onto the canvas, because the app never parses a PNG either: it draws a video frame it already has. Timings are the one part of this report that is not bit-reproducible; no threshold rides on them. This run measures one frame at a time, so §13.4's mean **time-to-confirm** is not one of these numbers: it is two agreeing reads inside §6.3's window, which run (b) exercises — the section below (SB-5).
 
@@ -350,45 +351,45 @@ Times cover the ZXing read only — binarisation and the decode — and exclude 
 | | |
 |---|---|
 | Taken by | `bun run bench/confirm-probe.ts --repeats 8 --symbologies code_39_i,code_128 --tiers clean,moderate,severe` |
-| Build measured | `66a0aa9` |
+| Build measured | `88306a7` |
 | Scene | VIN `1HGCM82633A004352`, 12 distinct degraded poses at 10 fps, 1920x1080, 8 contexts per cell, giving up at 25000 ms |
-| Machine | 4 cores, load 9.8 / 7.9 / 5.9 at recording — milliseconds here are wall clock on a shared box, and only the comparison between cells is load-free |
+| Machine | 4 cores, load 0.6 / 2.3 / 3.4 at recording — milliseconds here are wall clock on a shared box, and only the comparison between cells is load-free |
 | Still current? | no commit has touched `src/` since that build |
 
 | Symbology | Tier | Confirmed | Mean ms | Min ms | Max ms | Harness faults |
 |---|---|---:|---:|---:|---:|---:|
-| code_39_i | clean | 8/8 | 374 | 323 | 487 | 0 |
-| code_39_i | moderate | 8/8 | 416 | 346 | 610 | 0 |
-| code_39_i | severe | 8/8 | 1352 | 694 | 3316 | 0 |
-| code_128 | clean | 8/8 | 358 | 328 | 399 | 0 |
-| code_128 | moderate | 8/8 | 478 | 334 | 951 | 0 |
-| code_128 | severe | 8/8 | 2561 | 970 | 4880 | 0 |
+| code_39_i | clean | 8/8 | 271 | 261 | 276 | 0 |
+| code_39_i | moderate | 8/8 | 1149 | 1112 | 1237 | 0 |
+| code_39_i | severe | 8/8 | 1429 | 1047 | 1558 | 0 |
+| code_128 | clean | 8/8 | 272 | 265 | 293 | 0 |
+| code_128 | moderate | 8/8 | 284 | 272 | 354 | 0 |
+| code_128 | severe | 8/8 | 1786 | 1007 | 2198 | 0 |
 
-**Overall: 48 of 48 confirmed, mean 923 ms.** No harness faults.
+**Overall: 48 of 48 confirmed, mean 865 ms.** No harness faults.
 
-**A mean here is a tail statistic.** The widest cell in this recording is `code_128` severe, 970-4880 ms over 8 repeats — a 5.0x spread on one scene at one build. Confirmation needs *two* decodable poses inside one window, so on a hard label it waits for a coincidence, and the mean is set by how long that takes. Read these as orders of magnitude; a 20% move between recordings is noise, the same way a 5 pp move in a severe decode cell is (SB-7).
+**A mean here is a tail statistic.** The widest cell in this recording is `code_128` severe, 1007-2198 ms over 8 repeats — a 2.2x spread on one scene at one build. Confirmation needs *two* decodable poses inside one window, so on a hard label it waits for a coincidence, and the mean is set by how long that takes. Read these as orders of magnitude; a 20% move between recordings is noise, the same way a 5 pp move in a severe decode cell is (SB-7).
 
-**`code_128` severe sits above §6.3's 1500 ms agreement window** — mean 2561 ms. A candidate that old has lapsed, so confirmation on those labels typically restarts at least once: the user holds the phone still through more than one window. That is the number a confirmation change (§6.3) would be aiming at.
+**`code_128` severe sits above §6.3's 1500 ms agreement window** — mean 1786 ms. A candidate that old has lapsed, so confirmation on those labels typically restarts at least once: the user holds the phone still through more than one window. That is the number a confirmation change (§6.3) would be aiming at.
 
 A y4m loop is not a hand (§13.7): fixed frame rate, repeating poses, nobody moving the phone toward the label. This bounds the confirmation logic; it does not close §7 item 4.
 
 ## §13.6 verdict
 
 - code_39 moderate: 77.5% < 90.0% (155/200 correct, -12.5 pp)
-- code_39 severe: 30.0% < 70.0% (60/200 correct, -40.0 pp)
+- code_39 severe: 34.0% < 70.0% (68/200 correct, -36.0 pp)
 - code_39_i moderate: 79.0% < 90.0% (158/200 correct, -11.0 pp)
-- code_39_i severe: 23.5% < 70.0% (47/200 correct, -46.5 pp)
+- code_39_i severe: 28.5% < 70.0% (57/200 correct, -41.5 pp)
 - code_39_check clean: 24.0% < 99.0% (48/200 correct, -75.0 pp)
 - code_39_check moderate: 18.5% < 90.0% (37/200 correct, -71.5 pp)
-- code_39_check severe: 7.0% < 70.0% (14/200 correct, -63.0 pp)
-- code_128 moderate: 80.5% < 90.0% (161/200 correct, -9.5 pp)
-- code_128 severe: 25.0% < 70.0% (50/200 correct, -45.0 pp)
-- code_128_fnc1 moderate: 71.0% < 90.0% (142/200 correct, -19.0 pp)
+- code_39_check severe: 8.5% < 70.0% (17/200 correct, -61.5 pp)
+- code_128 moderate: 81.0% < 90.0% (162/200 correct, -9.0 pp)
+- code_128 severe: 31.0% < 70.0% (62/200 correct, -39.0 pp)
+- code_128_fnc1 moderate: 75.5% < 90.0% (151/200 correct, -14.5 pp)
 - code_128_fnc1 severe: 0.0% < 70.0% (0/200 correct, -70.0 pp)
-- data_matrix severe: 37.0% < 70.0% (74/200 correct, -33.0 pp)
+- data_matrix severe: 40.0% < 70.0% (80/200 correct, -30.0 pp)
 - qr_code clean: 98.5% < 99.0% (197/200 correct, -0.5 pp)
-- qr_code severe: 43.0% < 70.0% (86/200 correct, -27.0 pp)
+- qr_code severe: 45.5% < 70.0% (91/200 correct, -24.5 pp)
 
-These numbers came out of `canvas` — the app's path — Chromium, `ScanFrameReader.decodeFromCanvas`, `FrameLuminanceSource`, `decodeWithState` — on the 1920x1080 field the app's decoder is handed (SB-2). That is the app's decoder, in the app's engine, on the app's frame geometry; the bench's node path was none of those (B2) and the crop layout was not the last of them. What it still is not is a **camera frame**. The app draws a `<video>` whose pixels came off a sensor through an ISP and YUV 4:2:0; this composites a PNG onto a uniform white field. A real jamb is a darker, textured surround, and a clean white field is the *easier* of the two for a row-histogram binariser, so even these rates are a ceiling and not a floor. `bench/camera-probe.ts` measures the colour step on a subset — the same frames through Chromium's own fake capture device and a real `<video>` — and finds the camera reads slightly *worse*, deterministically. Nothing here models a lens, and nothing here is a label.
+These numbers came out of `canvas` — the app's path — Chromium, `ScanFrameReader.decodeFromCanvas` — §9-S1's ROI band (90% x 40%, SB-3) first and the whole frame after it — `FrameLuminanceSource`, `decodeWithState` — on the 1920x1080 field the app's decoder is handed (SB-2). That is the app's decoder, in the app's engine, on the app's frame geometry; the bench's node path was none of those (B2) and the crop layout was not the last of them. What it still is not is a **camera frame**. The app draws a `<video>` whose pixels came off a sensor through an ISP and YUV 4:2:0; this composites a PNG onto a uniform white field. A real jamb is a darker, textured surround, and a clean white field is the *easier* of the two for a row-histogram binariser, so even these rates are a ceiling and not a floor. `bench/camera-probe.ts` measures the colour step on a subset — the same frames through Chromium's own fake capture device and a real `<video>` — and finds the camera reads slightly *worse*, deterministically. Nothing here models a lens, and nothing here is a label.
 
 Synthetic is not real (§13.4, §13.7). This bench tunes hints, ROI cropping and confirmation logic; real door-jamb labels on real trucks stay §7 item 4, and stay human.
