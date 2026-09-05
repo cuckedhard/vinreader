@@ -90,7 +90,14 @@ export function FailureNotice({ error }: { error: unknown }) {
         tone="danger"
         title={copy.title}
         actions={
-          <Button variant="primary" onClick={() => window.location.reload()}>
+          /* §6.1's ≥ 56 px list names Scan, Use as-is, Share, Copy and Sign in, and not
+             Reload — but this is the notice's only action, and §6.4 reads §6.1 the same way
+             when it gives "the primary weight, because it is the only route left (§6.1)" to
+             an action that list does not name either. So it is primary, and it is pinned:
+             h-14, because the Banner action row sets its children to a 48 px minimum that
+             would otherwise win over the Button's own 56. Measured in
+             tests/e2e/storage-unavailable.spec.ts, not read off this class list. */
+          <Button variant="primary" className="h-14" onClick={() => window.location.reload()}>
             Reload
           </Button>
         }

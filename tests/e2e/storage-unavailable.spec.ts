@@ -122,3 +122,35 @@ for (const [name, script] of [
     await expect(page.getByRole("heading", { name: "History" })).toBeVisible();
   });
 }
+
+/**
+ * [F1] The way out of the notice has to be a target a gloved thumb can hit (§6.1).
+ *
+ * Measured in a real cascade, because a class list cannot answer this. `Banner` sets
+ * `[&>*]:min-h-[var(--tap)]` on every child of its action row — specificity (0,1,1), which
+ * outranks the primary `Button`'s own `min-h-[var(--tap-lg)]` at (0,1,0). So the markup
+ * carried the 56 px class and Chromium rendered 48, and a unit assertion on the class token
+ * passed the whole time (the R4-H'/R4-B class: a guard whose instrument cannot fail).
+ *
+ * `h-14` on the button is the pin — the same one `ScanScreen`'s "Couldn't save this VIN" and
+ * `ManualEntry`'s mismatch banner already carry against the same row. Remove it and this
+ * test goes red at 48.
+ */
+test("[F1] the Reload out of the notice is a 56 px target", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 }); // §6.1's case: one hand, a phone.
+  await page.addInitScript(BREAK_LIST_READS);
+  await page.goto("/#/history");
+
+  const notice = page.getByRole("alert").filter({ hasText: "Storage isn't available" });
+  await expect(notice).toBeVisible({ timeout: 10_000 });
+
+  // §7 item 5: the target size is read from the token that defines it, not retyped here.
+  const tapLg = await page.evaluate(() =>
+    parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--tap-lg")),
+  );
+  expect(tapLg).toBeGreaterThan(0);
+
+  // A null box is a control with no layout at all, which fails here exactly as 48 px would.
+  const box = await notice.getByRole("button", { name: "Reload" }).boundingBox();
+  expect(box?.height ?? 0).toBeGreaterThanOrEqual(tapLg);
+});

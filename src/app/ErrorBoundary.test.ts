@@ -79,11 +79,18 @@ describe("what the notice says", () => {
     expect(render("boom")).toContain("boom");
   });
 
-  it("is an alert with a ≥ 56 px way out (§6.1, P7)", () => {
+  it("is an alert whose only action is Reload (§6.1, P7)", () => {
     const markup = render(dexieError());
     expect(markup).toContain('role="alert"');
     expect(markup).toContain("Reload");
-    // §6.1: the only action on the screen is the primary one, so it carries the 56 px target.
-    expect(markup).toContain("min-h-[var(--tap-lg)]");
+    // The *size* of that action is deliberately not asserted here. A class token in static
+    // markup says nothing about the rendered box: `Banner`'s action row carries
+    // `[&>*]:min-h-[var(--tap)]` at (0,1,1), which outranks the primary variant's own
+    // `min-h-[var(--tap-lg)]` at (0,1,0), so this markup can contain the 56 px class while
+    // the pixels are 48 — which is exactly what it did. That is the dead-guard class the
+    // ledger records at R4-H' and R4-B: an assurance whose instrument could not fail.
+    // The 56 px is measured in a real cascade, in Chromium, by
+    // `tests/e2e/storage-unavailable.spec.ts` ("the Reload out of the notice is a 56 px
+    // target"), which measures the box and goes red at 48.
   });
 });

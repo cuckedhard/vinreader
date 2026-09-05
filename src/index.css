@@ -18,8 +18,10 @@
    was a function of which build directories happened to exist on disk and of an unrelated
    ignore file, rather than of the source tree. All four are named, so it is now neither.
 
-   Measured: with `docs/` present the stylesheet is 21,858 bytes and carries both rules;
-   with it absent, or with this directive, 21,701 and neither. */
+   Measured with `bun run build` then `md5sum dist/assets/*.css`: with `docs/` on disk and
+   this directive removed the stylesheet is 21,858 bytes and carries both rules; with the
+   directive in place it is 21,451 bytes, md5 732376a7d5b1ccbba771a391609ad310, and carries
+   neither. The pollution is 407 bytes of minified CSS that no file under `src/` asked for. */
 @source not "../docs";
 @source not "../dist";
 @source not "../dist-demo";
