@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  asciiUpper,
   groupVin,
   isAllowedVinChar,
   isVinGrammarValid,
@@ -125,5 +126,76 @@ describe("groupVin (§4.1 display grouping)", () => {
   it("returns anything that is not 17 characters unchanged", () => {
     expect(groupVin("1HGCM82633A00435")).toBe("1HGCM82633A00435");
     expect(groupVin("")).toBe("");
+  });
+});
+
+/**
+ * [G1] §4.2 step 1, ruled by Zach 2026-09-05. `String.prototype.toUpperCase` is a
+ * length-changing map that carries code points from outside §4.1 **into** §4.1, and step 1
+ * runs before step 2 splits into runs — so it can invent alphabet characters the label
+ * never carried and hand step 3 a 17-character window to validate. These tests are stated
+ * over the whole of Unicode rather than over the handful of code points the finding names.
+ */
+describe("asciiUpper (§4.2 step 1)", () => {
+  it("maps a–z to A–Z and nothing else", () => {
+    expect(asciiUpper("1hgcm82633a004352")).toBe("1HGCM82633A004352");
+    expect(asciiUpper(ALPHABET)).toBe(ALPHABET);
+    expect(asciiUpper("")).toBe("");
+    // The characters §4.2 step 2 will treat as separators are handed on untouched, so the
+    // run geometry step 2 sees is the geometry the scanned bytes actually had.
+    expect(asciiUpper("1HGCM82653A0ß352")).toBe("1HGCM82653A0ß352");
+    expect(asciiUpper("i-o-q *ß* ﬁ")).toBe("I-O-Q *ß* ﬁ");
+  });
+
+  /**
+   * One sweep of every code point in Unicode, surrogate halves excluded because they are
+   * not characters on their own. Violations are collected rather than asserted per code
+   * point: 1.1 M assertions cost half a minute, one assertion over the collected list costs
+   * a second and names every offender it finds.
+   *
+   * "Enters the alphabet" is asked through `splitRuns` — the same function §4.2 step 2 uses
+   * — so it is asked exactly the way step 2 asks it.
+   */
+  it("lets no code point outside the alphabet enter it, and changes no length", () => {
+    function entersAlphabet(mapped: string): boolean {
+      return splitRuns(mapped).join("") !== "";
+    }
+
+    const grew: string[] = [];
+    const invented: string[] = [];
+    // The same sweep against `String.prototype.toUpperCase`, so the two lists above cannot
+    // be empty for want of anything to find.
+    const unicodeGrew: string[] = [];
+    const unicodeInvented: string[] = [];
+
+    for (let cp = 0; cp <= 0x10ffff; cp += 1) {
+      if (cp >= 0xd800 && cp <= 0xdfff) continue;
+      const c = String.fromCodePoint(cp);
+      // `a`–`z` are the only code points step 1 may turn into alphabet characters, and the
+      // alphabet's own characters are already there.
+      const mayEnter = isAllowedVinChar(c) || (c >= "a" && c <= "z");
+
+      const ascii = asciiUpper(c);
+      if (ascii.length !== c.length) grew.push(c);
+      if (!mayEnter && entersAlphabet(ascii)) invented.push(c);
+
+      const unicode = c.toUpperCase();
+      if (unicode.length !== c.length) unicodeGrew.push(c);
+      if (!mayEnter && entersAlphabet(unicode)) unicodeInvented.push(c);
+    }
+
+    expect(grew).toEqual([]);
+    expect(invented).toEqual([]);
+
+    // 102 code points change length under `String.prototype.toUpperCase`; 16 outside §4.1
+    // land inside it — six of them as two or three characters at once (ﬀ→FF, ﬁ→FI, ﬂ→FL,
+    // ﬃ→FFI, ﬄ→FFL, ß→SS), the rest as one letter plus a separator (ŉ→ʼN, ǰ→J+◌̌).
+    // Measured here rather than quoted: §4.2 step 1's prose says fifteen.
+    expect(unicodeGrew).toHaveLength(102);
+    expect(unicodeInvented.join("")).toBe("ßŉſǰẖẗẘẙẚﬀﬁﬂﬃﬄﬅﬆ");
+    // And every one of them is left exactly as it came in by step 1 as it now stands.
+    for (const c of [...unicodeGrew, ...unicodeInvented]) {
+      expect(asciiUpper(c), c).toBe(c);
+    }
   });
 });

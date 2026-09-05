@@ -2,7 +2,7 @@
  * §4.9 share text — the human-readable block Web Share sends alongside the JSON file.
  * Pure: no DOM, no React, no I/O, and no clock (P3); the scan time comes off the record.
  */
-import { groupVin, isVinGrammarValid } from "../vin/grammar";
+import { asciiUpper, groupVin, isVinGrammarValid } from "../vin/grammar";
 import type { VehicleRecord } from "../vin/types";
 
 /** vPIC returns every value as a string and an empty one means unknown (§4.7). */
@@ -131,8 +131,10 @@ export function parseShareTextVin(raw: string): string | null {
     const match = VIN_LINE_RE.exec(line);
     if (match === null) continue;
     // §4.1 grouping is display-only, so the groups close back up; uppercased because a
-    // client that lower-cased the block still holds this app's VIN.
-    const candidate = match[1].replace(INNER_SPACE_RE, "").toUpperCase();
+    // client that lower-cased the block still holds this app's VIN. ASCII-only (§4.2
+    // step 1): `VIN 1HGCM82653A0ß352` is 16 §4.1 characters and no VIN, and
+    // `String.prototype.toUpperCase` turned it into a 17-character grammar-valid one.
+    const candidate = asciiUpper(match[1].replace(INNER_SPACE_RE, ""));
     if (isVinGrammarValid(candidate)) found.add(candidate);
   }
   return found.size === 1 ? [...found][0]! : null;

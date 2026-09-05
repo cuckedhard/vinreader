@@ -113,22 +113,29 @@ describe("[A-01] §4.2 refuses a run that holds more than one plausible VIN", ()
   });
 
   /**
-   * §4.2 step 1 says "Uppercase", and `String.prototype.toUpperCase` maps several
-   * non-ASCII characters *into* the §4.1 alphabet: U+017F LATIN SMALL LETTER LONG S
-   * becomes `S`, U+00DF becomes `SS`, the `ﬅ` ligature becomes `ST`. A 2D code
-   * carrying UTF-8 text can therefore grow a run and trigger the straddle above.
+   * §4.2 step 1 used to be `String.prototype.toUpperCase`, which maps several non-ASCII
+   * characters *into* the §4.1 alphabet: U+017F LATIN SMALL LETTER LONG S becomes `S`,
+   * U+00DF becomes `SS`, the `ﬅ` ligature becomes `ST`. A 2D code carrying UTF-8 text
+   * could therefore grow a run and trigger the straddle above.
+   *
+   * [G1] Step 1 is now ASCII-only (`asciiUpper`), so neither code point reaches step 2 as
+   * a §4.1 character: both are separators, exactly as step 2 says, and the run either of
+   * them prefixes is the 17-character VIN itself. So these two now read as the covered
+   * "punctuation-delimited text" shape — the same answer as `-${VIN}` or `*${VIN}` —
+   * rather than as an 18/19-character run R4-A has to refuse. The guard that matters is
+   * unchanged and is asserted directly below: what comes back is the VIN the label
+   * carries, never the straddle `S1HGCM82633A00435` that step 1 used to manufacture.
    */
-  it("is not fooled when toUpperCase manufactures §4.1 characters out of non-ASCII text", () => {
-    // U+017F uppercases to a bare ASCII "S", a §4.1 character, so the run grows by one
-    // and the offset-0 window validates. It used to be returned as "S1HGCM82633A00435".
-    expect(extractVin(`ſ${VIN}`)).toBeNull();
-    // U+FB05 uppercases to "ST": two characters, and this VIN's straddle fails the check
-    // digit, so Z1's uniqueness left the run holding exactly one plausible VIN. WAS:
-    // `?.vin === VIN`. Under R4-A it is NO_VIN — the run is 19 characters, the VIN is not
-    // a run of its own, and the straddle that fails here is the same shape as the straddle
-    // that passes one time in eleven. A hostile payload cannot be allowed to depend on
-    // which way that coin landed.
-    expect(extractVin(`ﬅ${VIN}`)).toBeNull();
+  it("is not fooled when a non-ASCII character sits in front of the VIN", () => {
+    // U+017F used to uppercase to a bare ASCII "S", growing the run by one so that the
+    // offset-0 window validated: it was returned as "S1HGCM82633A00435", a VIN on no label.
+    expect(extractVin(`ſ${VIN}`)).toEqual({ vin: VIN, raw: `ſ${VIN}`, checkDigitValid: true });
+    // U+FB05 used to uppercase to "ST", two characters, growing the run to 19.
+    expect(extractVin(`ﬅ${VIN}`)).toEqual({ vin: VIN, raw: `ﬅ${VIN}`, checkDigitValid: true });
+    // The invariant behind both: a §4.1 character the raw never carried cannot come back.
+    for (const raw of [`ſ${VIN}`, `ﬅ${VIN}`, `ß${VIN}`, `ﬁ${VIN}`]) {
+      expect(extractVin(raw)?.vin, raw).toBe(VIN);
+    }
   });
 });
 

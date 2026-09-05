@@ -76,6 +76,32 @@ test("types a VIN, saves it, and finds it again in history", async ({ page }) =>
   expect(errors).toEqual([]);
 });
 
+/**
+ * [G1] §4.2 step 1 is ASCII-only, at the typed/pasted call site too. Sixteen code points
+ * outside §4.1 uppercase INTO it under `String.prototype.toUpperCase`, six of them into
+ * two or three characters, so `1HGCM82653A0ß352` — 16 characters, two runs of 12 and 3,
+ * no VIN at any offset — used to become the check-digit-valid `1HGCM82653A0SS352` and be
+ * offered as fact. The field must hand on what was typed, character for character.
+ */
+test("does not grow a pasted non-ASCII character into a VIN", async ({ page }) => {
+  const field = await typeInstead(page);
+  await field.fill("1HGCM82653A0ß352");
+  await expect(field).toHaveValue("1HGCM82653A0ß352");
+  // The fabricated VIN, in §4.1 display grouping, must be nowhere on the screen.
+  await expect(page.getByText("1HG CM826 5 3 A 0SS352")).toHaveCount(0);
+  // And nothing is offered to save, because the bytes hold no VIN.
+  await expect(page.getByRole("button", { name: /save|add|decode/i }).first()).toBeDisabled();
+
+  // The third call site: §6.2's route parameter normalises too, and used to open the
+  // fabricated VIN's sheet for a URL that never named it.
+  await page.goto("/#/v/1HGCM82653A0%C3%9F352");
+  await expect(page.getByText("1HG CM826 5 3 A 0SS352")).toHaveCount(0);
+  await expect(page.getByText("No record for this VIN.")).toBeVisible();
+  // a–z still uppercase there, which is the half of step 1 that has to keep working.
+  await page.goto(`/#/v/${VIN.toLowerCase()}`);
+  await expect(page.getByText("1HG CM826 3 3 A 004352")).toBeVisible();
+});
+
 /** The grouped display form and the I-prefixed label form must both paste in. */
 test("accepts the I-prefixed and grouped forms", async ({ page }) => {
   const field = await typeInstead(page);

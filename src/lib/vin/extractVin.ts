@@ -3,7 +3,7 @@
  */
 
 import { isCheckDigitValid } from "./checkDigit";
-import { isVinGrammarValid, splitRuns, VIN_LENGTH } from "./grammar";
+import { asciiUpper, isVinGrammarValid, splitRuns, VIN_LENGTH } from "./grammar";
 import type { ExtractResult } from "./types";
 
 /** §4.2 step 1. `*` is the Code 39 start/stop pair, which some decoders pass through. */
@@ -14,7 +14,7 @@ const STRIP_RE = /[\s*]+/g;
  * the exact bytes the decoder produced (§5.2).
  */
 export function extractVin(raw: string): ExtractResult | null {
-  const cleaned = raw.toUpperCase().replace(STRIP_RE, "");
+  const cleaned = asciiUpper(raw).replace(STRIP_RE, "");
 
   // §4.2 steps 2 and 3. Windows stay grouped by the run they came from: a window can only
   // straddle the boundary between two fields printed inside the SAME run, so a run is the

@@ -2,7 +2,7 @@ import { useId, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { checkDigitApplies, isCheckDigitValid } from "../../lib/vin/checkDigit";
 import { extractVin } from "../../lib/vin/extractVin";
-import { isAllowedVinChar, VIN_LENGTH } from "../../lib/vin/grammar";
+import { asciiUpper, isAllowedVinChar, VIN_LENGTH } from "../../lib/vin/grammar";
 import { Banner } from "../../ui/Banner";
 import { Button } from "../../ui/Button";
 import { Chip } from "../../ui/Chip";
@@ -43,7 +43,9 @@ export function ManualEntry() {
 
   function handleChange(next: string) {
     // Uppercase at the source, so the stored `raw` is what the user was shown (§5.2).
-    setValue(next.toUpperCase());
+    // §4.2 step 1, ASCII-only: `String.prototype.toUpperCase` would grow the pasted
+    // `1HGCM82633A00435ﬁ` — 17 characters — into the 18-character `1HGCM82633A00435FI`.
+    setValue(asciiUpper(next));
     // Editing withdraws both the held read and any failed write: neither describes the
     // text now in the field.
     dismiss();

@@ -172,6 +172,21 @@ describe("the recogniser fabricates nothing §4.2 refuses", () => {
     expect(parseShareTextVin(`VIN ${GROUPED}\nVIN ${VIN}`)).toBe(VIN);
   });
 
+  /**
+   * [G1] §4.2 step 1 is ASCII-only, and this parser normalises a VIN too. Under
+   * `String.prototype.toUpperCase` the 16 §4.1 characters below grew into the
+   * 17-character, check-digit-valid `1HGCM82653A0SS352` and were imported as a VIN that
+   * is on no label — the same fabrication the finding pins in `extractVin`, reached
+   * through `ImportScreen.readPaste` instead of the scanner.
+   */
+  it("does not grow a labelled line into a VIN by uppercasing it", () => {
+    expect(parseShareTextVin("VIN 1HGCM82653A0ß352")).toBeNull();
+    expect(parseShareTextVin("VIN 1HGCM82653A0ﬅ352")).toBeNull();
+    expect(parseShareTextVin("VIN 1HGCM82633A00435ﬁ")).toBeNull();
+    // The half of step 1 that has to keep working: a client that lower-cased the block.
+    expect(parseShareTextVin(`VIN ${VIN.toLowerCase()}`)).toBe(VIN);
+  });
+
   it("does not read the §4.9 trailer, or any other line, as a VIN", () => {
     expect(parseShareTextVin("VIN Relay")).toBeNull();
     expect(parseShareTextVin("2003 HONDA Accord")).toBeNull();

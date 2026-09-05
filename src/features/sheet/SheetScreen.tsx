@@ -7,6 +7,7 @@ import { db } from "../../lib/storage/db";
 import { normalizeVehicle } from "../../lib/storage/normalize";
 import { refreshDecode } from "../../lib/storage/decodeQueue";
 import { setVehicleMeta } from "../../lib/storage/upsert";
+import { asciiUpper } from "../../lib/vin/grammar";
 import type { ModelYear, VehicleRecord } from "../../lib/vin/types";
 import { Banner } from "../../ui/Banner";
 import { Button } from "../../ui/Button";
@@ -243,7 +244,8 @@ export default function SheetScreen({ vin: vinProp, onDeleted }: SheetScreenProp
   const params = useParams<{ vin: string }>();
   const navigate = useNavigate();
   const embedded = vinProp !== undefined;
-  const vin = (vinProp ?? params.vin ?? "").trim().toUpperCase();
+  // §4.2 step 1 is ASCII-only everywhere a VIN is normalised, the route parameter included.
+  const vin = asciiUpper((vinProp ?? params.vin ?? "").trim());
   const back = embedded ? undefined : () => void navigate("/history");
 
   // F1-b: the live query below never emits when the database never opened — Dexie filters

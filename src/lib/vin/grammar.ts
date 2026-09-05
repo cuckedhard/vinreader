@@ -12,6 +12,27 @@ const VIN_CHAR_RE = /^[A-HJ-NPR-Z0-9]$/;
 /** Anything outside the §4.1 alphabet separates two runs (§4.2 step 2). */
 const SEPARATOR_RE = /[^A-HJ-NPR-Z0-9]+/;
 
+/** The only characters §4.2 step 1 may touch. */
+const ASCII_LOWER_RE = /[a-z]/g;
+
+/**
+ * §4.2 step 1, and the single definition of "uppercase" for this app (§7 item 5): map
+ * `a`–`z` to `A`–`Z` and leave every other code point exactly as it came in.
+ *
+ * Never `String.prototype.toUpperCase`. That map is *length-changing* and it maps code
+ * points from outside §4.1 **into** §4.1 — `ß`→`SS`, `ﬀ`→`FF`, `ﬁ`→`FI`, `ﬂ`→`FL`,
+ * `ﬃ`→`FFI`, `ﬄ`→`FFL`, `ſ`→`S`, and 102 code points in all whose uppercase changes
+ * length. Step 1 runs *before* step 2 splits into runs, so a Unicode uppercase invents
+ * §4.1 characters the label never carried: `1HGCM82653A0ß352` is 16 characters in two
+ * runs of 12 and 3, holding no VIN at any offset, and became the 17-character run
+ * `1HGCM82653A0SS352` — a check-digit-valid VIN, returned as fact, past R4-A's whole-run
+ * rule because step 1 had built it a run of its own. Ruled by Zach, 2026-09-05, ledger
+ * row G1. Applies wherever a VIN is normalised, not only in `extractVin`.
+ */
+export function asciiUpper(raw: string): string {
+  return raw.replace(ASCII_LOWER_RE, (c) => String.fromCharCode(c.charCodeAt(0) - 32));
+}
+
 export function isVinGrammarValid(s: string): boolean {
   return VIN_RE.test(s);
 }

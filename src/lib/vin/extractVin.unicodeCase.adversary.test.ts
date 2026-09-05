@@ -67,8 +67,13 @@ describe("[G1] §4.2 step 1 uppercases non-§4.1 characters INTO the alphabet", 
     // Each raw is shorter than 17 characters or splits into runs shorter than 17.
     const cases: readonly (readonly [string, string])[] = [
       ["1HGCM82653A0ﬀ352", "1HGCM82653A0FF352"], // ﬀ -> FF
-      ["1HGCM826X3A0ﬂ352", "1HGCM826X3A0FL352"], // ﬂ -> FL
-      ["1HGCM82683A0ﬅ352", "1HGCM82683A0ST352"], // ﬅ -> ST
+      // [G1 fix] These two rows carried each other's check digit — `expectedCheckDigit`
+      // is `1` for `1HGCM826?3A0FL352` and `X` for `1HGCM826?3A0ST352`, so as written
+      // neither fabricated VIN passed §4.3 and the premise on the line below was false.
+      // Corrected, not relaxed: each row now really is a check-digit-VALID fabrication,
+      // which is the stronger case and the one the finding is about.
+      ["1HGCM82613A0ﬂ352", "1HGCM82613A0FL352"], // ﬂ -> FL
+      ["1HGCM826X3A0ﬅ352", "1HGCM826X3A0ST352"], // ﬅ -> ST
       ["1HGCM82653A0ſS352", "1HGCM82653A0SS352"], // ſ -> S
     ];
     for (const [raw, fabricated] of cases) {
