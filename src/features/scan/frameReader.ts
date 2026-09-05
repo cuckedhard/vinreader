@@ -15,6 +15,11 @@
  * one that makes the §4.6 hint mean what it says: a luminance source that can genuinely
  * rotate, on the same `decodeWithState` call the app already made.
  *
+ * **And the ROI band (SB-3).** §9-S1 allows the frame to be cropped to the guide box before
+ * decoding. The band is taken *first* and the whole frame *second*, never instead of it, so
+ * no symbol that decodes today can stop decoding because the user aimed wide or held a
+ * §9-S3 handoff QR close enough to overflow the band. See `ROI_WIDTH_FRACTION`.
+ *
  * `ScanFrameReader` overrides one instance method, `decodeFromCanvas`, which is the call
  * `BrowserCodeReader.prototype.scan` makes on every frame
  * (`readers/BrowserCodeReader.js:1119-1120`). Everything else — the hints, the binarizer,
@@ -49,6 +54,54 @@ export interface FrameCanvas {
     id: "2d",
     settings?: { willReadFrequently?: boolean },
   ): { getImageData(sx: number, sy: number, sw: number, sh: number): RgbaFrame } | null;
+}
+
+/** A sub-rectangle of a frame, in frame pixels. */
+export interface FrameRect {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * §9-S1's ROI band: "crop the video frame to the guide box on a canvas before decoding
+ * (optimization is allowed inside this slice; report it)". Reported in SB-3 and SB-10.
+ *
+ * **Width is §6.1's, height is not, and that is the whole finding.** §6.1 draws the guide box
+ * at `w-[90%] h-[22%]` (`CameraView.tsx`), and cropping to the box *as drawn* is catastrophic
+ * for 2D: at 1080 px tall it is a 238 px band, a label-realistic Data Matrix or QR is
+ * ~480–500 px tall, and `data_matrix` clean goes 100% → **0%**, `qr_code` clean 95% → **0%**
+ * (SB-3). The 40% band is the one that was measured to help — `code_128` severe +6.0 pp,
+ * `code_39` +4.0, `code_39_i` +5.0 over 800 frames per layout, 33 frames recovered and **0
+ * lost** (SB-10) — and it contains the drawn box rather than replacing it, so §6.1's constant
+ * is untouched and the box the user aims at is inside the region the decoder reads first.
+ *
+ * The containment is arithmetic, not assertion. The preview is `object-cover`, so the frame
+ * is cropped to the preview's aspect before the box is drawn over it. On a 390×844 phone the
+ * preview is 3:4 and shows the middle 42% of a 1920×1080 frame, so the drawn box maps to
+ * 38% × 22% of the frame — well inside 90% × 40%. In landscape the preview is 16:9 and the
+ * box maps to the full 90% × 11%, which is the band's own width. There is no layout where
+ * the box escapes the band.
+ */
+export const ROI_WIDTH_FRACTION = 0.9;
+export const ROI_HEIGHT_FRACTION = 0.4;
+
+/**
+ * The band to look in first, or `null` for a frame too small to give one — a crop of zero
+ * width or height is what `getImageData` throws on, and a frame that arrives before the
+ * video has a size must not be the thing that ends a scan (N1).
+ */
+export function scanRegion(width: number, height: number): FrameRect | null {
+  const bandWidth = Math.round(width * ROI_WIDTH_FRACTION);
+  const bandHeight = Math.round(height * ROI_HEIGHT_FRACTION);
+  if (bandWidth < 1 || bandHeight < 1) return null;
+  return {
+    left: Math.round((width - bandWidth) / 2),
+    top: Math.round((height - bandHeight) / 2),
+    width: bandWidth,
+    height: bandHeight,
+  };
 }
 
 /**
@@ -157,7 +210,7 @@ export class FrameLuminanceSource extends LuminanceSource {
  * in a `try` for the same reason the library does: a browser that refuses the settings
  * argument must degrade to a working scan rather than end it (P7).
  */
-export function readFrame(canvas: FrameCanvas): RgbaFrame {
+export function readFrame(canvas: FrameCanvas, region?: FrameRect): RgbaFrame {
   let context;
   try {
     context = canvas.getContext("2d", { willReadFrequently: true });
@@ -167,24 +220,39 @@ export function readFrame(canvas: FrameCanvas): RgbaFrame {
   if (context === null || context === undefined) {
     throw new Error("The scan frame has no 2d context to read.");
   }
-  return context.getImageData(0, 0, canvas.width, canvas.height);
+  const rect = region ?? { left: 0, top: 0, width: canvas.width, height: canvas.height };
+  return context.getImageData(rect.left, rect.top, rect.width, rect.height);
 }
 
 /** The binary bitmap one frame becomes, through a source that can do what it claims. */
-export function frameBitmap(canvas: FrameCanvas): BinaryBitmap {
-  return new BinaryBitmap(new HybridBinarizer(FrameLuminanceSource.fromImage(readFrame(canvas))));
+export function frameBitmap(canvas: FrameCanvas, region?: FrameRect): BinaryBitmap {
+  const image = readFrame(canvas, region);
+  return new BinaryBitmap(new HybridBinarizer(FrameLuminanceSource.fromImage(image)));
 }
 
 /**
  * The app's reader: `BrowserMultiFormatReader` with §4.6's hints, reading each frame through
- * `FrameLuminanceSource` instead of `HTMLCanvasElementLuminanceSource` (R6-SA-1).
+ * `FrameLuminanceSource` instead of `HTMLCanvasElementLuminanceSource` (R6-SA-1), and
+ * looking inside §6.1's guide box before it looks at the whole frame (SB-3).
  *
  * `decodeBitmap` is not touched, so the decode is still `MultiFormatReader.decodeWithState`
- * with the constructor's hints — the whole change is which luminance source the bitmap is
- * built over.
+ * with the constructor's hints — the whole change is what the bitmap is built over.
  */
 export class ScanFrameReader extends BrowserMultiFormatReader {
   override decodeFromCanvas(canvas: HTMLCanvasElement): Result {
+    const region = scanRegion(canvas.width, canvas.height);
+    if (region !== null) {
+      try {
+        return this.decodeBitmap(frameBitmap(canvas, region));
+      } catch {
+        // Nothing is swallowed here: the band is a first look, and the frame below reports
+        // whatever it finds — a `Result`, or the same NotFoundException the caller would
+        // have seen anyway (P7). Catching everything rather than only the reader exceptions
+        // is deliberate: a fault peculiar to the band (a getImageData that a browser
+        // refuses on a sub-rectangle, say) must not be the thing that ends a working scan
+        // loop, and if it is not peculiar to the band the full frame raises it too.
+      }
+    }
     return this.decodeBitmap(frameBitmap(canvas));
   }
 }

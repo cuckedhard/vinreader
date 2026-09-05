@@ -77,8 +77,9 @@ export const DECODE_PATHS: readonly DecodePath[] = ["canvas", "yuv", "rgb"];
 /** One line each, printed in the report header, so no run can misdescribe its own instrument. */
 export const DECODE_PATH_NOTES: Readonly<Record<DecodePath, string>> = {
   canvas:
-    "the app's path — Chromium, `ScanFrameReader.decodeFromCanvas`, " +
-    "`FrameLuminanceSource`, `decodeWithState`",
+    "the app's path — Chromium, `ScanFrameReader.decodeFromCanvas` — §9-S1's ROI band " +
+    "(90% x 40%, SB-3) first and the whole frame after it — `FrameLuminanceSource`, " +
+    "`decodeWithState`",
   yuv:
     "`canvas`, with the frame first put through a **modelled** BT.601 studio-swing I420 round " +
     "trip — the colour half of a camera capture, not a camera",

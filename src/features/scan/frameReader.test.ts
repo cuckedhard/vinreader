@@ -30,8 +30,15 @@ import {
 import { describe, expect, it } from "vitest";
 
 import { buildScanHints } from "../../lib/vin/symbologies";
-import { FrameLuminanceSource, ScanFrameReader, readFrame } from "./frameReader";
-import type { RgbaFrame } from "./frameReader";
+import {
+  FrameLuminanceSource,
+  ROI_HEIGHT_FRACTION,
+  ROI_WIDTH_FRACTION,
+  ScanFrameReader,
+  readFrame,
+  scanRegion,
+} from "./frameReader";
+import type { FrameRect, RgbaFrame } from "./frameReader";
 
 /** §4.11's fixture VIN. */
 const VIN = "1HGCM82633A004352";
@@ -127,8 +134,11 @@ function toRgba(image: Gray): RgbaFrame {
  */
 function fakeCanvas(image: RgbaFrame, options: { throwOnOptions?: boolean } = {}) {
   const asked: unknown[] = [];
+  const reads: FrameRect[] = [];
   return {
     asked,
+    /** Every rectangle the reader asked for, in order — which pass looked where (SB-3). */
+    reads,
     canvas: {
       width: image.width,
       height: image.height,
@@ -139,6 +149,7 @@ function fakeCanvas(image: RgbaFrame, options: { throwOnOptions?: boolean } = {}
         }
         return {
           getImageData: (sx: number, sy: number, sw: number, sh: number): RgbaFrame => {
+            reads.push({ left: sx, top: sy, width: sw, height: sh });
             const data = new Uint8ClampedArray(sw * sh * 4);
             for (let y = 0; y < sh; y += 1) {
               const from = ((sy + y) * image.width + sx) * 4;
@@ -150,6 +161,20 @@ function fakeCanvas(image: RgbaFrame, options: { throwOnOptions?: boolean } = {}
       },
     },
   };
+}
+
+/** The symbol centred on a white field of its own, the way a frame carries a label. */
+function onWhite(image: Gray, width: number, height: number): Gray {
+  const luminance = new Uint8ClampedArray(width * height).fill(WHITE);
+  const left = Math.round((width - image.width) / 2);
+  const top = Math.round((height - image.height) / 2);
+  for (let y = 0; y < image.height; y += 1) {
+    luminance.set(
+      image.luminance.subarray(y * image.width, (y + 1) * image.width),
+      (top + y) * width + left,
+    );
+  }
+  return { luminance, width, height };
 }
 
 /** The §4.6 reader, built the way `useScanner` builds it. */
@@ -292,5 +317,80 @@ describe("readFrame — the pixels come off the canvas the app draws", () => {
     };
 
     expect(() => readFrame(canvas)).toThrow(/2d context/);
+  });
+});
+
+describe("[SB-3] §9-S1's ROI band — the decoder looks where the guide box points", () => {
+  const symbol = code39Image(VIN);
+
+  it("takes a centred band, 90% x 40%, from the frame §6.3 asks the camera for", () => {
+    // 1920x1080 is §6.3's `ideal`, and what @zxing/browser sizes its capture canvas to.
+    expect(scanRegion(1920, 1080)).toEqual({ left: 96, top: 324, width: 1728, height: 432 });
+    expect(ROI_WIDTH_FRACTION).toBe(0.9);
+    expect(ROI_HEIGHT_FRACTION).toBe(0.4);
+  });
+
+  it("contains §6.1's drawn guide box in both preview aspects, which is why 40% and not 22%", () => {
+    // §6.1 draws `w-[90%] h-[22%]` over an `object-cover` preview, so the box maps onto the
+    // frame through the preview's aspect. Portrait 3:4 shows the middle 42.2% of a 16:9
+    // frame; landscape 16:9 shows all of it. The band must contain the box in both.
+    const band = scanRegion(1920, 1080);
+    if (band === null) throw new Error("1920x1080 has a band");
+    for (const previewAspect of [3 / 4, 1920 / 1080]) {
+      const visibleWidth = Math.min(1920, 1080 * previewAspect);
+      const visibleHeight = Math.min(1080, 1920 / previewAspect);
+      const boxWidth = visibleWidth * 0.9;
+      const boxHeight = visibleHeight * 0.22;
+
+      expect(boxWidth).toBeLessThanOrEqual(band.width);
+      expect(boxHeight).toBeLessThanOrEqual(band.height);
+    }
+  });
+
+  it("refuses a band a frame is too small to give, rather than a zero-pixel read", () => {
+    // getImageData throws on a zero width or height, and a scan must never end on a frame
+    // that arrives before the video has a size (N1).
+    expect(scanRegion(0, 0)).toBeNull();
+    expect(scanRegion(1920, 1)).toBeNull();
+    expect(scanRegion(0, 1080)).toBeNull();
+    // One pixel each way is a band, and a legal read: the guard is against zero, not small.
+    expect(scanRegion(4, 2)).toEqual({ left: 0, top: 1, width: 4, height: 1 });
+  });
+
+  it("decodes a label inside the band without ever reading the rest of the frame", () => {
+    const framed = onWhite(symbol, 800, 400);
+    const { canvas, reads } = fakeCanvas(toRgba(framed));
+
+    const result = reader().decodeFromCanvas(canvas as unknown as HTMLCanvasElement);
+
+    expect(result.getText()).toBe(VIN);
+    // One read, and it is the band: the 320,000 pixels outside it were never binarised.
+    expect(reads).toEqual([{ left: 40, top: 120, width: 720, height: 160 }]);
+  });
+
+  it("still reads a label the band clips, because the band is a first look and not a fence", () => {
+    // The §9-S3 case, and the field one: a handoff QR held close, or a label aimed wide,
+    // overflows a 90% x 40% band. Cropping *instead of* the frame would lose it — and would
+    // be a regression in a shipped slice, which N1 and §7 item 3 both forbid.
+    const framed = onWhite(symbol, 660, 400);
+    const { canvas, reads } = fakeCanvas(toRgba(framed));
+
+    const result = reader().decodeFromCanvas(canvas as unknown as HTMLCanvasElement);
+
+    expect(result.getText()).toBe(VIN);
+    expect(reads).toEqual([
+      { left: 33, top: 120, width: 594, height: 160 },
+      { left: 0, top: 0, width: 660, height: 400 },
+    ]);
+  });
+
+  it("reports the frame's own miss, not the band's, when neither finds anything", () => {
+    const blank = onWhite({ luminance: new Uint8ClampedArray(0), width: 0, height: 0 }, 400, 300);
+    const { canvas, reads } = fakeCanvas(toRgba(blank));
+
+    expect(() => reader().decodeFromCanvas(canvas as unknown as HTMLCanvasElement)).toThrow(
+      NotFoundException,
+    );
+    expect(reads).toHaveLength(2);
   });
 });
