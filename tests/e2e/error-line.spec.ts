@@ -83,3 +83,37 @@ test("[F12] the boundary prints its fault once, on one line", async ({ page }) =
   expect(occurrences(detail, "UnknownError")).toBe(1);
   expect(detail).not.toMatch(/[\n\r\t]|\s{2}/);
 });
+
+/**
+ * [R3-F4, F12] The third site. `DeleteVehicle` printed the same engine string the same way —
+ * §6.4's "Couldn't delete this vehicle" carries the reason in its body — and F12's own row
+ * predicted it: "a fix scoped to the write path will leave this one". So the rule lives in one
+ * function and every site that shows a thrown value uses it.
+ */
+test("[R3-F4] the delete failure prints its fault once, on one line", async ({ page }) => {
+  await page.route("**/api/vehicles/DecodeVinValues/**", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ Results: [{ Make: "HONDA", Model: "Accord", ErrorCode: "0" }] }),
+    }),
+  );
+
+  // A record to delete, made the way a user makes one.
+  await page.goto("/#/scan");
+  await page.getByRole("button", { name: /type vin instead/i }).click();
+  await page.getByRole("textbox", { name: /vin/i }).fill(VIN);
+  await page.getByRole("button", { name: "Save VIN" }).click();
+  await expect(page).toHaveURL(new RegExp(`#/v/${VIN}`));
+
+  await page.evaluate(BREAK_PUT);
+  await page.getByRole("button", { name: "Delete", exact: true }).click();
+  await page.getByRole("button", { name: "Delete", exact: true }).click();
+
+  const banner = page.getByRole("alert").filter({ hasText: "Couldn't delete this vehicle" });
+  await expect(banner).toBeVisible();
+  const detail = (await banner.textContent()) ?? "";
+  expect(detail).toContain("storage full");
+  expect(occurrences(detail, "storage full")).toBe(1);
+  expect(occurrences(detail, "QuotaExceededError")).toBe(1);
+});

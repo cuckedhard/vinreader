@@ -20,6 +20,7 @@
  * exported so the session report can list it and `harden` can find it in one place.
  */
 import { useEffect, useRef, useState } from "react";
+import { errorLine } from "../../app/errorLine";
 import { softDeleteVehicle } from "../../lib/storage/upsert";
 import { Banner } from "../../ui/Banner";
 import { Button } from "../../ui/Button";
@@ -55,10 +56,6 @@ export const DELETED_TITLE = "Vehicle deleted";
 export const DELETED_BODY =
   "It's out of your history. Scanning or importing this VIN again brings it back.";
 export const DELETED_BACK = "Back to History";
-
-function describe(cause: unknown): string {
-  return cause instanceof Error ? cause.message : String(cause);
-}
 
 export interface DeleteConfirmProps {
   vin: string;
@@ -171,7 +168,10 @@ export function DeleteVehicle({ vin, onDeleted }: DeleteVehicleProps) {
         // for a host that has its own idea of what to do (close the §6.6 pane).
         onDeleted?.(vin);
       })
-      .catch((cause: unknown) => setError(describe(cause)))
+      // §6.4 gives the reason a place in this banner, so it is shaped for a person on the
+      // way in: Dexie's message restates itself and carries a newline, which reached the two
+      // other sites that print a thrown value as one sentence twice (R3-F4, F12).
+      .catch((cause: unknown) => setError(errorLine(cause)))
       .finally(() => setBusy(false));
   }
 
