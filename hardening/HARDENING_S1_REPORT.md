@@ -1,68 +1,146 @@
-# HARDENING_S1 — final report (§13.8)
+# `harden S1` — final report (§13.8)
 
-`harden S1`, one round. The loop **did not converge** and stopped deliberately. §13.6 cannot be reached from inside it: criterion 1 requires zero open S1/S2, and the one S1 is a §4 constant change that CLAUDE.md rule 2 and §13.6's own hard stop forbid any agent from making.
+Run 2026-09-05 → 2026-09-06. Two rounds against a slice that had already seen five earlier
+rounds of work. **Stopped short of §13.6, deliberately and for a reason that more rounds cannot
+change** — see §5.
 
-## Rounds run
+## 1. Rounds run
 
-One, plus its review. §13.3's five steps all executed: audit (five roles in parallel), triage, fix, gate, check. `R_MAX` was 6; the loop used 1 and stopped on a hard stop, not on budget.
+| round | step 1 (audit) | step 2 (triage) | step 3 (fix) | step 4 (gate) |
+|---|---|---|---|---|
+| 1 | 5 auditors in parallel — 36 findings, 32 new | 3 S1 · 9 S2 · 16 S3 · 8 S4; 32 FIX, 3 NEEDS-ZACH, 1 WONTFIX; **10 stale rows closed on evidence** | 11 commits, 1 rejected and remediated | green but for the environment-blocked test |
+| 2 | — (worked the triaged backlog) | — | **35 commits, 33 reviewed, 29 approved, 4 rejected** | green but for the same test |
 
-## Findings by severity
+Round 1's audit also closed ten rows that said `open` while the commit fixing them had already
+landed — `A23`, `B2`, `R3-I`, `R3-F7`, `R4-J`, `A23-a`, `M1` among them. A ledger that misreports
+its own state makes §13.6 criterion 1 unmeasurable, so that mattered before anything else could.
 
-| sev | found | fixed | open                        |
-| --- | ----- | ----- | --------------------------- |
-| S1  | 1     | 0     | 1 (NEEDS-ZACH)              |
-| S2  | 11    | 10    | 1 (NEEDS-ZACH)              |
-| S3  | 14    | 8     | 6 (2 NEEDS-ZACH, 4 carried) |
-| S4  | 7     | 6     | 1                           |
+## 2. Findings by severity
 
-36 raw findings from four auditors plus 4 from the bench, deduplicated to 29. Five were reported independently by two or three roles. The reviewer then rejected the fix diff and raised 4 more, all addressed.
+| sev | found | fixed | open |
+|---|---|---|---|
+| S1 | 3 | 2 | 1 (NEEDS-ZACH) |
+| S2 | 9 | 7 | 2 (1 NEEDS-ZACH) |
+| S3 | 16 | 14 | 2 |
+| S4 | 8 | 8 | 0 |
 
-## Gate
+**32 findings closed across the two rounds.** The four rejects are recorded rather than reverted:
+in each the named defect is genuinely gone and what the reviewer refused was a claim made *around*
+the fix. Three of the four became new rows (`SB-5-a`, `SB-5-b`, `FB-1`, `R3-F11-a`).
 
-| check               | result                                                                                    |
-| ------------------- | ----------------------------------------------------------------------------------------- |
-| `bun run typecheck` | pass                                                                                      |
-| `bun run lint`      | pass                                                                                      |
-| `bun run test`      | 613 pass                                                                                  |
-| `bun run test:e2e`  | 21 pass                                                                                   |
-| coverage            | 100% lines, 98.7% branches; 100% on checkDigit, modelYear, extractVin, codec, scanMachine |
-| `bun run bench`     | **fails** — 6 threshold cells, all traceable to NEEDS-ZACH tier calibration               |
-| `bun run mutate`    | **does not exist** — the §13.5 mutation clause has never run                              |
+### The four that mattered most
 
-## Bench (§13.4), 200 VINs · 5 symbologies · 3 tiers · 3,000 attempts · seed 0x5eed1a7c
+**The e2e gate was running 4 of 47 tests.** A flaky light-theme assertion raced React's mount, and
+`playwright.config.ts` gives `desktop` a `dependencies: ["light"]`, so one intermittent failure
+skipped the entire desktop project — the fake-camera scan flow, offline, import, share. Every
+"green" before `cce85e3` was worth nothing. It now runs 89.
 
-| symbology   | clean (≥99%) | moderate (≥90%) | severe (≥70%) |
-| ----------- | ------------ | --------------- | ------------- |
-| code_39     | 100.0%       | 77.5% ✗         | 80.5%         |
-| code_39_i   | 100.0%       | 79.0% ✗         | 73.5%         |
-| code_128    | 100.0%       | 81.0% ✗         | 85.5%         |
-| data_matrix | 100.0%       | 99.0%           | 53.5% ✗       |
-| qr_code     | 98.5% ✗      | 97.5%           | 0.0% ✗        |
+**The bench was measuring an easier problem than the app solves.** `bench/run.ts` handed ZXing a
+~1050 px symbol in a ~1100 px image; the app hands it a 1920×1080 video frame. Measured on
+identical, unresampled symbol pixels: 68.0% → 62.5% overall, and `code_128` severe **62.5% → 25.0%**.
+Every §13.6 margin ever reported by this bench was optimistic by an unknown amount.
 
-**False accepts: 0.** Decode time mean 9.6 ms, p95 37.1 ms.
+**`extractVin` could return characters that were never scanned.** §4.2 step 1 said "Uppercase" and
+the code read it as `String.prototype.toUpperCase`, a *length-changing* map: fifteen code points
+outside §4.1 uppercase **into** the alphabet, six into two or three characters. Live on four
+normalisation paths, not the one the audit found — including typed entry, where pasting a
+17-character string containing `ﬁ` produced 18. Zach ruled ASCII-only; §4.2 step 1 now says so.
 
-Read the misses with care. Moderate scores _worse_ than severe on every 1D symbology, because `moderate` blurs and `severe` does not — the tiers are not ordered, so the 99/90/70 ladder cannot mean what it intends (Z2). The 2D severe cells are governed by a glare band sized to the image diagonal (Z3). And the harness is not the app's decode path: a payload QR it scores as a miss is read correctly by the real scanner in Chromium, verified. **No number in this table should be read as a statement about the shipped scanner until Z2, Z3 and B2 are settled.**
+**A blank screen when storage is blocked.** No error boundary existed anywhere in `src/`, and
+`useLiveQuery` re-throws during render *by design* so one can catch it. `#root` measured **0 bytes**
+with IndexedDB reads throwing. Then F1-b: when IndexedDB never *opens*, Dexie filters
+`DatabaseClosedError` before `observer.error`, so the new boundary never fired either and
+`/#/v/:vin` rendered an empty `<main>`.
 
-> **B2, settled and measured (later round).** The bench now decodes in Chromium through the app's own `BrowserMultiFormatReader` and hints (`bench/browser-entry.ts`), and every frame is degraded once and read by both instruments so the difference is reported cell by cell. **The difference is zero** — over 4,200 frames at seed `0x5eed1a7c`, `canvas` and the old `rgb` node path each read 2,839 correctly, with no frame read by only one and no frame whose decoded text differed by a byte. On a grey corpus the two luminance sources compute the same buffer, and the two configuration differences behind them (`isRotateSupported()`'s 90° `TRY_HARDER` retry; `decodeWithState` against `decode(bitmap, hints)`) change nothing here. So the "not the app's decode path" clause of this caveat is **retired**: the numbers in the table above were statements about the shipped scanner after all, and the ones in `bench/report.md` now are so by construction rather than by luck. The rest of the caveat stands on Z2 and Z3. What is *not* zero is the camera itself — see B2a: through Chromium's fake capture device a frame reads slightly **worse** (67/105 against 69/105 on a subset), deterministically, from the studio-swing colour expansion of a `C420` stream.
+## 3. Gate
 
-## What was fixed
+Final tree, measured not asserted:
 
-The §6.3 cooldown, which could not work at all: the machine lived in component state and every successful scan navigated away and destroyed it, leaving the double-logging §6.3 names by name unguarded. A tab hidden over 30 s not re-requesting the camera. Both §6.3 windows compared one-sidedly, so a backwards clock jump cooled down every scanned VIN forever. A decode after the tab hid rebuilding a dropped candidate. "Got it ✓" firing beside a mismatch banner. A fatal ZXing error silently ending the scan loop. §4.6 defined twice and pinned by no test. Scan events never recording the device label. One corrupt row white-screening History. Two Use as-is taps writing two events. Plus target sizes, contrast, stale strings and dead code.
+| | |
+|---|---|
+| `typecheck` · `lint` | clean |
+| `test` | **1394 passed / 1 failed** of 1395, 87 files |
+| `test:e2e` | **89 passed** (was 4 running, 43 skipped) |
+| `test:e2e:android` | 170 passed (pixel-7, galaxy-s9) |
+| `coverage` | 99.35% statements · **98.13% branches** · 99.66% lines (§13.5 bar: 95/95) |
+| per-file 100% | `checkDigit` `modelYear` `extractVin` `codec` `scanMachine` — all held |
+| `mutate` | scoped only: `extractVin.ts` 89.19%, `scanMachine.ts` 99.39% (both over the 80% break) |
+| `bench` | **FAIL — 14 of 21 decode-rate cells**; false accepts **0** in 4,200 and 0 in the 21,000-attempt sweep |
 
-## NEEDS-ZACH
+The single red test is `wmiCache.test.ts`: `wmi-seed.json` is `{}` until `bun run seed:wmi` runs
+against vpic.nhtsa.dot.gov, and this environment has no egress to it. The test is right, the code
+is right, the artifact is missing. **It needs one run on a machine with network.** Left red and
+unweakened.
 
-Four items, in `hardening/HARDENING_S1.md`. **Z1 is the one that matters.**
+`bun run mutate` could not execute in the storage pass at all, so the score is scoped rather than
+whole-suite. That is a gap in this report, not a passing grade.
 
-**Z1 (S1) — §4.2 accepts a wrong VIN as check-digit-valid whenever anything legal precedes it.** `extractVin("UNIT B\nCM82633A004352…")` returns a 17-character string nobody printed, marked valid. Verified directly. The two-read rule agrees because a 2D code decodes identically every frame; §4.3's gate is satisfied because the check digit genuinely validates. About 1–6% of multi-field payloads. This is §13.6 criterion 4 — false accepts must be zero — reached through a §4 constant, so no agent may touch it.
+### The bench, honestly
 
-Z2, Z3: the bench tiers. Z4: the light theme §6.1 promises is unreachable.
+| symbology | clean ≥99% | moderate ≥90% | severe ≥70% |
+|---|---|---|---|
+| `code_39` | 100.0% | 77.5% ±5.8 | 30.0% ±6.3 |
+| `code_39_i` | 100.0% | 79.0% ±5.6 | 23.5% ±5.8 |
+| `code_39_check` | 24.0% | 18.5% ±5.4 | 7.0% ±3.6 |
+| `code_128` | 100.0% | 80.5% ±5.5 | 25.0% ±6.0 |
+| `code_128_fnc1` | 100.0% | 71.0% ±6.2 | **0.0%** |
+| `data_matrix` | 100.0% | 99.0% | 37.0% ±6.6 |
+| `qr_code` | 98.5% | 98.0% | 43.0% ±6.8 |
 
-## What the loop could not verify (§13.7)
+Every cell now carries a 95% Wilson band, so a claimed improvement can be checked against the
+~6 pp of seed noise that used to be invisible. **Tier ordering holds in every cell** — the property
+B1/B3 said the ladder did not have.
 
-Everything that needs a truck. Real door-jamb labels, curved, scuffed and sun-glared. The iOS installed-PWA camera, which has historically differed from the Safari tab. Torch and focus on specific phones. Gloved hands in cold. The bench is synthetic and, as Z2/Z3 show, was mis-calibrated; it tunes hints and confirmation logic and closes nothing in §7 item 4. B2 is settled — it decodes through the app's own reader in Chromium now, at a measured difference of zero — and B2a bounds what is left: a frame through Chromium's own capture pipeline reads 2 of 105 fewer than the same frame drawn from a PNG, and no synthetic frame at all has been through a lens.
+**Zero false accepts is not a clean bill of health.** Both known collisions — R4-F and SB-1 — are
+arithmetic in Code 128's mod-103 check (R4-F's subset-B deltas sum to `-103 ≡ 0`), indifferent to
+what the bench measures. They stopped appearing because the frames carrying them stopped decoding
+at all. The bench now *replays both on every run* and reports whether they still read as nothing.
+And a white 1920×1080 field is the **easier** case for a row-histogram binariser than a real door
+jamb, which is dark and textured — so these numbers remain a ceiling.
 
-Also unverified here: the §13.5 mutation clause, which has no script; and the bench's own blind spot — every corpus image renders a VIN alone, which is precisely why it reported zero false accepts while Z1 sat in the extractor.
+## 4. NEEDS-ZACH
 
-## What another round would do
+Delivered as a list, per §13.6 criterion 5. The loop never resolves these.
 
-Little, until Z1 is answered. The remaining open items are S3 and S4, and the bench cannot produce a trustworthy verdict while its tiers are unordered. The useful order is: settle Z1, fix the tier definitions, add multi-field payloads to the corpus, then run rounds 2 and 3 to satisfy §13.6's two-clean-rounds rule.
+1. **B1/B3 · R4-F · SB-1 — the §13.6 bench criterion.** 14 cells missed, `code_128_fnc1` at 0% severe. Meeting 99/90/70 needs either a §13.4 tier change or an acceptance that this is what ZXing gives you on this corpus.
+2. **SB-4** — `qr_code` clean 98.5% is three specific VINs that never decode, deterministically, with ZXing as the cause. §4.6.
+3. **SB-5-b** — `code_128` severe confirms at 2,561 ms against §6.3's 1,500 ms window. Move the window or accept the cell.
+4. **M11** — 26 production files have no unit test at all; `vitest.config.ts` is `environment: "node"` and there are zero `.test.tsx`. Closing it is a §13.5 scope change.
+5. **F1's five microcopy strings** — supplied under §0 rule 4, pinned verbatim by a test, still unsigned.
+6. **§8 Q1 / `VITE_APP_HOST`** — read nowhere in `src/`; `.env.example`'s comment describes a fallback that does not exist.
+
+## 5. Why this stopped short of §13.6
+
+Criterion 4 requires 99/90/70 per symbology and zero false accepts. **No number of rounds reaches
+it**, because closing the gap needs a §4.6 or §13.4 constant changed and §13.6 forbids an agent
+from touching either. Criterion 2 — two consecutive rounds with no new S1/S2 — is also unmet:
+round 2's own reviews opened two fresh S2s.
+
+Continuing would grind S3 and S4 conformance while the thing that actually gates convergence sits
+untouched. §13.6's budget rule exists for exactly this, so the loop stops here and reports.
+
+## 6. What another round would do
+
+In value order: fix `SB-5-a`'s unfalsifiable sentence (a fifth guard that cannot fail); fix `FB-1`,
+where §6.6's table fits at 1280 px and no width below it and a §6.5 copy button has zero visible
+pixels from 900 px up; run `bun run mutate` whole-suite on a machine that can; and take one run of
+`bun run seed:wmi` with network to close the last red test.
+
+## 7. §13.7 — what no agent can verify
+
+Real door-jamb labels on real trucks · iOS installed-PWA camera · torch and focus on specific
+phones · AirDrop and Nearby Share · QR readability on a phone screen in sunlight · gloved
+cold-hands usability · vPIC live behaviour over time · sign-in email delivery.
+
+**Device matrix (§7 item 4): one of four cells closed.** Android Chrome passed on 2026-09-05 with a
+real door-jamb label through the camera. iPhone Safari as a tab, iPhone installed, and desktop
+Chrome are open — and iOS carries the two known hazards, §6.5's synchronous-clipboard rule whose
+failure is silent, and standalone-vs-tab camera behaviour. See `hardening/DEVICE_MATRIX.md`.
+
+Also human-only, from R5: which encoding variants this fleet's labels actually use — how many
+Code 39 labels carry the optional mod-43 check character (§4.2 refuses 76.0% of those), whether
+any Code 128 label sets a leading FNC1, and whether MH10.8.2 labels here use FNC1 separators at
+all. One photographed sample of each settles all three.
+
+**A slice is built when §7 items 1–3, 5, 6 pass · hardened when §13.6 is met · done when the human
+device matrix passes. S1 is built. It is not hardened, and it is not done.**
