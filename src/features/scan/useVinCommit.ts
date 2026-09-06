@@ -9,6 +9,7 @@ import { checkDigitApplies } from "../../lib/vin/checkDigit";
 import { kickDecodeQueue } from "../../lib/storage/decodeQueue";
 import { getSettings } from "../../lib/storage/settings";
 import { upsertVehicle } from "../../lib/storage/upsert";
+import { errorLine } from "../../app/errorLine";
 import type { ExtractResult, Symbology } from "../../lib/vin/types";
 
 export interface VinCommitMeta {
@@ -63,7 +64,10 @@ export function useVinCommit(): VinCommitApi {
           });
         } catch (cause) {
           // P7: the write is the one thing here that can fail, and it never fails quietly.
-          setError(cause instanceof Error ? cause.message : String(cause));
+          // §6.4 prints this underneath "Couldn't save this VIN", so it is shaped for a
+          // person rather than passed through raw: Dexie's message already restates itself
+          // and carries a newline, which reached the screen as one sentence twice (R3-F4).
+          setError(errorLine(cause));
           setPending(null);
           setSaving(false);
           return false;

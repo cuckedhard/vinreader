@@ -2,6 +2,7 @@ import { Component, type ErrorInfo, type ReactNode } from "react";
 import Dexie from "dexie";
 import { Banner } from "../ui/Banner";
 import { Button } from "../ui/Button";
+import { errorLine } from "./errorLine";
 
 /**
  * The floor under `createRoot`.
@@ -76,12 +77,6 @@ const RENDER_COPY = {
   body: "Something on it failed while it was being drawn. Reload to try again.",
 } as const;
 
-/** The thrown value as one line the user can read out over a phone (P7). */
-function describe(error: unknown): string {
-  if (error instanceof Error) return `${error.name}: ${error.message}`;
-  return String(error);
-}
-
 interface FailureNoticeProps {
   error: unknown;
   /**
@@ -119,7 +114,7 @@ export function FailureNotice({ error, fromStorage = false }: FailureNoticeProps
       >
         <p>{copy.body}</p>
         {/* The same shape the write path's "Couldn't save this VIN" already uses. */}
-        <p className="mt-2 font-vin text-sm break-words text-fg-muted">{describe(error)}</p>
+        <p className="mt-2 font-vin text-sm break-words text-fg-muted">{errorLine(error)}</p>
       </Banner>
     </div>
   );
