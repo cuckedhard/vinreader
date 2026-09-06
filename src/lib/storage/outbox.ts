@@ -169,11 +169,20 @@ function isDue(row: OutboxRow, at: number): boolean {
  *
  * Ordering is by instant, not by the `createdAt` index alone. Offset timestamps do not
  * sort as strings (§5.1), so a device that crosses a time zone between two scans would
- * otherwise queue them out of order. Two rows written by one transaction share a
- * millisecond and so keep no defined order between them; nothing in §4.12's merge depends
- * on push order — events are keyed by id, meta is last-writer-wins by `meta_updated_at`,
- * and §5.7 has no sequence field to break the tie with — so this is fidelity to
- * "insertion order", not a correctness crutch.
+ * otherwise queue them out of order.
+ *
+ * [F6] This paragraph used to end "nothing in §4.12's merge depends on push order", and
+ * that was wrong in one case, which is the case it cost: the server's `apply_scan_event`
+ * clears `deleted_at` and `delete_vehicle` sets it, so a delete and the re-scan after it
+ * land on the account in whatever order they are pushed. It also assumed two rows can
+ * share a `createdAt` — "and so keep no defined order between them". Both premises are
+ * gone: `nowIso` is strictly increasing within a session (see `db.ts`), so no two rows
+ * are stamped the same instant and this sort is a total order over them.
+ *
+ * That is where the ordering is decided, and deliberately not here. Equal keys are
+ * iterated by primary key, which for §5.7 is a random UUID, so a tie here was a coin
+ * toss — measured as `scenarios.test.ts > a delete followed by a re-scan` failing about a
+ * quarter of the time.
  */
 export async function dueRows(query: DueQuery = {}): Promise<OutboxRow[]> {
   const at = Date.parse(query.now ?? nowIso());
