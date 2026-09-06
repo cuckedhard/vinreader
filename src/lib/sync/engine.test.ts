@@ -195,6 +195,58 @@ describe("a cycle", () => {
     // Three triggers, one drain plus the queued re-run: never three concurrent pushes.
     expect(server.eventsOf(USER)).toHaveLength(1);
   });
+
+  it("[M4] keeps saying the failure of the queued row that has tried hardest", async () => {
+    // §5.7 gives every outbox row its own `lastError`, and `queuedFailure` is what §6.4's
+    // chip says while every failed row is waiting out its backoff: nothing is due, so the
+    // cycle pushes nothing and pulls cleanly, and without it the chip would drop from
+    // "Sync error — tap for details" to "1 pending" seconds after the failure, with the row
+    // still stuck. Which row it names is the choice `bun run mutate` found no test for at
+    // all: the whole `worst` fold was NoCoverage or Survived.
+    //
+    // Rows are read in primary-key order, so the ids fix the order the fold sees them in,
+    // and the one it must pick — three attempts, "gateway timeout" — is neither the first
+    // nor the last. Two of them are shapes a *stored* row can have and the type cannot
+    // stop: §4.12 never drops an outbox row, so one written by an older build or
+    // half-written by a crash stays in the queue for ever.
+    const engine = engineFor();
+    const backingOff = new Date(Date.now() + 600_000).toISOString();
+    const queued = (
+      id: string,
+      attempts: unknown,
+      lastError: string | null,
+    ): Record<string, unknown> => ({
+      id,
+      kind: "vehicle_delete",
+      vin: VIN,
+      payload: { p_vin: VIN },
+      createdAt: "2026-09-04T08:00:00.000-06:00",
+      attempts,
+      nextAttemptAt: backingOff,
+      lastError,
+    });
+
+    await db.outbox.bulkPut([
+      queued("row-1", 1, "Failed to fetch"),
+      queued("row-2", 3, "gateway timeout"),
+      // No error of its own: it has never been tried, and the count it carries is not a
+      // failure count. Read as one it would win, and the chip would go blank.
+      queued("row-3", 99, null),
+      // A stored row whose `attempts` is not a number. Counted as written it beats every
+      // real count; §5.7 says the field is a number, so it counts as none.
+      queued("row-4", "9", "half-written row"),
+      // The same count as the row that should win, appended after it. §5.7's counter is
+      // "how many times this row has been tried", so a tie is not a newer failure.
+      queued("row-5", 3, "409 conflict"),
+    ] as never);
+
+    const snapshot = await engine.sync();
+
+    expect(snapshot.lastError).toBe("gateway timeout");
+    expect((await getSyncState()).lastError).toBe("gateway timeout");
+    // Nothing was due, so the cycle sent no push at all and the answer came from the queue.
+    expect(server.requests.filter((request) => request.kind !== "select")).toEqual([]);
+  });
 });
 
 describe("whose account the cursor belongs to", () => {

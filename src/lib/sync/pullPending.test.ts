@@ -24,9 +24,10 @@
  */
 import { beforeEach, describe, expect, it } from "vitest";
 import { db } from "../storage/db";
-import { vehicleMetaRow } from "../storage/outbox";
+import { scanEventRow, vehicleMetaRow } from "../storage/outbox";
 import { upsertVehicle } from "../storage/upsert";
 import { applyPulled } from "./pull";
+import type { OutboxRow } from "../vin/types";
 import type { RemoteVehicle } from "./types";
 
 const VIN = "1FUJGLDR49SAV1234";
@@ -160,5 +161,91 @@ describe("[M4] §4.12: a pull does not erase an edit still sitting in the outbox
     await applyPulled({ vehicles: [remote()] }, YEAR);
 
     expect((await db.vehicles.get(VIN))!.unit).toBe("UNIT-42");
+  });
+});
+
+/**
+ * [M4] The other half of the same fold, and the half nothing was reaching: the queued
+ * **scan**. `pull.ts` builds `pending.scanAt` from the outbox exactly as it builds
+ * `pending.metaUpdatedAt`, and `merge.ts` reads it for §4.12's tombstone rule — "any later
+ * scan event clears it — including an event still in the outbox, because that event will
+ * clear the tombstone server-side the moment it is pushed".
+ *
+ * `bun run mutate` reported the whole `if (row.kind === "scan_event")` block as NoCoverage
+ * or Survived: with the fold emptied, or fixed at the first row it sees, or reading a
+ * non-string as a stamp, no test failed. What each of those costs is one truck: the user
+ * deleted it, scanned it again at the gate, and the next pull — before the queue drains —
+ * puts the tombstone back on the record they are looking at.
+ */
+describe("[M4] §4.12: a scan still in the outbox clears the tombstone a pull carries", () => {
+  /** A §5.2 event as the scan path writes it, queued the way `upsert.ts` queues it. */
+  function queuedScan(id: string, at: unknown): OutboxRow {
+    const row = scanEventRow(
+      {
+        id,
+        vin: VIN,
+        at: T1,
+        symbology: "code_39",
+        raw: VIN,
+        checkDigitValid: true,
+        deviceLabel: null,
+      },
+      "scan",
+    );
+    // The one field this fold reads, set after the fact so a value a string field should
+    // never hold can be put there — the case the `typeof` test in the fold exists for.
+    return { ...row, payload: { ...row.payload, at } };
+  }
+
+  /**
+   * `db.outbox.toArray()` reads in primary-key order, so the ids below are what fixes the
+   * order the fold sees these rows in — which is the whole subject here. They are named so
+   * that the intended reading order is the sorted order.
+   */
+  async function seedQueued(rows: OutboxRow[]): Promise<void> {
+    const record = await upsertVehicle({
+      vin: VIN,
+      origin: "scan",
+      symbology: "code_39",
+      raw: VIN,
+      checkDigitValid: true,
+      at: T1,
+    });
+    await db.vehicles.put({ ...record, metaUpdatedAt: T1 });
+    await db.outbox.clear();
+    await db.outbox.bulkPut(rows);
+  }
+
+  it("folds the queued scans to the newest, not to the first one appended", async () => {
+    // Two scans are queued and neither has been pushed. The older was appended first, so a
+    // fold that keeps whichever row it saw first — or that never compares at all — reads
+    // the queue as older than the server's tombstone and leaves the truck deleted.
+    await seedQueued([queuedScan("scan-1-old", T1), queuedScan("scan-2-new", T3)]);
+
+    await applyPulled({ vehicles: [remote({ deletedAt: T2 })] }, YEAR);
+
+    expect((await db.vehicles.get(VIN))!.deletedAt).toBeNull();
+  });
+
+  it("leaves the tombstone standing when every queued scan is older than it", async () => {
+    // The control, and §4.12's actual rule: only a *later* scan clears a delete. Without
+    // this the case above would pass under a fold that resurrected everything.
+    await seedQueued([queuedScan("scan-1-old", T1)]);
+
+    await applyPulled({ vehicles: [remote({ deletedAt: T2 })] }, YEAR);
+
+    expect((await db.vehicles.get(VIN))!.deletedAt).toBe(T2);
+  });
+
+  it("is not blinded for the whole VIN by one unreadable queued scan", async () => {
+    // §4.12 never drops an outbox row, so a row written by an older build or half-written
+    // by a crash stays in the queue for ever. Read as if it were a stamp it fixes
+    // `entry.scanAt` at something no later row can beat — `Date.parse` of it is NaN and
+    // every comparison against NaN is false — and the scan behind it stops counting.
+    await seedQueued([queuedScan("scan-1-broken", { broken: true }), queuedScan("scan-2-new", T3)]);
+
+    await applyPulled({ vehicles: [remote({ deletedAt: T2 })] }, YEAR);
+
+    expect((await db.vehicles.get(VIN))!.deletedAt).toBeNull();
   });
 });

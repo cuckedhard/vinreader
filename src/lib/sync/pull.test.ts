@@ -332,3 +332,44 @@ describe("applyPulled — the one apply path", () => {
     expect(await db.vehicles.count()).toBe(1);
   });
 });
+
+describe("[M4] a page the client answers with nothing at all", () => {
+  it("reads a null `data` as an empty page rather than as rows", async () => {
+    // `SelectResult` allows `{ data: null, error: null }` and supabase-js returns it —
+    // `.select()` on a table the role can read but that yields no rows, and every path
+    // where the client resolves without a body. `pull.ts` writes `data ?? []` for it and
+    // nothing was reaching that: the mutation report lists the coalesce as NoCoverage.
+    //
+    // What must not happen is a pull that throws on the way through §4.12's one apply
+    // path: a pull is on the §6.4 chip's timer and on every realtime notification, so a
+    // page like this arriving would turn the sync status into an error for a server that
+    // simply had nothing to send.
+    let requests = 0;
+    const builder = {
+      gte: () => builder,
+      order: () => builder,
+      limit: () => builder,
+      then: (resolve: (value: { data: null; error: null }) => unknown) => {
+        requests += 1;
+        return Promise.resolve().then(() => resolve({ data: null, error: null }));
+      },
+    };
+    const empty = {
+      from: () => ({ select: () => builder, upsert: async () => ({ error: null }) }),
+      rpc: async () => ({ error: null }),
+      channel: () => ({ on: () => ({}) as never, subscribe: () => ({}) as never }),
+      removeChannel: () => undefined,
+    } as unknown as SyncClient;
+
+    const result = await pullOnce({ client: empty, currentYear: YEAR });
+
+    expect(result).toEqual({ vehicles: 0, events: 0, error: null });
+    // One request per table, and no second page asked for on the strength of a null.
+    expect(requests).toBe(2);
+    expect(await db.vehicles.count()).toBe(0);
+    // §5.8's cursors are untouched: nothing was received, so there is no instant to move to.
+    const state = await getSyncState();
+    expect(state.vehiclesCursor).toBeNull();
+    expect(state.eventsCursor).toBeNull();
+  });
+});
