@@ -22,6 +22,19 @@ type Mode = "camera" | "manual";
 export function ScanScreen() {
   const [mode, setMode] = useState<Mode>("camera");
   const [carrierError, setCarrierError] = useState<string | null>(null);
+  /**
+   * The code "Keep scanning" was tapped for, as the decoder read it (R3-F5).
+   *
+   * Clearing the banner alone was not a way forward: the realistic case is the other phone
+   * still holding the code up, so the very next decode — 629 ms later, measured — raised the
+   * same rejection again, and the only real exits were "Type VIN instead" or walking away.
+   * The dismissal is therefore about *that code* rather than about the banner. A different
+   * code still reports (nothing is suppressed that the user has not already answered, P7),
+   * and the way back from the keyboard re-arms it, because that is a fresh look at the scene.
+   */
+  const dismissedCarrier = useRef<string | null>(null);
+  /** The code the banner on screen is about, so the tap knows what it is dismissing. */
+  const shownCarrier = useRef<string | null>(null);
   const navigate = useNavigate();
   // §9-S3 phone-to-phone: the receiving phone shows the import preview rather than
   // confirming a VIN. Both carriers are re-encoded into the single `d` the route reads,
@@ -32,6 +45,12 @@ export function ScanScreen() {
       try {
         payload = parseCarrier(raw);
       } catch (cause) {
+        // Answered already, for this exact code (R3-F5).
+        if (dismissedCarrier.current === raw) return;
+        shownCarrier.current = raw;
+        // The same code decodes several times a second, and `setState` with an identical
+        // string is a no-op in React — so a code held in front of the camera renders once
+        // and does not re-run the effect below it.
         // P6: an unknown version gets a clear rejection, never a crash — and never
         // silence. The carrier check is what stops extractVin fabricating a VIN out of
         // the base64url body (D14), so this code is the scanner's to report: dropping it
@@ -48,6 +67,8 @@ export function ScanScreen() {
       }
       if (payload === null) return;
       setCarrierError(null);
+      shownCarrier.current = null;
+      dismissedCarrier.current = null;
       void navigate(`/i?d=${encodePayload(payload)}`);
     },
     [navigate],
@@ -108,17 +129,35 @@ export function ScanScreen() {
     accept(vin);
   }, [pending, saveAsIs, accept, rescan]);
 
+  /**
+   * R3-F5: a rejection is about a code in the frame, and once the decoder has a VIN in hand
+   * that code is gone — a notice describing it is describing something that is not there
+   * (N2), and on the one path that keeps this screen up (a read held by §4.3) it competes
+   * with the banner that is actually asking the user something. So it is derived rather than
+   * stored: no sighting, no stale rejection. The two ways back to `streaming` clear the
+   * message itself, so a rescan starts from silence and re-reports only what is still there.
+   */
+  const showCarrier =
+    carrierError !== null && state.kind !== "candidate" && state.kind !== "confirmed";
+
+  const forgetCarrier = useCallback(() => {
+    shownCarrier.current = null;
+    setCarrierError(null);
+  }, []);
+
   const handleRescan = useCallback(() => {
     // §6.3: the read was never persisted, so no cooldown is recorded and the same label
     // reads again straight away.
     dismiss();
+    forgetCarrier();
     rescan();
-  }, [dismiss, rescan]);
+  }, [dismiss, forgetCarrier, rescan]);
 
   const handleScanAgain = useCallback(() => {
     dismiss();
+    forgetCarrier();
     retry();
-  }, [dismiss, retry]);
+  }, [dismiss, forgetCarrier, retry]);
 
   const showManual = useCallback(() => {
     dismiss();
@@ -127,6 +166,15 @@ export function ScanScreen() {
     setCarrierError(null);
     setMode("manual");
   }, [dismiss]);
+
+  const showCameraAgain = useCallback(() => {
+    // A trip to the keyboard and back is a fresh look at the scene, so whatever was
+    // dismissed before it is reported again if it is still there (R3-F5).
+    dismissedCarrier.current = null;
+    shownCarrier.current = null;
+    setCarrierError(null);
+    setMode("camera");
+  }, []);
 
   // R3-F1: the machine stays `streaming` for a refused carrier, so the preview keeps its
   // full height and the banner opens below the fold — 0 visible pixels of it at 360x640,
@@ -138,14 +186,9 @@ export function ScanScreen() {
   // it is still streaming and still decoding, because a scan is never blocked (N1/P1).
   const carrierRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
-    if (carrierError === null) return;
+    if (!showCarrier) return;
     carrierRef.current?.scrollIntoView({ block: "nearest" });
-  }, [carrierError]);
-
-  const showCamera = useCallback(() => {
-    setCarrierError(null);
-    setMode("camera");
-  }, []);
+  }, [showCarrier]);
 
   return (
     // The camera screen lays its preview and its controls side by side in landscape (F11),
@@ -175,13 +218,20 @@ export function ScanScreen() {
             unsaved={error !== null}
           />
 
-          {carrierError !== null ? (
+          {showCarrier ? (
             <div ref={carrierRef}>
               <Banner
                 tone="warn"
                 title="Couldn't read that code"
                 actions={
-                  <Button variant="secondary" onClick={() => setCarrierError(null)}>
+                  <Button
+                    variant="secondary"
+                    onClick={() => {
+                      // R3-F5: the tap answers this code, not just this banner.
+                      dismissedCarrier.current = shownCarrier.current;
+                      setCarrierError(null);
+                    }}
+                  >
                     Keep scanning
                   </Button>
                 }
@@ -240,7 +290,7 @@ export function ScanScreen() {
           <ManualEntry />
           {/* §6.1 names Scan in the ≥ 56 px list. This is that action on the typed screen —
               the way back to the camera — and `secondary` is 48 by variant (R6-SA-3). */}
-          <Button variant="secondary" full style={TAP_LG_TARGET} onClick={showCamera}>
+          <Button variant="secondary" full style={TAP_LG_TARGET} onClick={showCameraAgain}>
             Scan with the camera
           </Button>
         </>

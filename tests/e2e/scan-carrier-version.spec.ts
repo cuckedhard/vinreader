@@ -1,8 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import QRCode from "qrcode";
+import { writeQrY4m } from "./qr-video";
 
 /**
  * §13.2 adversary, round 2 of `harden S1`: "payloads with the wrong version" reaching the
@@ -36,36 +33,7 @@ const BODY = Buffer.from(
   .replace(/=+$/, "");
 const CARRIER = `https://vinrelay.example/#/i?d=${BODY}`;
 
-/** The same y4m shape `bench/make-qr-camera.mjs` writes, built here so nothing is clobbered. */
-function writeQrY4m(text: string): string {
-  const qr = QRCode.create(text, { errorCorrectionLevel: "M" });
-  const size = qr.modules.size;
-  const data = qr.modules.data;
-  const W = 1280;
-  const H = 720;
-  const QUIET = 4;
-  const scale = Math.floor(Math.min(W, H) / (size + QUIET * 2));
-  const side = (size + QUIET * 2) * scale;
-  const x0 = Math.floor((W - side) / 2);
-  const y0 = Math.floor((H - side) / 2);
-  const luma = Buffer.alloc(W * H, 0xff);
-  for (let my = 0; my < size; my += 1) {
-    for (let mx = 0; mx < size; mx += 1) {
-      if (!data[my * size + mx]) continue;
-      const px = x0 + (mx + QUIET) * scale;
-      const py = y0 + (my + QUIET) * scale;
-      for (let y = py; y < py + scale; y += 1) luma.fill(0x00, y * W + px, y * W + px + scale);
-    }
-  }
-  const chroma = Buffer.alloc((W / 2) * (H / 2), 0x80);
-  const parts = [Buffer.from(`YUV4MPEG2 W${W} H${H} F30:1 Ip A1:1 C420\n`)];
-  for (let i = 0; i < 8; i += 1) parts.push(Buffer.from("FRAME\n"), luma, chroma, chroma);
-  const out = join(mkdtempSync(join(tmpdir(), "vinrelay-v2-")), "carrier-v2.y4m");
-  writeFileSync(out, Buffer.concat(parts));
-  return out;
-}
-
-const Y4M = writeQrY4m(CARRIER);
+const Y4M = writeQrY4m("carrier-v2", [[CARRIER, 8]]);
 
 test.use({
   launchOptions: {
@@ -167,3 +135,37 @@ test("[R3-F1] the rejection is on screen on a small phone, with its way out", as
   expect(seen.keepVisible).toBe(seen.keepHeight);
   expect(seen.keepReachable).toBe(true);
 });
+
+
+/**
+ * [R3-F5] "Keep scanning" has to be a way forward, and it was not.
+ *
+ * The realistic case is the other phone still holding the code up. Dismissing the banner
+ * only cleared the state that renders it, so the very next decode of the same QR raised it
+ * again — measured at 629 ms after the tap, with nothing having changed. The only exits
+ * were "Type VIN instead" or walking away, which is the opposite of what the button says.
+ *
+ * The dismissal is now about *that code*: the raw text the decoder read. A different code,
+ * or a trip to the keyboard and back, raises again — nothing is suppressed that the user
+ * has not already answered (P7).
+ */
+test("[R3-F5] Keep scanning ends the rejection for the code it was about", async ({ page }) => {
+  await page.goto("/#/scan");
+  const alert = page.getByRole("alert");
+  await expect(alert).toBeVisible({ timeout: 20_000 });
+
+  await page.getByRole("button", { name: "Keep scanning" }).click();
+  await expect(alert).toHaveCount(0);
+
+  // The same QR is still in front of the camera and still decoding several times a second.
+  // Six seconds is ten times the 629 ms it used to take to come back.
+  await page.waitForTimeout(6_000);
+  await expect(alert, "the dismissed code came back on its own").toHaveCount(0);
+
+  // Not a permanent silence: the way out of the camera and back is a fresh look at the
+  // scene, so the same code is reported again.
+  await page.getByRole("button", { name: /type vin instead/i }).click();
+  await page.getByRole("button", { name: "Scan with the camera" }).click();
+  await expect(alert).toBeVisible({ timeout: 20_000 });
+});
+
