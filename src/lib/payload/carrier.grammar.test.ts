@@ -44,6 +44,20 @@ describe("[M8] the §4.9 text carrier is a prefix, not a substring", () => {
     expect(matchCarrier(`\n  ${TEXT_PREFIX}${BODY}  `)).toEqual({ kind: "text", body: BODY });
   });
 
+  it("still recognises the marker when the version digit is what was lost", () => {
+    // `TEXT_CARRIER_RE` makes the version optional for the same reason it takes any
+    // separator a base64url body cannot begin with: a marker damaged on the way is still a
+    // marker, and §4.9's rule — carrier.ts states it — is that it "must never reach
+    // `extractVin`". Requiring the digit hands this body to §4.2 to be mined, which is the
+    // G2 fabrication with one character changed (N2).
+    //
+    // `bun run mutate` takes the `?` off `(?:\d+)?` and nothing else in the suite notices.
+    expect(matchCarrier(`VINRELAY:${BODY}`)).toEqual({ kind: "text", body: BODY });
+    expect(isPayloadCarrier(`vinrelay;${BODY}`)).toBe(true);
+    // And the version is still not what makes it one: v1 as written stays recognised.
+    expect(isPayloadCarrier(`${TEXT_PREFIX}${BODY}`)).toBe(true);
+  });
+
   it("cuts the body at the end of the prefix, whatever the prefix was", () => {
     fc.assert(
       fc.property(
