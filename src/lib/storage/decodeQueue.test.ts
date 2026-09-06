@@ -272,6 +272,58 @@ describe("WMI cache (§5.5)", () => {
     expect(await db.wmi.count()).toBe(0);
   });
 
+  it("[M3] writes no WMI row for a pending result that carries a manufacturer", async () => {
+    // The test above cannot see the guard that does this, because `pendingResult` has no
+    // fields to write: it passes with the `status === "pending"` check deleted.
+    //
+    // §5.5's rule is that a **terminal** decode refreshes the cache, and `nextDecode`
+    // applies the same rule to the record — a pending result keeps the fields already
+    // there rather than storing the ones it arrived with. The cache must not be the one
+    // place an unfinished decode leaks a value into storage.
+    await seed(VIN_A, T_OLD);
+
+    await applyDecodeResult(VIN_A, {
+      status: "pending",
+      fields: { Manufacturer: "AMERICAN HONDA MOTOR CO., INC.", Make: "HONDA" },
+      errorText: null,
+      lastError: "Timed out after 10000 ms",
+    });
+
+    expect(await db.wmi.count()).toBe(0);
+    expect(await decodeOf(VIN_A)).toMatchObject({ status: "pending", attempts: 1, fields: {} });
+  });
+
+  it("[M3] trims the manufacturer and the make, and treats whitespace as no value", async () => {
+    // §5.5's row is read back onto the sheet, so a padded value is a padded label. The
+    // `?.trim()` is also what lets §4.7's "an empty one means unknown" reach a field that
+    // arrived as spaces: `if (!manufacturer) return null` cannot see `"   "` as empty
+    // without it, and §5.5's own note is that "an empty cache row is worse than none".
+    await seed(VIN_A, T_OLD);
+    const padded = fetchDouble(() =>
+      bodyOf({
+        ...OK_RESULTS,
+        Manufacturer: "  AMERICAN HONDA MOTOR CO., INC. \n",
+        Make: " HONDA ",
+      }),
+    );
+
+    await runDecodeQueueOnce(depsFor(padded));
+
+    expect(await db.wmi.get("1HG")).toMatchObject({
+      manufacturer: "AMERICAN HONDA MOTOR CO., INC.",
+      make: "HONDA",
+    });
+
+    // And a value that is only whitespace is the same as no value at all.
+    await seed(VIN_B, T_OLD);
+    const blank = fetchDouble(() => bodyOf({ ...OK_RESULTS, Manufacturer: "   ", Make: "  " }));
+
+    await runDecodeQueueOnce(depsFor(blank));
+
+    expect(await decodeOf(VIN_B)).toMatchObject({ status: "ok" });
+    expect(await db.wmi.get("JH4")).toBeUndefined();
+  });
+
   it("caches the manufacturer from an off-highway result that carries one", async () => {
     await seed(VIN_A, T_OLD);
     const double = fetchDouble(() =>
@@ -383,6 +435,29 @@ describe("runDecodeQueueOnce", () => {
     expect(vinsOf(resumed.urls)).toEqual([VIN_C, VIN_A]);
   });
 
+  it("[M3] an offline pass does not claim the queue, so the trigger behind it still runs", async () => {
+    // §5.4's online check comes BEFORE `passInFlight` is claimed, and that ordering is the
+    // whole of the guard: the two triggers that matter here fire back to back — the 60 s
+    // poll finds the device offline and starts reading IndexedDB, and the "online" event
+    // arrives while it is still reading. A pass that had claimed the queue on the way to
+    // discovering it is offline would turn that trigger away, and the row would wait
+    // another 60 s for its one §4.7 request. Deleting the check leaves every existing
+    // offline test green, because the per-row `if (!isOnline()) break` still stops the run.
+    await seed(VIN_A, T_OLD);
+    defineGlobal("navigator", { onLine: false });
+    const double = fetchDouble(() => bodyOf(OK_RESULTS));
+
+    // Not awaited: the point is what the second trigger sees while the first is in flight.
+    const offlinePass = runDecodeQueueOnce(depsFor(double));
+    defineGlobal("navigator", { onLine: true });
+    const onlinePass = runDecodeQueueOnce(depsFor(double));
+
+    expect(await offlinePass).toBe(0);
+    expect(await onlinePass).toBe(1);
+    expect(vinsOf(double.urls)).toEqual([VIN_A]);
+    expect(await decodeOf(VIN_A)).toMatchObject({ status: "ok" });
+  });
+
   it("leaves a tombstoned row's one permanent request unspent", async () => {
     await seed(VIN_A, T_OLD);
     await tombstone(VIN_A);
@@ -433,6 +508,50 @@ describe("refreshDecode", () => {
     const double = fetchDouble(() => bodyOf(OK_RESULTS));
     await expect(refreshDecode(VIN_A, depsFor(double))).resolves.toBeUndefined();
     expect(double.urls).toEqual([]);
+  });
+
+  it("[M3] leaves the row `pending` for as long as the request is out", async () => {
+    // The arming write is the row's state for the whole ~28 s §4.7 can spend on a bad
+    // radio, and `pending` is the §4.10 status two things read: the sheet, which shows the
+    // decode as in progress rather than as the failure it was a moment ago, and §5.4's
+    // queue, which selects on `where("decode.status").equals("pending")`. A tab closed
+    // mid-request leaves whatever this wrote as the row's lasting status, so anything else
+    // takes the vehicle out of the automatic queue for good.
+    //
+    // The tests above only ever see the status the *answer* wrote, so the arming value is
+    // free to be anything.
+    await seed(VIN_A, T_OLD);
+    await patchDecode(VIN_A, {
+      status: "failed",
+      attempts: DECODE_MAX_ATTEMPTS,
+      lastError: "gone",
+    });
+
+    let release = (): void => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const impl = (async (): Promise<Response> => {
+      await held;
+      return new Response(JSON.stringify(bodyOf(OK_RESULTS)), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }) as typeof fetch;
+
+    const inFlight = refreshDecode(VIN_A, { fetchImpl: impl, sleep: noSleep });
+    try {
+      await settle();
+      expect(await decodeOf(VIN_A)).toMatchObject({ status: "pending", attempts: 0 });
+    } finally {
+      // Whatever the assertion did, the request has to land: the VIN is held in the
+      // queue's module-level in-flight map until it does, and a leaked entry would take
+      // it out of every later test in this file (§4.7's one-request rule, applied to a
+      // promise that never settles).
+      release();
+      await inFlight;
+    }
+    expect(await decodeOf(VIN_A)).toMatchObject({ status: "ok" });
   });
 });
 

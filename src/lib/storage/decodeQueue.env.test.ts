@@ -35,6 +35,27 @@ describe("decode queue environment guards", () => {
     startDecodeQueue({ fetchImpl: offlineFetch, sleep: async () => {} })();
   });
 
+  it("[M3] starts and stops where `window` is not a declared binding at all", () => {
+    // Not the same case as the one above, and the difference is the whole reason
+    // `eventTarget` is written with `typeof`. `vi.stubGlobal("window", undefined)` DEFINES
+    // the property, so evaluating a bare `window` yields `undefined`; where the binding
+    // does not exist — a worker, node itself — evaluating it is a ReferenceError, and that
+    // is the runtime the guard is for ("In a worker or a test there is none, so the queue
+    // runs with its other two triggers rather than throwing on the way up").
+    //
+    // Nothing was exercising it: `bun run mutate` replaces `typeof window === "undefined"`
+    // with `false` and survives, because every test had defined the property first.
+    const had = Object.getOwnPropertyDescriptor(globalThis, "window");
+    delete (globalThis as unknown as Record<string, unknown>).window;
+    try {
+      expect(() =>
+        startDecodeQueue({ fetchImpl: offlineFetch, sleep: async () => {} })(),
+      ).not.toThrow();
+    } finally {
+      if (had) Object.defineProperty(globalThis, "window", had);
+    }
+  });
+
   it("subscribes to the online event when a window exists", () => {
     const listeners: string[] = [];
     const removed: string[] = [];
