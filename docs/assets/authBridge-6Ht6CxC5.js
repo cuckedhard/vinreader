@@ -1,1 +1,0 @@
-import{r as e}from"./index-D_Nq7ZGd.js";import{l as t,n,r}from"./session-C66zmmnm.js";function i(){return{getClient:()=>t(),getUserId:n,onAuthChange:e=>r(()=>e())}}function a(t){return e(i(),t)}export{a as startAppSync};
