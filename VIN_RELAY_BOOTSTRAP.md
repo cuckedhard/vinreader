@@ -240,11 +240,14 @@ Fields (all optional except `v` and `vin`):
 { "v": 1, "vin": "1HGCM82633A004352",
   "y": "2003", "mk": "HONDA", "md": "Accord", "tr": "", "bc": "Sedan/Saloon",
   "en": "…", "fu": "Gasoline", "dr": "…", "gv": "…",
-  "at": "2026-09-03T14:12:00-08:00", "u": "UNIT-42", "n": "…", "by": "Zach's iPhone" }
+  "at": "2026-09-03T14:12:00-08:00", "u": "UNIT-42", "n": "…", "by": "Zach's iPhone",
+  "pc": "NH-731P" }
 ```
 - `y mk md tr bc en fu dr gv` mirror the sheet (§4.8): ModelYear, Make, Model, Trim, BodyClass, EngineModel, FuelTypePrimary, DriveType, GVWR.
 - `at` = `lastScannedAt`, `u` = unit/asset tag, `n` = notes, `by` = device label (Settings).
-- **Hard cap: 700 bytes of URL.** If exceeded, drop fields in this order until it fits: `n`, `en`, `dr`, `fu`, `bc`, `tr`, `gv`. Never drop `vin`, `v`, `y`, `mk`, `md`.
+- `pc` = **paint code** (S5). Captured, never decoded: it is not derivable from the VIN and NHTSA does not carry it, so it is only ever what a human read off the sticker and confirmed. It has no check digit and no grammar shared across manufacturers (Toyota `1F7`, Honda `NH-731P`, Ford `UG`, VW `LC9X`, GM `WA8555`), so nothing downstream can detect a wrong one — which is why §5.3 prompts before overwriting it and why an OCR proposal is never stored without confirmation (N2). Ruled by Zach, 2026-09-06.
+- **Hard cap: 700 bytes of URL.** If exceeded, drop fields in this order until it fits: `n`, `en`, `dr`, `fu`, `bc`, `tr`, `gv`. Never drop `vin`, `v`, `y`, `mk`, `md`, `pc`.
+  `pc` is deliberately absent from the drop order: a paint code is often the reason a handoff is sent to a body shop, and a fully populated heavy-truck record measures 473 of the 700 bytes with it, so shedding it would cost the point of the message to save nothing. Ruled by Zach, 2026-09-06.
 - Importing (§S3) validates with zod, then upserts by VIN (§5.3). The receiver runs its own vPIC decode to fill the full sheet; the payload's summary fields are used immediately so the receiver is useful offline too.
 
 **Share text** (human-readable, sent alongside the JSON file via Web Share):
