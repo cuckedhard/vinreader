@@ -110,12 +110,37 @@ function pad(value: number, width = 2): string {
 }
 
 /**
+ * [F6] The instant the last stamp named, so the next one can be later than it.
+ *
+ * A device clock has millisecond resolution, and two writes the user made in sequence —
+ * a delete and the re-scan right after it — regularly land inside one of them. Every §4.12
+ * comparison over these stamps is strict: `merge.ts` resurrects a tombstoned record only
+ * on a scan STRICTLY newer than the delete, and `dueRows` drains the outbox oldest-first
+ * with equal `createdAt` broken by the row's random UUID, which is to say not broken at
+ * all. A tie there is a truck that came back through the gate and stayed deleted, about a
+ * quarter of the time (ledger F6, and its cost is a §13.5 gate that goes red at random).
+ *
+ * §4.12 is what must not move, so what moves is the clock this side of it. This does not
+ * make the stamp untrue: the correction is one millisecond per collision, applied only when
+ * the clock has not advanced since the last stamp, and a device that is stamping faster
+ * than its own clock ticks cannot say which millisecond it meant anyway.
+ */
+let lastStampedMs = Number.NEGATIVE_INFINITY;
+
+/**
  * §5.1 timestamps are ISO 8601 **with offset**; `toISOString()` would give UTC with a
  * `Z`. Offset strings are not lexicographically ordered across time zones, so compare
  * two of them by `Date.parse`, never by `<`.
+ *
+ * Strictly increasing within a session, per `lastStampedMs` above.
  */
 export function nowIso(): string {
-  const date = new Date();
+  const reading = new Date();
+  const readingMs = reading.getTime();
+  const stampMs = readingMs > lastStampedMs ? readingMs : lastStampedMs + 1;
+  lastStampedMs = stampMs;
+  // The reading itself whenever the clock had moved, which is every call but the collisions.
+  const date = stampMs === readingMs ? reading : new Date(stampMs);
   const offsetMinutes = -date.getTimezoneOffset();
   const sign = offsetMinutes < 0 ? "-" : "+";
   const abs = Math.abs(offsetMinutes);

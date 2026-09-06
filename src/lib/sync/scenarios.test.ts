@@ -241,6 +241,56 @@ describe("a delete followed by a re-scan", () => {
     expect((await db.vehicles.get(VIN))?.deletedAt).toBeNull();
   });
 
+  it("[F6] leaves it alive when the delete and the re-scan land in the same millisecond", async () => {
+    // The flake, made certain. Two ordinary things line up for it:
+    //
+    //  1. the clock does not move between the delete and the re-scan, so the two outbox
+    //     rows carry the same §5.1 `createdAt` — frozen here rather than raced for;
+    //  2. the tie is then broken by the outbox's primary key, a random UUID, because
+    //     `dueRows` orders by `createdAt` and IndexedDB iterates equal index keys in
+    //     primary-key order. Half the time that puts the re-scan ahead of the delete.
+    //
+    // The server applies what it is sent in the order it is sent: `apply_scan_event`
+    // clears `deleted_at`, `delete_vehicle` sets it, so the wrong order leaves the truck
+    // that just came back through the gate tombstoned on the account — which is the
+    // `deleted_at: "…T12:00:00.005Z"` the ledger row recorded, measured at 2 red in 8
+    // full-suite runs. `crypto.randomUUID` is stubbed to hand out DESCENDING ids so the
+    // tie always falls that way: the coin held on the losing side.
+    //
+    // §4.12 is untouched. `newer(pending.scanAt, remote.deletedAt)` at merge.ts:134 stays
+    // strict — relaxing it would be a merge-rule change and is NEEDS-ZACH — and so does
+    // the server's apply order. What removes the tie is `nowIso`: §5.1's stamps are
+    // strictly increasing within a session, so two writes the user made in sequence are
+    // two instants in that order however fast the device is, and the id decides nothing.
+    let handed = 0xff;
+    const realCrypto = globalThis.crypto;
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      vi.setSystemTime(new Date("2026-09-04T12:00:00.000Z"));
+      vi.stubGlobal("crypto", {
+        randomUUID: () => {
+          handed -= 1;
+          return `${handed.toString(16).padStart(8, "0")}-0000-4000-8000-000000000000`;
+        },
+        getRandomValues: realCrypto.getRandomValues.bind(realCrypto),
+      });
+
+      const engine = createSyncEngine(deps(), { currentYear: YEAR });
+      await scan(VIN);
+      await engine.sync();
+
+      await softDeleteVehicle(VIN);
+      await scan(VIN); // the truck came back through the gate, in the same millisecond
+      await engine.sync();
+
+      expect(vehicle(VIN)).toMatchObject({ deleted_at: null, scan_count: 2 });
+      expect((await db.vehicles.get(VIN))?.deletedAt).toBeNull();
+    } finally {
+      vi.stubGlobal("crypto", realCrypto);
+      vi.useRealTimers();
+    }
+  });
+
   it("propagates a delete that is not followed by a scan", async () => {
     const engine = createSyncEngine(deps(), { currentYear: YEAR });
     await scan(VIN);

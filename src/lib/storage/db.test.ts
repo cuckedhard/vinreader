@@ -193,6 +193,39 @@ describe("nowIso — §5.1 ISO 8601 with offset", () => {
     expect(Date.parse(chicago)).toBeGreaterThan(Date.parse(chatham));
     expect(chicago < chatham).toBe(true);
   });
+
+  it("[F6] never names the same instant twice, however fast two writes follow each other", () => {
+    // §5.1's stamps are what §4.12 orders writes by, and those comparisons are strict:
+    // merge.ts:134 resurrects a tombstoned record only on a scan STRICTLY newer than the
+    // delete, and `dueRows` drains the outbox oldest-first with equal `createdAt` broken by
+    // the row's random UUID. Two writes inside one millisecond therefore had no order at
+    // all, and a delete followed by a re-scan lost the truck a quarter of the time.
+    //
+    // The clock is frozen here through `vi.useFakeTimers`, not through this file's `Date`
+    // stub: that stub ignores its constructor argument, so a corrected instant would be
+    // invisible to it. The instant is later than every other one this file stamps, because
+    // what is under test is a property of the session rather than of the call — a stamp
+    // cannot be dragged behind one already handed out, including by an earlier test.
+    const frozen = INSTANT + 3_600_000;
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      vi.setSystemTime(new Date(frozen));
+
+      const stamps = [nowIso(), nowIso(), nowIso(), nowIso(), nowIso()];
+      const instants = stamps.map((stamp) => Date.parse(stamp));
+
+      for (let index = 1; index < instants.length; index += 1) {
+        expect(instants[index]).toBeGreaterThan(instants[index - 1]);
+      }
+      // Still the clock's answer, corrected by one millisecond per collision and not
+      // drifting away from what the device says.
+      expect(instants[0]).toBe(frozen);
+      expect(instants[instants.length - 1]).toBe(frozen + stamps.length - 1);
+      for (const stamp of stamps) expect(stamp).toMatch(ISO_WITH_OFFSET);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 /**
