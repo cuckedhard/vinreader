@@ -1,7 +1,8 @@
 /**
  * §6.2 Import — the receiving half of the handoff. Four ways in: a shared link's `?d=`
- * payload, a pasted carrier, summary or bare VIN, a `.json` record or export bundle, or
- * nothing yet. All land on the same preview, and nothing is written without a tap (§6.4).
+ * payload, a pasted carrier, summary or bare VIN, a file holding a record or an export
+ * bundle, or nothing yet. All land on the same preview, and nothing is written without a
+ * tap (§6.4).
  */
 import { useMemo, useRef, useState } from "react";
 import type { ChangeEvent } from "react";
@@ -659,8 +660,8 @@ export default function ImportScreen() {
         <div className="flex flex-col gap-5">
           <p className="text-base leading-snug text-fg-muted">
             Vehicles shared from another device land here. Open the link someone sent you or scan
-            its QR code, paste a link, a VINRELAY1 code, a copied summary or a VIN below, or pick a
-            .json file VIN Relay exported.
+            its QR code, paste a link, a VINRELAY1 code, a copied summary or a VIN below, or open a
+            file VIN Relay shared or exported.
           </p>
 
           <section className={`flex flex-col gap-3 p-5 ${PANEL}`}>
@@ -694,8 +695,17 @@ export default function ImportScreen() {
 
           <section className={`flex flex-col gap-3 p-5 ${PANEL}`}>
             <p className={LABEL}>Or open a file</p>
+            {/*
+             * SH-5. This said ".json", and so did the button below it, while SH-1's shared
+             * attachment is a `.txt` — so a receiver holding the file this app had just sent
+             * them was told by this app that it was the wrong kind. Both shapes are real
+             * (Download JSON still writes a genuine `.json`), and the one that matters to the
+             * person here is where the file came from, not what it is called, so the copy
+             * names the source and leaves extensions to the picker. Supplied under §0 rule 4:
+             * §6.4 has no line for either string.
+             */}
             <p className="text-base leading-snug text-fg-muted">
-              A single vehicle, or an export holding many.
+              A file VIN Relay shared or exported: one vehicle, or an export holding many.
             </p>
             {/*
              * The other half of SH-1. Share attaches the record as `text/plain` because
@@ -720,7 +730,7 @@ export default function ImportScreen() {
               onClick={() => fileRef.current?.click()}
               disabled={busy}
             >
-              {busy ? "Reading…" : "Choose a .json file"}
+              {busy ? "Reading…" : "Choose a file"}
             </Button>
           </section>
         </div>

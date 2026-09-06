@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 import { encodePayload } from "../../src/lib/payload/codec";
-import { isShareableFile } from "../../src/features/sheet/shareFile";
+import { isShareableFile, sharedFile } from "../../src/features/sheet/shareFile";
 
 /**
  * The Share button, through the browser, with `navigator.share` stubbed.
@@ -382,4 +382,36 @@ test.describe("SH-4: the failure is where it can be read", () => {
       expect(seen.message).toContain("AbortError: Share failed");
     });
   }
+});
+
+/**
+ * SH-5. SH-1 changed the attachment to `.txt` / `text/plain` because Chromium refuses
+ * `application/json` — and the Import screen went on asking, in its own words, for "a .json
+ * file". So the app told a receiver that the file the app had just sent them was the wrong
+ * kind. The picker admits it and `readFile` parses by content, so it always imported; only the
+ * words were wrong.
+ *
+ * The shape the app sends is read off `sharedFile` here rather than typed in, so the question
+ * stays the right one if Share's container ever changes again: whatever leaves by Share, the
+ * screen that receives it must not name a different shape at the person holding the phone. And
+ * Download JSON still writes a real `.json`, so the copy has to cover both without reciting
+ * extensions.
+ */
+test.describe("SH-5: the Import screen does not name the wrong file", () => {
+  test("asks for no file shape but the one Share actually sends", async ({ page }) => {
+    await page.goto("/#/i");
+
+    // The button the receiver taps, holding the file the app sent them.
+    await expect(page.getByRole("button", { name: /^choose a file$/i })).toBeVisible();
+
+    const words = (await page.locator("main").innerText()).replace(/\s+/g, " ");
+    const name = sharedFile(VIN).name;
+    const sent = name.slice(name.lastIndexOf(".")).toLowerCase();
+    // Every file extension this screen says out loud. Naming one is not wrong in itself —
+    // naming one the app's own Share does not produce is what turned the receiver away.
+    const named = (words.match(/\.[A-Za-z0-9]{2,5}\b/g) ?? []).filter(
+      (ext) => ext.toLowerCase() !== sent,
+    );
+    expect(named, words).toEqual([]);
+  });
 });
