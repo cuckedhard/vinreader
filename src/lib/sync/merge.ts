@@ -192,6 +192,9 @@ export function mergeVehicle(
       decode: betterDecode(pendingDecode(), remote.decode),
       unit: remote.unit,
       notes: remote.notes,
+      // §5.1 `paint` is local-only until the account has a column to carry it; a record
+      // born of a pull therefore starts with none, which is what every record starts with.
+      paint: null,
       // The server's aggregates are all this device knows; `apply_scan_event` leaves them
       // null only for a row born of `upsert_vehicle_meta`, whose meta clock is the one
       // timestamp such a row does carry.

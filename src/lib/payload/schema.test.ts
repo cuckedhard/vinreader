@@ -40,6 +40,7 @@ function record(overrides: Partial<VehicleRecord> = {}): VehicleRecord {
     },
     unit: "UNIT-42",
     notes: null,
+    paint: null,
     firstScannedAt: "2026-09-01T09:00:00.000-08:00",
     lastScannedAt: "2026-09-03T14:12:00.000-08:00",
     scanCount: 2,
@@ -155,6 +156,26 @@ describe("vehicleRecordSchema", () => {
       false,
     );
     expect(vehicleRecordSchema.safeParse(record({ scanCount: 1.5 })).success).toBe(false);
+  });
+
+  it("reads a record exported before S5 as one with no paint code", () => {
+    // §5.1 `paint` arrived in S5; every `.json` record and export bundle this app wrote
+    // before it has no such key. Refusing those would make an app that cannot read its
+    // own files, so the key defaults rather than being required — and it defaults to
+    // null, which is "nobody typed one" and not an empty string that would render (N2).
+    const older = without(record({ paint: "NH-731P" }), "paint");
+    const parsed = vehicleRecordSchema.parse(older);
+    expect(parsed.paint).toBeNull();
+  });
+
+  it("carries a paint code through verbatim, without validating it into a shape", () => {
+    // §4.9: no check digit, no shared grammar — Toyota `1F7`, Ford `UG`, GM `WA8555`.
+    // Anything that constrained the string here would refuse a real code from a
+    // manufacturer nobody thought of, so only its type is checked.
+    for (const code of ["1F7", "NH-731P", "UG", "LC9X", "WA8555", "202 / 040"]) {
+      expect(vehicleRecordSchema.parse(record({ paint: code })).paint).toBe(code);
+    }
+    expect(vehicleRecordSchema.safeParse(record({ paint: 7 as never })).success).toBe(false);
   });
 
   it("keeps `decode.fields` as vPIC returned it", () => {

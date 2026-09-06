@@ -39,6 +39,7 @@ function makeRecord(overrides: Partial<VehicleRecord> = {}): VehicleRecord {
     }),
     unit: "UNIT-42",
     notes: null,
+    paint: null,
     firstScannedAt: AT,
     lastScannedAt: AT,
     scanCount: 3,

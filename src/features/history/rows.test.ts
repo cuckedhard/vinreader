@@ -27,6 +27,7 @@ function makeRecord(overrides: Partial<VehicleRecord> = {}): VehicleRecord {
     decode: decode({ ModelYear: "2003", Make: "HONDA", Model: "Accord" }),
     unit: "UNIT-42",
     notes: null,
+    paint: null,
     firstScannedAt: AT,
     lastScannedAt: AT,
     scanCount: 3,

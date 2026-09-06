@@ -41,6 +41,7 @@ function local(overrides: Partial<VehicleRecord> = {}): VehicleRecord {
     decode: decode(),
     unit: null,
     notes: null,
+    paint: null,
     firstScannedAt: T.mid,
     lastScannedAt: T.mid,
     scanCount: 1,

@@ -122,6 +122,13 @@ export const vehicleRecordSchema: z.ZodType<VehicleRecord> = z.object({
   decode: decodeSchema,
   unit: z.string().nullable(),
   notes: z.string().nullable(),
+  /**
+   * §5.1 `paint` (S5). Defaulted rather than required: a `.json` record or export bundle
+   * written by any build before S5 has no such key, and refusing to import a file this
+   * app itself wrote would be a regression paid for by the user (P7). Absent means
+   * nobody typed one, which is exactly `null`.
+   */
+  paint: z.string().nullable().default(null),
   firstScannedAt: isoDateTime,
   lastScannedAt: isoDateTime,
   scanCount: z.number().int(),

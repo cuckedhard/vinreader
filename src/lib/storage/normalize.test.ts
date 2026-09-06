@@ -13,6 +13,7 @@ function syncShaped(): VehicleRecord {
     decode: {} as VehicleRecord["decode"],
     unit: null,
     notes: null,
+    paint: null,
     firstScannedAt: "2026-01-01T00:00:00.000+00:00",
     lastScannedAt: "2026-01-01T00:00:00.000+00:00",
     scanCount: 1,
@@ -47,6 +48,28 @@ describe("normalizeVehicle", () => {
       lastError: null,
       fields: {},
     });
+  });
+
+  it("reads a row written before the paint code existed as having none", () => {
+    // §5.1 `paint` (S5) is unindexed, so no Dexie version bump declared it and no upgrade
+    // wrote it: a record stored by S0–S4 simply has no such property. The read path is
+    // where that becomes `null`, the same value a fresh record carries — the alternative
+    // is `undefined` reaching the Sheet, the CSV and the §4.9 payload.
+    const older = { ...syncShaped() } as Partial<VehicleRecord>;
+    delete older.paint;
+    expect(must(normalizeVehicle(older as VehicleRecord, 2026)).paint).toBeNull();
+  });
+
+  it("reads a stored value that is not a string as no paint code at all", () => {
+    // N2: a row that came back from §4.12 carrying a number where a string belongs has no
+    // paint code to show. Rendering `7` as one would be a fact nobody typed.
+    const wrong = { ...syncShaped(), paint: 7 } as unknown as VehicleRecord;
+    expect(must(normalizeVehicle(wrong, 2026)).paint).toBeNull();
+  });
+
+  it("keeps a paint code a human typed", () => {
+    const typed = { ...syncShaped(), paint: "NH-731P" };
+    expect(must(normalizeVehicle(typed, 2026)).paint).toBe("NH-731P");
   });
 
   it("leaves a complete record untouched", () => {

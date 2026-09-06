@@ -26,5 +26,11 @@ export function normalizeVehicle(row: VehicleRecord, currentYear: number): Vehic
   const stored = row.decode as Partial<VehicleDecode> | undefined;
   const decode: VehicleDecode = { ...pendingDecode(), ...stored, fields: stored?.fields ?? {} };
 
-  return { ...row, structural: buildStructural(row.vin, currentYear), decode };
+  // §5.1 `paint` (S5): absent on every row written before it existed, and on a §4.12 row
+  // whose account has no `paint` column yet. Both mean "nobody has typed one" — null, the
+  // value a fresh record carries. Anything that is not a string is not a paint code
+  // either, and it is read as absent rather than rendered as one (N2).
+  const paint = typeof row.paint === "string" ? row.paint : null;
+
+  return { ...row, structural: buildStructural(row.vin, currentYear), decode, paint };
 }

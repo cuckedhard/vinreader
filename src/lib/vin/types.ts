@@ -64,6 +64,20 @@ export interface VehicleRecord {
   decode: VehicleDecode;
   unit: string | null;
   notes: string | null;
+  /**
+   * §4.9 `pc`, the paint code (S5). **Captured, never decoded**: it is not derivable from
+   * the 17 characters and NHTSA does not carry it (`vpic/fields.ts` maps no colour key),
+   * so a stored value is only ever what a human read off a sticker and confirmed. It has
+   * no check digit and no grammar shared across manufacturers — Toyota `1F7`, Honda
+   * `NH-731P`, Ford `UG`, VW `LC9X`, GM `WA8555` — so nothing downstream can detect a
+   * wrong one, which is why §5.3 keeps the stored value unless the user confirms the
+   * replacement and why it is never validated into looking correct (N2).
+   *
+   * `null` is "nobody has typed one", and it is the value every record starts with. A row
+   * written before S5 has no such property at all; `normalizeVehicle` reads that as null
+   * on the way in, which is why no Dexie version bump was needed (see `db.ts`).
+   */
+  paint: string | null;
   firstScannedAt: string;
   lastScannedAt: string;
   scanCount: number;

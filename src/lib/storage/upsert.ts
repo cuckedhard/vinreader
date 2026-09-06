@@ -29,6 +29,12 @@ export type UpsertInput = {
   deviceLabel?: string | null;
   unit?: string | null;
   notes?: string | null;
+  /**
+   * §4.9 `pc`. Carried by an import — the only write that has one to offer in S5 layer 1,
+   * since no scan reads a paint code off a label. It fills an empty field and never
+   * replaces a stored one; see the rule below.
+   */
+  paint?: string | null;
 };
 
 /** §5.1: every S0 record starts pending; S2 fills it in. */
@@ -94,10 +100,27 @@ export async function upsertVehicle(input: UpsertInput): Promise<VehicleRecord> 
     const structural = await withCachedManufacturer(buildStructural(input.vin, year));
     const unit = incomingUnit ?? existing?.unit ?? null;
     const notes = incomingNotes ?? existing?.notes ?? null;
-    // D11: the LWW clock moves only when this write actually lands unit or notes — a
-    // user edit, or an import carrying them. A plain re-scan must leave it alone, or a
-    // scan on one device silently wipes an earlier real edit made on another (§4.12).
-    const metaChanged = unit !== (existing?.unit ?? null) || notes !== (existing?.notes ?? null);
+    /**
+     * §5.3 for the paint code, and the one place it differs from unit and notes: the
+     * stored value wins, always. A paint code has no check digit and no grammar (§4.9,
+     * ruled 2026-09-06), so nothing downstream can ever contradict a wrong one — it
+     * renders, syncs, exports and is read aloud at a paint counter exactly as
+     * confidently as a right one. §5.3's "unless … the user confirms overwrite" is
+     * therefore the whole rule here rather than half of it, and the confirmed overwrite
+     * is `setVehicleMeta` below: an edit a human made on screen, never a write that
+     * arrived. Nothing about that question sits in front of this write — the record
+     * saves offline, in one transaction, and the incoming value is offered afterwards
+     * or not at all (N1, P1).
+     */
+    const paint = meaningful(existing?.paint) ?? meaningful(input.paint);
+    // D11: the LWW clock moves only when this write actually lands unit, notes or the
+    // paint code — a user edit, or an import carrying them. A plain re-scan must leave it
+    // alone, or a scan on one device silently wipes an earlier real edit made on another
+    // (§4.12).
+    const metaChanged =
+      unit !== (existing?.unit ?? null) ||
+      notes !== (existing?.notes ?? null) ||
+      paint !== (existing?.paint ?? null);
 
     const record: VehicleRecord = {
       vin: input.vin,
@@ -112,6 +135,7 @@ export async function upsertVehicle(input: UpsertInput): Promise<VehicleRecord> 
       decode: existing?.decode ?? pendingDecode(),
       unit,
       notes,
+      paint,
       // §4.12 aggregates: first = min, last = max. An import may carry an older `at`.
       firstScannedAt:
         existing && instant(existing.firstScannedAt) < instant(at) ? existing.firstScannedAt : at,
@@ -148,13 +172,19 @@ export async function upsertVehicle(input: UpsertInput): Promise<VehicleRecord> 
 }
 
 /**
- * The only path that moves `metaUpdatedAt` off the epoch by hand: a user edit to unit or
- * notes, stamped with the device clock (D11, §4.12). An explicit `null` or empty string
- * clears the field; `undefined` leaves it as it was.
+ * The only path that moves `metaUpdatedAt` off the epoch by hand: a user edit to unit,
+ * notes or the paint code, stamped with the device clock (D11, §4.12). An explicit `null`
+ * or empty string clears the field; `undefined` leaves it as it was.
+ *
+ * It is also the only path that may *replace* a paint code (§5.3): every value here came
+ * from a person acting on this screen — typing it, or confirming a replacement offered to
+ * them — which is the confirmation §5.3 asks for and the only check a paint code has
+ * (§4.9, N2). A later OCR proposal ends the same way: a human confirms, and the confirmed
+ * string is saved through here.
  */
 export async function setVehicleMeta(
   vin: string,
-  patch: { unit?: string | null; notes?: string | null },
+  patch: { unit?: string | null; notes?: string | null; paint?: string | null },
 ): Promise<VehicleRecord> {
   return db.transaction("rw", db.vehicles, db.outbox, async () => {
     const existing = await db.vehicles.get(vin);
@@ -163,6 +193,7 @@ export async function setVehicleMeta(
       ...existing,
       unit: patch.unit === undefined ? existing.unit : meaningful(patch.unit),
       notes: patch.notes === undefined ? existing.notes : meaningful(patch.notes),
+      paint: patch.paint === undefined ? (existing.paint ?? null) : meaningful(patch.paint),
       metaUpdatedAt: nowIso(),
     };
     await db.vehicles.put(next);

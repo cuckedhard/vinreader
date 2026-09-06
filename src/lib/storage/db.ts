@@ -34,6 +34,16 @@ export const db = new Dexie("vinrelay") as VinRelayDb;
  * IndexedDB does not index null, so every live record — `deletedAt: null` — is absent
  * from the `deletedAt` index. "Not deleted" is therefore filtered in JS and never
  * queried through that index; the index finds tombstones, not survivors.
+ *
+ * S5's `paint` (§5.1, §4.9 `pc`) adds **no version and no line below**, and that is a
+ * fact about Dexie rather than a shortcut. A `stores()` declaration lists the primary key
+ * and the indexes, not the columns: an IndexedDB object store holds whole objects, so an
+ * unindexed property needs no declaration to be written or read back. `paint` is queried
+ * by nothing — §6.4 fixes History's search at "the VIN, the unit, and the make and model"
+ * — so it needs no index, and a version(2) would buy nothing while putting the upgrade
+ * path (and `outbox.test.ts`, which opens a database an earlier run wrote) at risk for a
+ * property that is already stored correctly without it. Records written before S5 simply
+ * have no `paint` key; `normalizeVehicle` reads that absence as null.
  */
 db.version(1).stores({
   vehicles: "vin, lastScannedAt, unit, decode.status, deletedAt",

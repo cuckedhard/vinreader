@@ -532,3 +532,105 @@ describe("§4.12 delete — a tombstone here, a delete_vehicle there", () => {
     ]);
   });
 });
+
+/**
+ * §5.3 and §4.9's `pc`, ruled by Zach on 2026-09-06: a paint code is **captured**, never
+ * decoded. It is not derivable from the VIN and NHTSA does not carry it, so a stored one
+ * is only ever what a human read off a sticker and confirmed — and it has no check digit
+ * and no grammar shared across manufacturers, so nothing downstream can detect a wrong
+ * one. §5.3 therefore keeps what this device holds unless the user confirms the
+ * replacement, and the confirmed replacement is an edit: `setVehicleMeta`, the same seam
+ * the Sheet's unit and notes already use.
+ *
+ * N1/P1 is why the rule lives here and not in front of the write: a scan or an import
+ * lands its record with no question asked and no network touched, and the value it could
+ * not take is offered afterwards, on a screen, or not at all.
+ */
+describe("§5.3 the paint code — captured, and never silently replaced", () => {
+  const PAINT = "NH-731P"; // §4.9's own example: Honda's Crystal Black Pearl.
+  const OTHER_PAINT = "WA8555"; // A GM code — different manufacturer, different grammar.
+
+  function importing(paint: string | null): UpsertInput {
+    return scan({ at: T2, origin: "import", symbology: "import", paint });
+  }
+
+  it("takes a paint code from an import into a record that has none", async () => {
+    await upsertVehicle(scan({ at: T1 }));
+    const record = await upsertVehicle(importing(PAINT));
+
+    expect(record.paint).toBe(PAINT);
+    expect((await db.vehicles.get(VIN))?.paint).toBe(PAINT);
+  });
+
+  it("starts a record with no paint code at all", async () => {
+    const record = await upsertVehicle(scan({ at: T1 }));
+    expect(record.paint).toBeNull();
+  });
+
+  it("never replaces a paint code this device already holds", async () => {
+    await upsertVehicle(importing(PAINT));
+    const record = await upsertVehicle(importing(OTHER_PAINT));
+
+    // Nothing downstream could catch the wrong one, so the incoming value loses to the
+    // one a human already put here; the Import preview is where it is offered instead.
+    expect(record.paint).toBe(PAINT);
+    expect((await db.vehicles.get(VIN))?.paint).toBe(PAINT);
+  });
+
+  it("keeps the stored code when a later scan carries none", async () => {
+    await upsertVehicle(importing(PAINT));
+    const record = await upsertVehicle(scan({ at: T2 }));
+
+    expect(record.paint).toBe(PAINT);
+  });
+
+  it("treats a blank incoming code as no code at all", async () => {
+    const record = await upsertVehicle(importing("   "));
+    expect(record.paint).toBeNull();
+  });
+
+  it("moves metaUpdatedAt when a write lands the first paint code", async () => {
+    await upsertVehicle(scan({ at: T1 }));
+    const record = await upsertVehicle(importing(PAINT));
+
+    // D11: the LWW clock moves when a write actually lands a meta field, so a paint code
+    // that arrives from another device carries a clock that can win §4.12's comparison.
+    expect(record.metaUpdatedAt).not.toBe(META_NEVER_EDITED);
+    expect(record.metaUpdatedAt).toMatch(ISO_WITH_OFFSET);
+  });
+
+  it("leaves metaUpdatedAt alone when the incoming code is the one already stored", async () => {
+    const first = await upsertVehicle(importing(PAINT));
+    const again = await upsertVehicle(importing(PAINT));
+
+    expect(again.metaUpdatedAt).toBe(first.metaUpdatedAt);
+  });
+});
+
+describe("setVehicleMeta — the paint code a user confirmed", () => {
+  const PAINT = "NH-731P";
+  const OTHER_PAINT = "WA8555";
+
+  it("replaces a stored paint code and stamps the device clock", async () => {
+    await upsertVehicle(scan({ at: T1, origin: "import", symbology: "import", paint: PAINT }));
+    const record = await setVehicleMeta(VIN, { paint: OTHER_PAINT });
+
+    // The one path that may overwrite one: a human chose this value on screen.
+    expect(record.paint).toBe(OTHER_PAINT);
+    expect(record.metaUpdatedAt).toMatch(ISO_WITH_OFFSET);
+    expect((await db.vehicles.get(VIN))?.paint).toBe(OTHER_PAINT);
+  });
+
+  it("clears it on an explicit empty value and leaves an absent one alone", async () => {
+    await upsertVehicle(scan({ at: T1 }));
+    await setVehicleMeta(VIN, { paint: PAINT, unit: "TRK-118" });
+    const cleared = await setVehicleMeta(VIN, { paint: "  " });
+
+    expect(cleared.paint).toBeNull();
+    expect(cleared.unit).toBe("TRK-118");
+
+    const untouched = await setVehicleMeta(VIN, { notes: "rear light out" });
+    expect(untouched.paint).toBeNull();
+    expect(untouched.unit).toBe("TRK-118");
+  });
+});
