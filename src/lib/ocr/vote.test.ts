@@ -15,18 +15,35 @@ import {
   OCR_MARKED_MAX,
   OCR_MARK_BELOW,
 } from "./constants";
-import type { OcrLine } from "./types";
-import { isLowConfidence, markedPositions, voteOnLines } from "./vote";
+import type { OcrLine, OcrToken } from "./types";
+import { differingPositions, isLowConfidence, markedPositions, voteOnLines } from "./vote";
 
-/** A read, with one confidence for the line and the same for every character in it. */
-function read(text: string, confidence: number, chars?: number[]): OcrLine {
+function token(text: string, confidence: number, chars?: number[]): OcrToken {
   return {
     text,
     confidence,
-    chars: [...text].map((char, index) => ({
-      char,
-      confidence: chars?.[index] ?? confidence,
-    })),
+    chars: [...text].map((char, index) => ({ char, confidence: chars?.[index] ?? confidence })),
+  };
+}
+
+/** One read that found one token — the case where the box holds only the code. */
+function read(text: string, confidence: number, chars?: number[]): OcrLine {
+  const tokens = text === "" ? [] : [token(text, confidence, chars)];
+  return {
+    text,
+    confidence,
+    chars: tokens.flatMap((each) => each.chars),
+    tokens,
+  };
+}
+
+/** One read of a whole label line: the code, and whatever the box caught beside it. */
+function readLine(...tokens: OcrToken[]): OcrLine {
+  return {
+    text: tokens.map((each) => each.text).join(" "),
+    confidence: 80,
+    chars: tokens.flatMap((each) => each.chars),
+    tokens,
   };
 }
 
@@ -117,10 +134,33 @@ describe("voteOnLines", () => {
     expect(voteOnLines(lines)!.text).toBe(voteOnLines(lines)!.text);
   });
 
+  it("offers every token the box caught, and picks none of them (the pattern step)", () => {
+    // A door-jamb label line: a GVWR figure, a tyre pressure, a date and the paint code.
+    // §5 measured that no cross-manufacturer pattern can tell them apart, so nothing here
+    // tries — the tokens the engine segmented are offered and a person picks (N2).
+    const label = () =>
+      readLine(
+        token("2722", 90),
+        token("35", 88),
+        token("0925", 89),
+        token("WA8555", 94),
+      );
+    const proposal = voteOnLines([label(), label(), label()])!;
+    expect(proposal.candidates.map((candidate) => candidate.text)).toEqual([
+      "WA8555",
+      "2722",
+      "0925",
+    ]);
+    // Every token was read three times, so no token's frame count marks it as the answer.
+    expect(new Set(proposal.candidates.map((candidate) => candidate.frames))).toEqual(new Set([3]));
+    // And the share the winner holds is a share, not a certainty: four tokens, one line.
+    expect(proposal.agreement).toBeLessThan(0.5);
+  });
+
   it("says nothing about positions no read reported a character for", () => {
     // A line whose character list is shorter than its text: the missing positions have no
     // confidence, and inventing one is the fabrication this whole slice is about (N2).
-    const short: OcrLine = { text: "WA8555", confidence: 80, chars: [{ char: "W", confidence: 80 }] };
+    const short = readLine({ text: "WA8555", confidence: 80, chars: [{ char: "W", confidence: 80 }] });
     const proposal = voteOnLines([short])!;
     expect(proposal.chars).toHaveLength(1);
     expect(proposal.text).toBe("WA8555");
@@ -162,5 +202,20 @@ describe("isLowConfidence", () => {
 
   it("is false for a clean read, so the hint is not permanent furniture", () => {
     expect(isLowConfidence(voteOnLines([read("WA8555", 95)])!)).toBe(false);
+  });
+});
+
+describe("differingPositions", () => {
+  it("names where the candidates part company, and nothing else", () => {
+    expect(differingPositions(["WA8555", "WA8SSS"])).toEqual([3, 4, 5]);
+    expect(differingPositions(["1F7", "1E7", "1F1"])).toEqual([1, 2]);
+  });
+
+  it("counts running off the end of a shorter candidate as a difference", () => {
+    expect(differingPositions(["UG", "UG7"])).toEqual([2]);
+  });
+
+  it("finds nothing to highlight when there is only one candidate", () => {
+    expect(differingPositions(["NH-731P"])).toEqual([]);
   });
 });

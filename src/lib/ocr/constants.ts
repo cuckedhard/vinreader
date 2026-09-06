@@ -75,9 +75,30 @@ export const OCR_INIT_CONFIG: Readonly<Record<string, string>> = {
   load_freq_dawg: "false",
 };
 
+/**
+ * The whitelist as the *engine* is given it, which is the one above plus a space.
+ *
+ * Measured in Chromium against the shipped assets, on a crop reading `PNT WA8555` — the
+ * shape §5's crop box actually produces, because a box a gloved hand can aim with catches
+ * the token beside the code:
+ *
+ *   whitelist `A-Z0-9-`     one word `PNTWA8555`, page confidence **0**, and the `W`
+ *                           collapses to 15 while its neighbours sit at 98
+ *   whitelist `A-Z0-9- `    two words `PNT` and `WA8555`, page confidence **91**, every
+ *                           symbol 98–99
+ *
+ * A space is not a character that can fabricate a paint code; it is the separator, and
+ * withholding it tells the engine the gap it can see cannot exist. That costs the word
+ * boundaries §5's pattern step is built on *and* it costs accuracy on the glyph next to the
+ * gap. So the engine is allowed the space, and `keepable` in `runtime.ts` still keeps only
+ * `OCR_CHAR_WHITELIST` — which is what stops a stray mark becoming a character in a
+ * proposal (§3's 96.1% was measured on that set).
+ */
+export const OCR_WHITELIST_PARAM = `${OCR_CHAR_WHITELIST} `;
+
 /** Set after `initialize`, per recognition. */
 export const OCR_PARAMS: Readonly<Record<string, string>> = {
-  tessedit_char_whitelist: OCR_CHAR_WHITELIST,
+  tessedit_char_whitelist: OCR_WHITELIST_PARAM,
   tessedit_pageseg_mode: OCR_PAGE_SEG_MODE,
 };
 

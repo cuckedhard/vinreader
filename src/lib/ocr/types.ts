@@ -58,13 +58,33 @@ export interface OcrChar {
 }
 
 /**
+ * One token the engine segmented out of the crop.
+ *
+ * This is S5 addendum §5's "pattern step": the crop box is a generous single *line*, so a
+ * gloved hand can hit it, and a line on a door-jamb label carries a paint code next to a
+ * GVWR figure, a tyre pressure or a date. The step that picks the code out of that line is
+ * **not** a cross-manufacturer regex — Ford's two letters and GM's four digits cannot be
+ * told apart from those neighbours by any pattern, and §5 records that it fabricates. It
+ * is the word segmentation the engine already did, offered to the person holding the phone
+ * as §5's equal-weight candidates with nothing preselected (N2).
+ */
+export interface OcrToken {
+  text: string;
+  confidence: number;
+  chars: OcrChar[];
+}
+
+/**
  * One line of proposed text. Never a fact: §5 forbids auto-accepting at any confidence,
  * so this is what a human is shown, not what is stored.
  */
 export interface OcrLine {
+  /** The whole line, tokens joined by a space. For a log and for a human reading a diff. */
   text: string;
   confidence: number;
   chars: OcrChar[];
+  /** The line's tokens, in reading order. What the vote is actually taken over. */
+  tokens: OcrToken[];
 }
 
 /** Bytes moved so far against bytes the download will move in total. */

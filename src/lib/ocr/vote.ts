@@ -25,9 +25,9 @@ import {
   OCR_MARKED_MAX,
   OCR_MARK_BELOW,
 } from "./constants";
-import type { OcrChar, OcrLine } from "./types";
+import type { OcrChar, OcrLine, OcrToken } from "./types";
 
-/** One string several frames read, and how much of the vote stood behind it. */
+/** One token several frames read, and how much of the vote stood behind it. */
 export interface PaintCandidate {
   text: string;
   /** Mean of the reads that produced this exact string, 0–100. */
@@ -42,7 +42,7 @@ export interface PaintProposal {
   confidence: number;
   /** The winner's share of the total weight, 0–1. One means every read agreed. */
   agreement: number;
-  /** How many reads went into the vote at all (empty reads are not votes). */
+  /** How many reads went into the vote at all (a read with no token is not a vote). */
   frames: number;
   /** Per position, averaged over the reads that voted for the winner. */
   chars: OcrChar[];
@@ -56,20 +56,15 @@ interface Group {
   text: string;
   weight: number;
   frames: number;
-  lines: OcrLine[];
-}
-
-/** A read with no characters in it is not a vote for the empty string; it is not a vote. */
-function counted(line: OcrLine): boolean {
-  return line.text.length > 0;
+  tokens: OcrToken[];
 }
 
 /** Negative or non-finite confidences carry no weight rather than subtracting from someone else's. */
-function weightOf(line: OcrLine): number {
-  return Number.isFinite(line.confidence) ? Math.max(line.confidence, 0) : 0;
+function weightOf(token: OcrToken): number {
+  return Number.isFinite(token.confidence) ? Math.max(token.confidence, 0) : 0;
 }
 
-/** Both call sites average over a group's own lines, and a group always has at least one. */
+/** Both call sites average over a group's own tokens, and a group always has at least one. */
 function mean(values: readonly number[]): number {
   return values.reduce((total, value) => total + value, 0) / values.length;
 }
@@ -82,13 +77,13 @@ function mean(values: readonly number[]): number {
  * inventing a confidence for one is exactly the fabrication N2 is about.
  */
 function charsOf(group: Group): OcrChar[] {
-  const width = group.lines.reduce(
-    (shortest, line) => Math.min(shortest, line.chars.length),
+  const width = group.tokens.reduce(
+    (shortest, token) => Math.min(shortest, token.chars.length),
     group.text.length,
   );
   const chars: OcrChar[] = [];
   for (let index = 0; index < width; index += 1) {
-    const at = group.lines.map((line) => line.chars[index]);
+    const at = group.tokens.map((token) => token.chars[index]);
     chars.push({ char: at[0].char, confidence: mean(at.map((char) => char.confidence)) });
   }
   return chars;
@@ -115,7 +110,7 @@ export function markedPositions(chars: readonly OcrChar[]): number[] {
 /**
  * The confidence-weighted majority.
  *
- * Grouped by the exact string: a read of a different length is a read of something else,
+ * Grouped by the exact token: a read of a different length is a read of something else,
  * and stitching per-position winners together would produce a string no frame ever
  * returned. Ties break by frame count and then by the order the reads arrived.
  *
@@ -125,14 +120,17 @@ export function markedPositions(chars: readonly OcrChar[]): number[] {
 export function voteOnLines(lines: readonly OcrLine[]): PaintProposal | null {
   const groups = new Map<string, Group>();
   for (const line of lines) {
-    if (!counted(line)) continue;
-    const existing = groups.get(line.text);
-    const group = existing ?? { text: line.text, weight: 0, frames: 0, lines: [] };
-    group.weight += weightOf(line);
-    group.frames += 1;
-    group.lines.push(line);
-    groups.set(line.text, group);
+    for (const token of line.tokens) {
+      const existing = groups.get(token.text);
+      const group = existing ?? { text: token.text, weight: 0, frames: 0, tokens: [] };
+      group.weight += weightOf(token);
+      group.frames += 1;
+      group.tokens.push(token);
+      groups.set(token.text, group);
+    }
   }
+  // A read that found no token is not a vote for the empty string; it is not a vote. Every
+  // read finding none is the `nothing` the screen says out loud (P7).
   if (groups.size === 0) return null;
 
   // Ties fall to the string that was read first: a `Map` iterates in insertion order and
@@ -147,7 +145,7 @@ export function voteOnLines(lines: readonly OcrLine[]): PaintProposal | null {
 
   return {
     text: winner.text,
-    confidence: mean(winner.lines.map((line) => weightOf(line))),
+    confidence: mean(winner.tokens.map((token) => weightOf(token))),
     // Every read at confidence zero still agreed or disagreed, so the share falls back to
     // the frames rather than dividing by nothing and reporting `NaN` as agreement.
     agreement: totalWeight > 0 ? winner.weight / totalWeight : winner.frames / totalFrames,
@@ -156,7 +154,7 @@ export function voteOnLines(lines: readonly OcrLine[]): PaintProposal | null {
     marked: markedPositions(chars),
     candidates: ranked.slice(0, OCR_CANDIDATES_MAX).map((group) => ({
       text: group.text,
-      confidence: mean(group.lines.map((line) => weightOf(line))),
+      confidence: mean(group.tokens.map((token) => weightOf(token))),
       frames: group.frames,
     })),
   };
@@ -173,4 +171,22 @@ export function voteOnLines(lines: readonly OcrLine[]): PaintProposal | null {
  */
 export function isLowConfidence(proposal: PaintProposal): boolean {
   return proposal.confidence < OCR_LOW_CONFIDENCE || proposal.marked.length > 0;
+}
+
+/**
+ * The positions two or three candidates disagree about (§5: "differing characters
+ * highlighted").
+ *
+ * When the vote is split, marking the *least confident* character of the winner would be
+ * marking the wrong thing: what the user has to look at is where the candidates part
+ * company. A position past the end of a shorter candidate is a disagreement too.
+ */
+export function differingPositions(texts: readonly string[]): number[] {
+  const width = Math.max(...texts.map((text) => text.length));
+  const positions: number[] = [];
+  for (let index = 0; index < width; index += 1) {
+    const first = texts[0][index];
+    if (texts.some((text) => text[index] !== first)) positions.push(index);
+  }
+  return positions;
 }

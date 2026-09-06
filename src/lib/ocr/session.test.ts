@@ -21,10 +21,12 @@ import {
 import type { OcrLine } from "./types";
 
 function read(text: string, confidence = 90): OcrLine {
+  const chars = [...text].map((char) => ({ char, confidence }));
   return {
     text,
     confidence,
-    chars: [...text].map((char) => ({ char, confidence })),
+    chars,
+    tokens: text === "" ? [] : [{ text, confidence, chars }],
   };
 }
 

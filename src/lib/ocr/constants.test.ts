@@ -14,6 +14,9 @@ import { OCR_ASSET_LIST } from "./assets.generated";
 import {
   OCR_ASSET_ROUTE,
   OCR_CHAR_WHITELIST,
+  OCR_PAGE_SEG_MODE,
+  OCR_PARAMS,
+  OCR_WHITELIST_PARAM,
   OCR_MAX_MEMORY_BYTES,
   OCR_MAX_MEMORY_PAGES,
   OCR_OEM,
@@ -71,5 +74,21 @@ describe("the pinned engine settings", () => {
 
   it("whitelists uppercase, digits and the hyphen, and nothing else", () => {
     expect(OCR_CHAR_WHITELIST).toBe("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-");
+  });
+
+  /**
+   * Measured in Chromium on `PNT WA8555`, which is the shape §5's crop box produces: with
+   * `A-Z0-9-` the engine returns one word `PNTWA8555` at page confidence 0 and drops the
+   * `W` to 15; with a space it returns two words at 91 with every symbol at 98–99. The
+   * space is the separator, not a character that can fabricate a code, and §5's pattern
+   * step is the word boundaries it buys.
+   */
+  it("gives the engine a space as well, and keeps it out of what a proposal may contain", () => {
+    expect(OCR_PARAMS.tessedit_char_whitelist).toBe(`${OCR_CHAR_WHITELIST} `);
+    expect(OCR_WHITELIST_PARAM).toContain(" ");
+    // The set a *proposal* is filtered against is still the measured one: a space in a
+    // paint code would be two tokens, and `keepable` is what says so.
+    expect(OCR_CHAR_WHITELIST).not.toContain(" ");
+    expect(OCR_PARAMS.tessedit_pageseg_mode).toBe(OCR_PAGE_SEG_MODE);
   });
 });

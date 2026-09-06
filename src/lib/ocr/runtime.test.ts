@@ -9,6 +9,7 @@
 import { describe, expect, it } from "vitest";
 import {
   OCR_CHAR_WHITELIST,
+  OCR_WHITELIST_PARAM,
   OCR_INIT_CONFIG,
   OCR_LANG,
   OCR_OEM,
@@ -114,8 +115,10 @@ describe("createTesseractWorker", () => {
     // §3: `load_system_dawg` and `load_freq_dawg` are `*_INIT_MEMBER` parameters, so this
     // is the only call that can set them. `setParameters` would be ignored.
     expect(OCR_INIT_CONFIG).toEqual({ load_system_dawg: "false", load_freq_dawg: "false" });
+    // The engine is given the space as well (`constants.ts` carries the measurement);
+    // `keepable` is what holds a *proposal* to `OCR_CHAR_WHITELIST`.
     expect(calls.params).toEqual([
-      { tessedit_char_whitelist: OCR_CHAR_WHITELIST, tessedit_pageseg_mode: OCR_PAGE_SEG_MODE },
+      { tessedit_char_whitelist: OCR_WHITELIST_PARAM, tessedit_pageseg_mode: OCR_PAGE_SEG_MODE },
     ]);
   });
 
@@ -133,13 +136,48 @@ describe("createTesseractWorker", () => {
 });
 
 describe("toOcrLine", () => {
-  function page(symbols: { text: string; confidence: number }[]): TesseractPage {
+  function page(...words: { text: string; confidence: number }[][]): TesseractPage {
     return {
-      text: symbols.map((s) => s.text).join(""),
+      text: words.map((symbols) => symbols.map((s) => s.text).join("")).join(" "),
       confidence: 71,
-      blocks: [{ paragraphs: [{ lines: [{ words: [{ symbols }] }] }] }],
+      blocks: [
+        { paragraphs: [{ lines: [{ words: words.map((symbols) => ({ symbols })) }] }] }],
     };
   }
+
+  /**
+   * §5's pattern step. The crop box is a generous single line, so it catches whatever sits
+   * beside the paint code on that line, and no rule over characters can say which token is
+   * the code — a cross-manufacturer regex fabricates. The engine's own word boundaries are
+   * kept instead, and the screen offers them.
+   */
+  it("keeps the engine's word boundaries, because that is what the box cannot separate", () => {
+    const line = toOcrLine(
+      page(
+        [
+          { text: "2", confidence: 90 },
+          { text: "7", confidence: 90 },
+        ],
+        [
+          { text: "W", confidence: 80 },
+          { text: "A", confidence: 90 },
+        ],
+      ),
+    );
+    expect(line.tokens.map((token) => token.text)).toEqual(["27", "WA"]);
+    expect(line.tokens[1]!.confidence).toBe(85);
+    // The line is still readable as one string, with the gap the engine saw kept in it.
+    expect(line.text).toBe("27 WA");
+    expect(line.chars).toHaveLength(4);
+  });
+
+  it("drops a word the whitelist empties rather than offering a choice with no characters", () => {
+    const line = toOcrLine(
+      page([{ text: "%", confidence: 40 }], [{ text: "U", confidence: 90 }]),
+    );
+    expect(line.tokens.map((token) => token.text)).toEqual(["U"]);
+    expect(line.text).toBe("U");
+  });
 
   it("keeps a confidence per character, which is what §5 marks", () => {
     const line = toOcrLine(
@@ -176,6 +214,7 @@ describe("toOcrLine", () => {
       text: "",
       confidence: 0,
       chars: [],
+      tokens: [],
     });
     expect(toOcrLine({ text: "", confidence: 0 }).chars).toEqual([]);
     expect(toOcrLine({ text: "", confidence: 0, blocks: [{}] }).chars).toEqual([]);

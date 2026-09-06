@@ -25,7 +25,7 @@ import {
   OCR_OEM,
   OCR_PARAMS,
 } from "./constants";
-import { OcrError, type OcrChar, type OcrLine } from "./types";
+import { OcrError, type OcrChar, type OcrLine, type OcrToken } from "./types";
 
 /** The shape `worker.recognize` returns, narrowed to what a paint code needs. */
 export interface TesseractSymbol {
@@ -134,28 +134,54 @@ function keepable(char: string): boolean {
   return OCR_CHAR_WHITELIST.includes(char);
 }
 
+function meanConfidence(chars: readonly OcrChar[]): number {
+  return chars.reduce((total, char) => total + char.confidence, 0) / chars.length;
+}
+
 /**
- * The page tesseract returned, flattened to one proposed line.
+ * The page tesseract returned, as one line and the tokens it is made of.
  *
- * §5's correction row needs a confidence per character, so the symbols are walked rather
- * than the text: `data.text` alone cannot say which position was the doubtful one.
+ * §5's marks need a confidence per character, so the symbols are walked rather than the
+ * text: `data.text` alone cannot say which position was the doubtful one.
+ *
+ * The tokens are the engine's own words, and they are the "pattern step" §5 asks for. A
+ * crop box wide enough for a gloved hand to aim with catches the tokens either side of the
+ * paint code, and no rule written over characters can say which of `2722`, `35`, `0925`
+ * and `WA8555` is a paint code — §5 measured that a cross-manufacturer regex fabricates.
+ * A word boundary is not a guess about which token is the answer; it is where the engine
+ * saw a gap, and the person holding the phone picks (N2).
+ *
+ * A token with nothing the whitelist allows is dropped rather than kept as an empty
+ * string, which would otherwise be an option on screen with no characters in it.
  */
 export function toOcrLine(page: TesseractPage): OcrLine {
-  const chars: OcrChar[] = [];
+  const tokens: OcrToken[] = [];
   for (const block of page.blocks ?? []) {
     for (const paragraph of block.paragraphs ?? []) {
       for (const line of paragraph.lines ?? []) {
         for (const word of line.words ?? []) {
+          const chars: OcrChar[] = [];
           for (const symbol of word.symbols ?? []) {
             if (keepable(symbol.text)) {
               chars.push({ char: symbol.text, confidence: symbol.confidence });
             }
           }
+          if (chars.length === 0) continue;
+          tokens.push({
+            text: chars.map((char) => char.char).join(""),
+            confidence: meanConfidence(chars),
+            chars,
+          });
         }
       }
     }
   }
-  return { text: chars.map((char) => char.char).join(""), confidence: page.confidence, chars };
+  return {
+    text: tokens.map((token) => token.text).join(" "),
+    confidence: page.confidence,
+    chars: tokens.flatMap((token) => token.chars),
+    tokens,
+  };
 }
 
 /**
