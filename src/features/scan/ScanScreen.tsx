@@ -208,6 +208,26 @@ export function ScanScreen() {
 
       {mode === "camera" ? (
         <>
+          {/* R3-F11: §6.4 answers a failed write in two halves — "Not saved." beside the VIN,
+              and this banner with what went wrong and the way on — and they were 200 px apart
+              with `CameraView`'s "Type VIN instead" between them. The banner leads now: it is
+              the most important thing on the screen, it sits against the status line it
+              explains, and being above the preview it cannot open below the fold (R3-F1). */}
+          {error !== null ? (
+            <Banner
+              tone="danger"
+              title="Couldn't save this VIN"
+              actions={
+                <Button variant="primary" onClick={handleScanAgain}>
+                  Scan again
+                </Button>
+              }
+            >
+              <p>Nothing was written. Read the label again, or type it.</p>
+              <p className="mt-2 font-vin text-sm break-words text-fg-muted">{error}</p>
+            </Banner>
+          ) : null}
+
           <CameraView
             state={state}
             videoRef={videoRef}
@@ -264,21 +284,6 @@ export function ScanScreen() {
               }
             >
               Usually a misread — try again.
-            </Banner>
-          ) : null}
-
-          {error !== null ? (
-            <Banner
-              tone="danger"
-              title="Couldn't save this VIN"
-              actions={
-                <Button variant="primary" onClick={handleScanAgain}>
-                  Scan again
-                </Button>
-              }
-            >
-              <p>Nothing was written. Read the label again, or type it.</p>
-              <p className="mt-2 font-vin text-sm break-words text-fg-muted">{error}</p>
             </Banner>
           ) : null}
         </>

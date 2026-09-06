@@ -123,3 +123,52 @@ test("[R2-04] the success line is not shown next to a write failure", async ({ p
     "§6.1/§6.3: the success line stands beside 'Nothing was written'",
   ).toHaveCount(0);
 });
+
+
+/**
+ * [R3-F11] §6.4 answers a failed write in two halves — the status line "Not saved." beside
+ * the VIN it is about, and the banner "Couldn't save this VIN" with what went wrong and the
+ * way on. They were 200 px apart at 390×844, with "Type VIN instead" between them: "Not
+ * saved." at y 62, the VIN at 94.8, the button at 180.8, the banner at 261.8. Both are on
+ * screen even at 360×640, so this is ordering rather than visibility — a message split
+ * around an unrelated control is one a hurried reader puts together wrong, or not at all.
+ */
+test("[R3-F11] the two halves of the write failure are one message", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 }); // §6.1's case: one hand, a phone.
+  await page.goto("/#/settings");
+  await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
+  await page.evaluate(BREAK_PUT);
+  await page.evaluate(() => {
+    window.location.hash = "#/scan";
+  });
+
+  const banner = page.getByRole("alert").filter({ hasText: "Couldn't save this VIN" });
+  await expect(banner).toBeVisible({ timeout: 25_000 });
+  await expect(page.getByText("Not saved.")).toBeVisible();
+
+  const split = await page.evaluate(() => {
+    const boxOf = (text: string) => {
+      const node = Array.from(document.querySelectorAll("p")).find(
+        (p) => (p.textContent ?? "").trim() === text,
+      );
+      if (node === undefined) throw new Error(`no "${text}"`);
+      return node.getBoundingClientRect();
+    };
+    const status = boxOf("Not saved.");
+    const title = boxOf("Couldn't save this VIN");
+    const top = Math.min(status.bottom, title.bottom);
+    const bottom = Math.max(status.top, title.top);
+    // Anything a user can act on that sits in the gap between the two halves and belongs to
+    // neither of them. The banner's own action is part of the message it is attached to.
+    const alert = document.querySelector("[role=alert]");
+    const between = Array.from(document.querySelectorAll("button, a[href]"))
+      .filter((el) => alert === null || !alert.contains(el))
+      .map((el) => ({ el, box: el.getBoundingClientRect() }))
+      .filter(({ box }) => box.height > 0 && box.top + box.height / 2 > top)
+      .filter(({ box }) => box.top + box.height / 2 < bottom)
+      .map(({ el }) => (el.textContent ?? "").trim());
+    return { between, gap: Math.round(bottom - top) };
+  });
+
+  expect(split.between, "a control stands between the two halves of one message").toEqual([]);
+});
