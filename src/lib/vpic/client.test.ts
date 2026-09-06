@@ -232,6 +232,37 @@ describe("decodeVin — fields", () => {
     expect(result.fields).not.toHaveProperty("Trim");
     expect(result.fields).not.toHaveProperty("Series");
   });
+
+  it("[M7] keeps a value that is not a string out of the record at all", async () => {
+    // §4.7: "every field is a string, and an empty one means unknown". Both halves of that
+    // sentence are one guard — `typeof value === "string" && value !== ""` — and only the
+    // second half was measured, because every synthetic response in this file is already
+    // all strings. `bun run mutate` forces the first half to `true` and survives.
+    //
+    // What the mutant admits is not cosmetic. `VpicResult.fields` is typed
+    // `Record<string, string>`, `applyDecodeResult` writes it onto the §5.1 record and the
+    // §4.8 sheet renders each value as it stands, so a JSON number under a §4.8 key would
+    // be shown as a fact of the vehicle and a `null` would render as the word "null" —
+    // N2, from the one source §4.7 calls authoritative. The type says it cannot happen;
+    // this is the boundary where the type stops being true, so the check belongs here and
+    // the test with it.
+    const fake = fakeFetch(
+      json({
+        Count: 1,
+        Message: "synthetic",
+        SearchCriteria: `VIN:${VIN}`,
+        // Deliberately off-contract, which is the whole point: a number, a null and a
+        // nested object where §4.7 promises strings.
+        Results: [{ ErrorCode: "0", Make: "HONDA", Model: "Accord", Doors: 4, Trim: null }],
+      }),
+    );
+    const { sleep } = recorder();
+
+    const result = await decodeVin(VIN, { fetchImpl: fake.impl, sleep });
+
+    expect(result.fields).toEqual({ ErrorCode: "0", Make: "HONDA", Model: "Accord" });
+    for (const value of Object.values(result.fields)) expect(typeof value).toBe("string");
+  });
 });
 
 describe("decodeVin — malformed responses", () => {
