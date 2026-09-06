@@ -158,11 +158,17 @@ export type ScanEventPayload = {
   origin: Exclude<VehicleOrigin, "cloud">;
 };
 
-/** §4.12 `upsert_vehicle_meta(p_vin, p_unit, p_notes, p_meta_updated_at, p_structural, p_decode)`. */
+/**
+ * §4.12 `upsert_vehicle_meta(p_vin, p_unit, p_notes, p_meta_updated_at, p_structural, p_decode)`,
+ * plus `p_paint` from `supabase/migrations/0002_paint_code.sql` (S5). The RPC's seventh
+ * argument carries a default, so a build older than S5 still lands its queued rows — PostgREST
+ * resolves these by name.
+ */
 export type VehicleMetaPayload = {
   p_vin: string;
   p_unit: string | null;
   p_notes: string | null;
+  p_paint: string | null;
   p_meta_updated_at: string;
   p_structural: VinStructural;
   p_decode: VehicleDecode;

@@ -53,6 +53,15 @@ function eventRow(overrides: Record<string, unknown> = {}): Record<string, unkno
 }
 
 describe("parseRemoteVehicle", () => {
+  it("reads the paint code, and reads a row from before the column as having none", () => {
+    // S5's column (migration 0002). An account that has not been migrated, or a row written
+    // by a build older than S5, simply has no `paint` key — which is null, the same value a
+    // record starts with, and never a rendered fact (N2).
+    expect(parseRemoteVehicle(vehicleRow({ paint: "NH-731P" }))?.paint).toBe("NH-731P");
+    expect(parseRemoteVehicle(vehicleRow())?.paint).toBeNull();
+    expect(parseRemoteVehicle(vehicleRow({ paint: 7 }))?.paint).toBeNull();
+  });
+
   it("reads a row §4.12 wrote", () => {
     expect(parseRemoteVehicle(vehicleRow())).toMatchObject({
       vin: VIN,

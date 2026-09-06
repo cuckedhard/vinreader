@@ -57,6 +57,7 @@ function remote(overrides: Partial<RemoteVehicle> = {}): RemoteVehicle {
     vin: VIN,
     unit: null,
     notes: null,
+    paint: null,
     metaUpdatedAt: T.mid,
     structural: null,
     decode: null,
@@ -153,6 +154,70 @@ describe("unit and notes — last writer wins by meta_updated_at (§4.12)", () =
       { currentYear: YEAR, pending: { ...NO_PENDING, metaUpdatedAt: T.mid } },
     );
     expect(merged?.unit).toBe("TRK-9");
+  });
+});
+
+describe("the paint code — the same LWW as unit and notes (§4.12, migration 0002)", () => {
+  it("takes the account's code when its clock is newer", () => {
+    const merged = mergeVehicle(
+      local({ paint: "NH-731P" }),
+      remote({ paint: "WA8555", metaUpdatedAt: T.late }),
+      { currentYear: YEAR },
+    );
+    expect(merged?.paint).toBe("WA8555");
+  });
+
+  it("keeps this device's code when its clock is newer, and on a tie", () => {
+    expect(
+      mergeVehicle(
+        local({ paint: "NH-731P", metaUpdatedAt: T.late }),
+        remote({ paint: "WA8555", metaUpdatedAt: T.early }),
+        { currentYear: YEAR },
+      )?.paint,
+    ).toBe("NH-731P");
+    expect(
+      mergeVehicle(local({ paint: "NH-731P" }), remote({ paint: "WA8555" }), {
+        currentYear: YEAR,
+      })?.paint,
+    ).toBe("NH-731P");
+  });
+
+  it("carries a clear, because clearing a wrong code has to propagate", () => {
+    // The reason this is LWW rather than "first non-empty wins": nothing downstream can
+    // detect a wrong paint code, so the human who deleted it is the only thing that knows
+    // it was wrong. A merge that could not carry the clear would resurrect it (N2).
+    expect(
+      mergeVehicle(local({ paint: "NH-731P" }), remote({ paint: null, metaUpdatedAt: T.late }), {
+        currentYear: YEAR,
+      })?.paint,
+    ).toBeNull();
+  });
+
+  it("keeps the local code while a newer vehicle_meta is still unpushed", () => {
+    const merged = mergeVehicle(
+      local({ paint: "NH-731P", metaUpdatedAt: T.early }),
+      remote({ paint: "WA8555", metaUpdatedAt: T.mid }),
+      { currentYear: YEAR, pending: { ...NO_PENDING, metaUpdatedAt: T.late } },
+    );
+    expect(merged?.paint).toBe("NH-731P");
+  });
+
+  it("gives a record born of a pull the code the account holds", () => {
+    expect(mergeVehicle(undefined, remote({ paint: "WA8555" }), { currentYear: YEAR })).toMatchObject(
+      { paint: "WA8555", origin: "cloud" },
+    );
+  });
+
+  it("cannot be moved by a scan, which never touches the meta clock", () => {
+    // `apply_scan_event` seeds the never-edited sentinel and the DO UPDATE leaves the clock
+    // alone, so a row the account has only ever seen scanned loses to a typed code however
+    // recent the scan is (D11).
+    const merged = mergeVehicle(
+      local({ paint: "NH-731P", metaUpdatedAt: T.mid }),
+      remote({ paint: null, metaUpdatedAt: "1970-01-01T00:00:00.000Z", lastScannedAt: T.late }),
+      { currentYear: YEAR },
+    );
+    expect(merged?.paint).toBe("NH-731P");
   });
 });
 

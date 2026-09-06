@@ -18,6 +18,7 @@ runtime. The CLI runs all of that locally in Docker, so you can develop against 
 | Path                         | What it is                                                                             |
 | ---------------------------- | -------------------------------------------------------------------------------------- |
 | `migrations/0001_init.sql`   | The entire schema: tables, indexes, RLS policies, triggers, RPCs (§4.12).              |
+| `migrations/0002_paint_code.sql` | S5: `vehicles.paint` (§4.9 `pc`) and the `p_paint` argument on `upsert_vehicle_meta`. |
 | `functions/delete-account/`  | The Edge Function that deletes an account. The only holder of the service-role key.    |
 | `config.toml`                | What `supabase start` brings up locally.                                               |
 | `tests/00_stub_supabase.sql` | Stubs `auth.users`, `auth.uid()` and the three roles so the tests run on any Postgres. |
@@ -95,7 +96,7 @@ The template has to include `{{ .Token }}`.
 ```bash
 supabase login                              # opens a browser, stores a token
 supabase link --project-ref <your-ref>      # the ref is in the dashboard URL and in Settings → General
-supabase db push                            # applies migrations/0001_init.sql to the hosted database
+supabase db push                            # applies everything in migrations/ to the hosted database
 supabase functions deploy delete-account    # deploys the Edge Function
 ```
 

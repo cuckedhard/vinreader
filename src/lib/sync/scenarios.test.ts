@@ -227,6 +227,56 @@ describe("two devices editing the same unit", () => {
   });
 });
 
+describe("a paint code typed on one device (§4.12, migration 0002)", () => {
+  it("reaches the account and comes back down to another device's record", async () => {
+    const engine = createSyncEngine(deps(), { currentYear: YEAR });
+    await scan(VIN);
+    await setVehicleMeta(VIN, { paint: "NH-731P" });
+    await engine.sync();
+
+    // It rode the `vehicle_meta` path — the one §4.12 already has for typed fields — so
+    // nothing new pushes it and the server row carries it in its own column.
+    expect(vehicle(VIN)?.paint).toBe("NH-731P");
+
+    // A second device: same account, empty database, one pull.
+    await db.vehicles.clear();
+    await db.outbox.clear();
+    await db.syncState.clear();
+    await pullOnce({ client, currentYear: YEAR });
+    expect((await db.vehicles.get(VIN))?.paint).toBe("NH-731P");
+  });
+
+  it("loses to the newer edit and keeps the newer of the two on a clear", async () => {
+    const engine = createSyncEngine(deps(), { currentYear: YEAR });
+    await scan(VIN);
+    await setVehicleMeta(VIN, { paint: "NH-731P" });
+    await engine.sync();
+
+    // Another device corrects it an hour later — someone stood at the sticker and read it
+    // again, which is the only kind of authority a paint code has.
+    const typed = Date.parse((await db.vehicles.get(VIN))!.metaUpdatedAt);
+    const later = new Date(typed + 60 * 60 * 1000).toISOString();
+    const laptop = createFakeClient(server, () => USER);
+    await laptop.rpc("upsert_vehicle_meta", {
+      p_vin: VIN,
+      p_unit: null,
+      p_notes: null,
+      p_paint: "WA8555",
+      p_meta_updated_at: later,
+      p_structural: {},
+      p_decode: {},
+    });
+
+    await engine.sync();
+    expect(vehicle(VIN)?.paint).toBe("WA8555");
+    expect((await db.vehicles.get(VIN))?.paint).toBe("WA8555");
+
+    // And the correction settles: a second cycle does not hand the old code back.
+    await engine.sync();
+    expect((await db.vehicles.get(VIN))?.paint).toBe("WA8555");
+  });
+});
+
 describe("a delete followed by a re-scan", () => {
   it("leaves the record alive on both sides", async () => {
     const engine = createSyncEngine(deps(), { currentYear: YEAR });

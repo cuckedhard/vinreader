@@ -416,6 +416,77 @@ begin
 end $$;
 
 -- ---------------------------------------------------------------------------------------------
+-- paint: the same last-writer-wins as unit and notes (S5, migration 0002)
+-- ---------------------------------------------------------------------------------------------
+
+-- NOT RUN where it was written. The environment that produced migration 0002 has no Docker
+-- daemon and no reachable Postgres, so this section has never executed; it is the server half of
+-- the client cases in src/lib/sync/merge.test.ts, and running it is how the pair gets checked.
+--
+-- A VIN of its own (§4.11's Volvo), so nothing above depends on the state left here.
+
+select public.upsert_vehicle_meta('4V4NC9TJ98N412345', 'UNIT-PAINT', null,
+       '2026-09-07T12:00:00-07:00', null, null, 'NH-731P');
+
+do $$
+declare v public.vehicles%rowtype;
+begin
+  select * into v from public.vehicles where vin = '4V4NC9TJ98N412345';
+  perform public.t_assert(v.paint = 'NH-731P', 'the first paint code did not land');
+end $$;
+
+-- An older edit loses, exactly as it does for unit and notes — carrying a code changes nothing.
+select public.upsert_vehicle_meta('4V4NC9TJ98N412345', 'UNIT-PAINT', null,
+       '2026-09-06T18:00:00-07:00', null, null, 'WA8555');
+
+do $$
+begin
+  perform public.t_assert(
+    (select paint from public.vehicles where vin = '4V4NC9TJ98N412345') = 'NH-731P',
+    'an older edit overwrote the paint code');
+end $$;
+
+-- A newer edit wins: someone stood at the sticker and read it again.
+select public.upsert_vehicle_meta('4V4NC9TJ98N412345', 'UNIT-PAINT', null,
+       '2026-09-08T12:00:00-07:00', null, null, 'WA8555');
+
+do $$
+begin
+  perform public.t_assert(
+    (select paint from public.vehicles where vin = '4V4NC9TJ98N412345') = 'WA8555',
+    'a newer edit did not replace the paint code');
+end $$;
+
+-- A scan is still not an edit, so it cannot touch the code however recent it is (§4.12, D11).
+insert into public.scan_events (id, user_id, vin, at, symbology, check_digit_valid, origin)
+values ('cccccccc-0000-4000-8000-000000000010', :'uid_c', '4V4NC9TJ98N412345',
+        '2026-09-09T12:00:00-07:00', 'code_39', true, 'scan');
+
+do $$
+declare v public.vehicles%rowtype;
+begin
+  select * into v from public.vehicles where vin = '4V4NC9TJ98N412345';
+  perform public.t_assert(v.paint = 'WA8555', 'a scan changed the paint code');
+  perform public.t_assert(v.meta_updated_at = '2026-09-08T12:00:00-07:00'::timestamptz,
+    'a scan moved the meta clock the paint code is resolved by');
+end $$;
+
+-- And the six-argument call an app build from before S5 makes still resolves, because `p_paint`
+-- carries a default. It lands with the column null, which is the hazard §4.12 already accepts
+-- for unit and notes: a device pushes the record as *it* knows it, and its clock can carry a
+-- value the account had newer information about.
+select public.upsert_vehicle_meta('4V4NC9TJ98N412345', 'UNIT-OLD-BUILD', null,
+       '2026-09-10T12:00:00-07:00', null, null);
+
+do $$
+declare v public.vehicles%rowtype;
+begin
+  select * into v from public.vehicles where vin = '4V4NC9TJ98N412345';
+  perform public.t_assert(v.unit = 'UNIT-OLD-BUILD', 'a six-argument call did not resolve');
+  perform public.t_assert(v.paint is null, 'the default for p_paint is not null');
+end $$;
+
+-- ---------------------------------------------------------------------------------------------
 -- delete_my_data, and the cascade behind the delete-account Edge Function
 -- ---------------------------------------------------------------------------------------------
 

@@ -192,9 +192,7 @@ export function mergeVehicle(
       decode: betterDecode(pendingDecode(), remote.decode),
       unit: remote.unit,
       notes: remote.notes,
-      // §5.1 `paint` is local-only until the account has a column to carry it; a record
-      // born of a pull therefore starts with none, which is what every record starts with.
-      paint: null,
+      paint: remote.paint,
       // The server's aggregates are all this device knows; `apply_scan_event` leaves them
       // null only for a row born of `upsert_vehicle_meta`, whose meta clock is the one
       // timestamp such a row does carry.
@@ -218,6 +216,10 @@ export function mergeVehicle(
     //  else vehicles.unit end`, and the same for `notes`.
     unit: takeRemoteMeta ? remote.unit : local.unit,
     notes: takeRemoteMeta ? remote.notes : local.notes,
+    // `paint = case when excluded.meta_updated_at > vehicles.meta_updated_at then
+    //  excluded.paint else vehicles.paint end` (migration 0002) — the same clock and the
+    //  same comparison, so a clear propagates and a tie keeps this device's value.
+    paint: takeRemoteMeta ? remote.paint : local.paint,
     // `meta_updated_at = greatest(vehicles.meta_updated_at, excluded.meta_updated_at)`.
     metaUpdatedAt: latest(local.metaUpdatedAt, remote.metaUpdatedAt) ?? local.metaUpdatedAt,
     // §4.12: first = min, last = max.

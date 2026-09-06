@@ -43,6 +43,7 @@ function remote(over: Partial<RemoteVehicle> = {}): RemoteVehicle {
     vin: VIN,
     unit: "SERVER-UNIT",
     notes: "server notes",
+    paint: null,
     metaUpdatedAt: T2,
     structural: null,
     decode: null,

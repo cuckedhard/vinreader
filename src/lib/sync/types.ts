@@ -97,6 +97,12 @@ export interface RemoteVehicle {
   vin: string;
   unit: string | null;
   notes: string | null;
+  /**
+   * §4.9 `pc` on the server (migration 0002). Null both when nobody has typed one and when
+   * the account has not been migrated yet — the same answer either way, and the honest one:
+   * this device has not been told of a paint code.
+   */
+  paint: string | null;
   metaUpdatedAt: string;
   /**
    * The server's `structural` jsonb, or null when it holds `'{}'`. It is deliberately not

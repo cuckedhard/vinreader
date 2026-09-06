@@ -109,6 +109,7 @@ export function parseRemoteVehicle(row: Record<string, unknown>): RemoteVehicle 
     vin,
     unit: text(row.unit),
     notes: text(row.notes),
+    paint: text(row.paint),
     metaUpdatedAt,
     // Emptiness is the only thing §4.12 merges `structural` by; see `RemoteVehicle`.
     structural: (() => {

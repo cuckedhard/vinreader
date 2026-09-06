@@ -40,6 +40,8 @@ export interface ServerVehicleRow {
   vin: string;
   unit: string | null;
   notes: string | null;
+  /** S5's column, from `supabase/migrations/0002_paint_code.sql`. */
+  paint: string | null;
   meta_updated_at: string;
   structural: Record<string, unknown>;
   decode: Record<string, unknown>;
@@ -182,6 +184,8 @@ export class FakeServer {
           vin: event.vin,
           unit: null,
           notes: null,
+          // A scan carries no paint code and `apply_scan_event` names no such column.
+          paint: null,
           // The quirk §4.12 owns: a scan seeds the LWW clock for unit and notes.
           meta_updated_at: event.at,
           structural: {},
@@ -268,6 +272,9 @@ export class FakeServer {
     const decode = (args.p_decode as Record<string, unknown> | null) ?? {};
     const unit = (args.p_unit as string | null) ?? null;
     const notes = (args.p_notes as string | null) ?? null;
+    // Migration 0002 gives `p_paint` a default, so a caller from before S5 omits it and the
+    // column stays null — which is what that build knows.
+    const paint = (args.p_paint as string | null) ?? null;
 
     const existing = this.vehicles.get(this.key(userId, vin));
     if (existing === undefined) {
@@ -277,6 +284,7 @@ export class FakeServer {
           vin,
           unit,
           notes,
+          paint,
           meta_updated_at: incomingMeta,
           structural,
           decode,
@@ -294,6 +302,7 @@ export class FakeServer {
     const wins = newer(incomingMeta, existing.meta_updated_at);
     existing.unit = wins ? unit : existing.unit;
     existing.notes = wins ? notes : existing.notes;
+    existing.paint = wins ? paint : existing.paint;
     existing.meta_updated_at = greatest(existing.meta_updated_at, incomingMeta) ?? incomingMeta;
     existing.structural =
       Object.keys(existing.structural).length === 0 ? structural : existing.structural;

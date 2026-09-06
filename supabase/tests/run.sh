@@ -4,7 +4,7 @@
 #
 #   supabase/tests/run.sh                       # the local `supabase start` database
 #   supabase/tests/run.sh "$DATABASE_URL"       # any database that already has 0001_init.sql
-#   supabase/tests/run.sh --bootstrap "$URL"    # ... and apply 0001_init.sql first (empty db, CI)
+#   supabase/tests/run.sh --bootstrap "$URL"    # ... and apply migrations/ first (empty db, CI)
 #
 # Needs `psql` on PATH and nothing else — no Docker, no pgTAP, no Supabase CLI. Each test file is
 # one transaction ending in ROLLBACK, so running this against a live development project changes
@@ -38,8 +38,11 @@ run() { psql -v ON_ERROR_STOP=1 -q -f "$1" "$db_url"; }
 # Idempotent, and a no-op against a real Supabase project: it only creates what is missing.
 run "$here/00_stub_supabase.sql"
 
+# Every migration, in filename order — which is the order `supabase db push` applies them in.
+# It was `0001_init.sql` by name until S5 added `0002_paint_code.sql`, and a bootstrap that
+# names one file silently stops covering the schema the moment a second one exists.
 if [ "$bootstrap" -eq 1 ]; then
-  run "$here/../migrations/0001_init.sql"
+  for migration in "$here"/../migrations/*.sql; do run "$migration"; done
 fi
 
 run "$here/10_rls_test.sql"

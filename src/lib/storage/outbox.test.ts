@@ -107,7 +107,9 @@ describe("§4.12 payloads — an outbox row is the push call's argument, already
   });
 
   it("carries the upsert_vehicle_meta arguments, named as §4.12 names them", async () => {
-    const record = await upsertVehicle(scan({ at: T1, unit: "TRK-118", notes: "spare key" }));
+    const record = await upsertVehicle(
+      scan({ at: T1, unit: "TRK-118", notes: "spare key", paint: "NH-731P" }),
+    );
     const row = vehicleMetaRow(record);
 
     expect(row.kind).toBe("vehicle_meta");
@@ -115,6 +117,9 @@ describe("§4.12 payloads — an outbox row is the push call's argument, already
       p_vin: VIN,
       p_unit: "TRK-118",
       p_notes: "spare key",
+      // S5: `upsert_vehicle_meta` gained `p_paint` in migration 0002. It rides the meta
+      // path rather than a new one — a paint code is typed, like a unit and a note.
+      p_paint: "NH-731P",
       p_meta_updated_at: record.metaUpdatedAt,
       p_structural: record.structural,
       p_decode: record.decode,

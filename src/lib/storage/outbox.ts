@@ -111,6 +111,7 @@ export function vehicleMetaRow(record: VehicleRecord): OutboxRow {
       p_vin: record.vin,
       p_unit: record.unit,
       p_notes: record.notes,
+      p_paint: record.paint,
       p_meta_updated_at: record.metaUpdatedAt,
       p_structural: record.structural,
       p_decode: record.decode,
