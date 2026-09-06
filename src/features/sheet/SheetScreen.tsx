@@ -41,6 +41,13 @@ const DECODE_FAILED = "Couldn't reach NHTSA after several tries. Tap Refresh det
 const PAINT_LABEL = "Paint code";
 const PAINT_HINT =
   "Typed in from the paint sticker. The VIN doesn't carry it and NHTSA doesn't publish it.";
+/**
+ * Layer 2's way in. It names the camera and not a place on the car: S5 addendum §3 records
+ * that "point at the door jamb" is wrong for a meaningful fraction of vehicles — VW and
+ * Audi use the trunk or the spare-wheel well, GM legacy the glovebox — and the capture
+ * screen says so itself.
+ */
+const PAINT_CAPTURE = "Read it with the camera";
 
 /** §4.4: with a vPIC `ModelYear` on screen, the structural year row is dropped, not rewritten. */
 const NO_STRUCTURAL_YEAR: ModelYear = { candidates: [], resolved: null };
@@ -128,6 +135,7 @@ function DecodeSection({ record }: { record: VehicleRecord }) {
 }
 
 function MetaEditor({ record }: { record: VehicleRecord }) {
+  const navigate = useNavigate();
   const [unit, setUnit] = useState(record.unit ?? "");
   const [paint, setPaint] = useState(record.paint ?? "");
   const [notes, setNotes] = useState(record.notes ?? "");
@@ -216,6 +224,15 @@ function MetaEditor({ record }: { record: VehicleRecord }) {
         <p id="sheet-paint-hint" className="text-base leading-snug text-fg-muted">
           {PAINT_HINT}
         </p>
+        {/*
+         * Layer 2 pre-fills this field and replaces nothing: the capture screen ends at a
+         * person confirming, and the confirmed string is saved through the same
+         * `setVehicleMeta` the box above uses (§5, N2). Secondary, because the field is
+         * the primary route and OCR is the shortcut — and because a paint code is optional.
+         */}
+        <Button variant="secondary" onClick={() => void navigate(`/v/${record.vin}/paint`)}>
+          {PAINT_CAPTURE}
+        </Button>
       </div>
 
       <div className="flex flex-col gap-2">

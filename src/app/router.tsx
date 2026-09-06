@@ -4,6 +4,7 @@ import { Shell } from "./Shell";
 import { defaultRoutePath, isWideViewport } from "./viewport";
 import ScanScreen from "../features/scan/ScanScreen";
 import SheetScreen from "../features/sheet/SheetScreen";
+import PaintCaptureScreen from "../features/paint/PaintCaptureScreen";
 import HistoryScreen from "../features/history/HistoryScreen";
 import SettingsScreen from "../features/settings/SettingsScreen";
 import ImportScreen from "../features/import/ImportScreen";
@@ -38,6 +39,9 @@ export function AppRoutes() {
         <Route index element={<DefaultRoute />} />
         <Route path="scan" element={<ScanScreen />} />
         <Route path="v/:vin" element={<SheetScreen />} />
+        {/* §6.2 (S5 layer 2). A pushed screen off the Sheet with its own camera session —
+            never a second decoder on the ZXing stream (N1/P1). */}
+        <Route path="v/:vin/paint" element={<PaintCaptureScreen />} />
         <Route path="history" element={<HistoryScreen />} />
         <Route path="settings" element={<SettingsScreen />} />
         {/* §6.2 handoff receiver: `/#/i?d=<base64url>` from a QR or a link. */}
