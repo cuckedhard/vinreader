@@ -402,7 +402,7 @@ Edge Function `delete-account`: verifies the caller's JWT, deletes the auth user
 
 **Merge rules (identical on server and client):**
 - `unit`, `notes`: last-writer-wins by `meta_updated_at` (device clock at edit time, ISO 8601 with offset). Ties keep the existing value.
-- `meta_updated_at` moves **only on a unit or notes edit**, on both sides, and a scan never moves it in either direction. A row that has only ever been scanned carries the never-edited sentinel `1970-01-01T00:00:00.000Z`, so it loses every LWW comparison to a real edit however old that edit is. Seeding it from the scan clock instead destroys typed data with nothing to report it: a unit typed on device A at 10:01 while offline loses to device B's 12:00 scan of the same VIN, A's 13:00 push is rejected as stale, and A's next pull erases the unit locally too. The client-side rule below cannot cover that case — by the clock A's edit really is older, because the clock was moved by something that was not an edit.
+- `meta_updated_at` moves **only on a unit, notes or paint-code edit**, on both sides, and a scan never moves it in either direction. A row that has only ever been scanned carries the never-edited sentinel `1970-01-01T00:00:00.000Z`, so it loses every LWW comparison to a real edit however old that edit is — which is why a write that lands the first paint code must move the clock too, or a typed code would sync carrying the sentinel and lose to every scan. Seeding it from the scan clock instead destroys typed data with nothing to report it: a unit typed on device A at 10:01 while offline loses to device B's 12:00 scan of the same VIN, A's 13:00 push is rejected as stale, and A's next pull erases the unit locally too. The client-side rule below cannot cover that case — by the clock A's edit really is older, because the clock was moved by something that was not an edit.
 - `decode`: rank `ok` 3 > `partial` 2 > `unsupported` 1 > `pending`/`failed` 0. Higher rank wins; equal rank → newer `fetchedAt`.
 - `structural`: first non-empty wins (it is deterministic per VIN anyway).
 - `first_scanned_at` = min, `last_scanned_at` = max, `scan_count` = number of events. Derived only; clients never push them.
@@ -411,7 +411,7 @@ Edge Function `delete-account`: verifies the caller's JWT, deletes the auth user
 **Client protocol:**
 - Every local write in the S0–S3 paths (scan, manual, import, unit/notes edit, delete) also appends an outbox row (§5.7). Push in insertion order, batches of 50 per kind: `scan_event` → `from("scan_events").upsert(rows, { onConflict: "id", ignoreDuplicates: true })` · `vehicle_meta` → `rpc("upsert_vehicle_meta", …)` · `vehicle_delete` → `rpc("delete_vehicle", …)`. Remove on success. On failure back off 5 s → 30 s → 2 min → 10 min cap, attempts persisted, never dropped.
 - Pull after every successful push and on: sign-in, app start, `online`, tab becomes visible, a realtime notification, and every 5 min while visible. `vehicles where updated_at >= cursor`, `scan_events where inserted_at >= cursor`, pages of 500, dedupe by key, cursor = max timestamp received (§5.8).
-- Apply pulled rows with the merge rules. A local vehicle that still has an unpushed `vehicle_meta` newer than the server's `meta_updated_at` keeps its local unit/notes until pushed.
+- Apply pulled rows with the merge rules. A local vehicle that still has an unpushed `vehicle_meta` newer than the server's `meta_updated_at` keeps its local unit, notes and paint code until pushed.
 - Realtime: `postgres_changes` on `vehicles` filtered `user_id=eq.<uid>`. The event is only a signal to pull; it is never applied directly (one apply path).
 - Locked names: `vehicles`, `scan_events`, `upsert_vehicle_meta`, `delete_vehicle`, `delete_my_data`, `delete-account`.
 
@@ -726,7 +726,7 @@ History becomes a table (VIN · Year · Make · Model · Unit · Last scanned ·
 - **Heavy-truck model-year ambiguity** (§4.4) is real and must stay visible until vPIC resolves it (N2).
 - **Handoff URL size** vs. QR readability on a phone screen — the 700-byte cap is the guard.
 - **The hardening loop can only be as good as this spec.** Agents converge on *conformance*, not on truth: a wrong constant or a missing state passes every gate. That is why `harden spec` exists and why constants are human-only.
-- **Clock skew between devices** decides unit/notes conflicts (last-writer-wins, §4.12). Rare and visible — the later edit shows — acceptable for v1; the adversary tests it.
+- **Clock skew between devices** decides unit, notes and paint-code conflicts (last-writer-wins, §4.12). Rare and visible — the later edit shows — acceptable for v1; the adversary tests it.
 - **Sign-in codes arrive by email**, which can be slow on a weak link. The screen tolerates delay and offers resend after 30 s; nothing else in the app waits on it.
 - **Shared phones.** "Sign out & clear this phone" exists for exactly this reason; it must be obvious, not buried.
 - **iOS clipboard** only allows the write inside the tap gesture (§6.5). Any refactor that adds an `await` before `writeText` breaks copy on iPhone silently.
