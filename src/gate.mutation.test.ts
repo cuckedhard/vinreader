@@ -22,6 +22,7 @@ const CONFIG = fileURLToPath(new URL("../stryker.config.json", import.meta.url))
 const config = JSON.parse(readFileSync(CONFIG, "utf8")) as {
   ignorePatterns: string[];
   mutate: string[];
+  disableTypeChecks: string;
 };
 
 /** A negation in `mutate` narrows what is *mutated*; `ignorePatterns` narrows what *runs*. */
@@ -33,4 +34,21 @@ it("[TA6] no source or test file under src/ is kept out of the mutation sandbox"
 
 it("[SB-9] §5.1's nowIso is scored with db.test.ts running, not against it", () => {
   expect(excludedPaths).not.toContain("src/lib/storage/db.test.ts");
+});
+
+/**
+ * [S5-M] And Stryker rewrites what it copies. `disableTypeChecks` defaults to `true`, which
+ * prepends `// @ts-nocheck` to every JavaScript-and-friends file in the sandbox — vendored
+ * ones included. `public/ocr/` holds four files of self-hosted OCR engine that
+ * `assets.generated.ts` describes by size and digest, and sixteen extra bytes at the top of
+ * one of them is a dry-run failure, which is not a low mutation score but no score at all.
+ * Measured before it was scoped: `tesseract.esm.min.js: expected 63220 bytes, got 63236`.
+ */
+it("[S5-M] the vendored OCR engine is not rewritten on its way into the sandbox", () => {
+  expect(config.disableTypeChecks, "a boolean here covers every file, vendored or not").toEqual(
+    expect.any(String),
+  );
+  const covered = config.disableTypeChecks.split("{")[1]?.split("}")[0]?.split(",") ?? [];
+  expect(covered).not.toContain("public");
+  expect(covered.length, "the pattern names the directories it applies to").toBeGreaterThan(0);
 });

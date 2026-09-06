@@ -6,6 +6,8 @@
     "configFile": "vitest.stryker.config.ts"
   },
   "coverageAnalysis": "perTest",
+  "_disableTypeChecks_comment": "S5 layer 2. Stryker's default is `true`, which prepends `// @ts-nocheck` to every JavaScript-and-friends file it copies into the sandbox — including `public/ocr/`, four vendored files of the self-hosted OCR engine. Sixteen bytes into `tesseract.esm.min.js` is sixteen bytes the digest in `assets.generated.ts` does not describe, so every asset assertion fails in the dry run and no mutation score can be produced for anything. Measured: `tesseract.esm.min.js: expected 63220 bytes, got 63236`. The pattern below is the projects own source, which is all Stryker ever instruments.",
+  "disableTypeChecks": "{src,tests,scripts,bench}/**/*.{js,ts,tsx,mjs,cjs}",
   "mutate": [
     "src/lib/**/*.ts",
     "src/features/scan/scanMachine.ts",
