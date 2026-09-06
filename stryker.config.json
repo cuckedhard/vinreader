@@ -14,7 +14,7 @@
     "!src/lib/**/*.testutil.ts",
     "!src/lib/vin/types.ts"
   ],
-  "_ignoreComment": "src/lib/storage/db.test.ts is excluded because it cannot run here, not because it is unwanted: 5 of its 7 tests set process.env.TZ at runtime, which only moves the clock under vitest's default `forks` pool. Stryker's vitest runner hard-codes `pool: threads, maxWorkers: 1` for vitest >= 4.1.0, where process.env.TZ is inert, so those tests fail the dry run and no score can be produced at all. Consequence: src/lib/storage/db.ts's nowIso offset arithmetic is measured without its own test and its survivors are NOT gaps. Delete this entry the moment db.test.ts stops depending on the pool. See ledger A23-c.",
+  "_ignoreComment": "TA6/SB-9 (§13.5). `ignorePatterns` keeps build output and fixtures out of the sandbox and nothing else: no file under src/ belongs here. Excluding a test file does not exclude the source it covers, so every such entry scores that source with its own test switched off and reports the survivors as gaps. src/lib/storage/db.test.ts was listed while it moved the clock with process.env.TZ, which is inert under the `threads` pool Stryker's vitest runner pins; A23-a replaced that with a stubbed Date, the file passes under `--pool=threads`, and the entry is gone. src/gate.mutation.test.ts holds the line.",
   "ignorePatterns": [
     "dist",
     "dev-dist",
@@ -23,8 +23,7 @@
     "playwright-report",
     "bench/corpus",
     "bench/*.y4m",
-    "supabase/.temp",
-    "src/lib/storage/db.test.ts"
+    "supabase/.temp"
   ],
   "concurrency": 3,
   "timeoutMS": 20000,
