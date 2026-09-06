@@ -112,3 +112,58 @@ test("[R2-02] a scanned carrier the app cannot read is not swallowed", async ({ 
   });
   expect(rows).toBe(0);
 });
+
+/**
+ * [R3-F1] The rejection has to be *on the screen*, not merely in the document.
+ *
+ * The test above passed while the banner had zero visible pixels: the machine stays
+ * `streaming` for a refused carrier, so the preview keeps its full height and pushes the
+ * banner past the fold, and Playwright's `isVisible()` — which asks about layout, not about
+ * an ancestor's scroll clip — said `true` anyway. Measured at 360×640: `main.clientHeight`
+ * 583, the alert 594→766, **0 visible pixels**, "Keep scanning" 0 of 48, and
+ * `elementFromPoint` at the fold returning the scan section behind it. All the user saw was
+ * the live QR under "Point at the barcode…", which is the silent refusal R2-02 was raised to
+ * end (P7).
+ *
+ * So this measures the clip, not the layout, and it measures the phone that shows the fault.
+ */
+test("[R3-F1] the rejection is on screen on a small phone, with its way out", async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 640 }); // §6.1's floor of a phone.
+  await page.goto("/#/scan");
+  await expect(page.getByRole("alert")).toBeVisible({ timeout: 20_000 });
+
+  const seen = await page.evaluate(() => {
+    const main = document.querySelector("main");
+    const alert = document.querySelector("[role=alert]");
+    if (!(main instanceof HTMLElement) || !(alert instanceof HTMLElement)) {
+      throw new Error("no scan screen");
+    }
+    const fold = main.getBoundingClientRect();
+    const visibleIn = (el: Element) => {
+      const box = el.getBoundingClientRect();
+      return Math.max(0, Math.min(box.bottom, fold.bottom) - Math.max(box.top, fold.top));
+    };
+    const keep = Array.from(document.querySelectorAll("button")).find(
+      (b) => (b.textContent ?? "").trim() === "Keep scanning",
+    );
+    if (keep === undefined) throw new Error("no way out of the rejection");
+    const box = keep.getBoundingClientRect();
+    const under = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+    return {
+      message: alert.textContent ?? "",
+      alertVisible: Math.round(visibleIn(alert)),
+      alertHeight: Math.round(alert.getBoundingClientRect().height),
+      keepVisible: Math.round(visibleIn(keep)),
+      keepHeight: Math.round(box.height),
+      keepReachable: keep.contains(under),
+    };
+  });
+
+  // The whole banner, not a sliver of it: this is the only thing on the screen that says why.
+  expect(seen.message).toContain("version 2");
+  expect(seen.alertVisible).toBe(seen.alertHeight);
+  // §6.4's way out is a target a thumb can hit, which means the thumb has to be able to
+  // land on it (§6.1).
+  expect(seen.keepVisible).toBe(seen.keepHeight);
+  expect(seen.keepReachable).toBe(true);
+});

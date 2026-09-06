@@ -128,6 +128,20 @@ export function ScanScreen() {
     setMode("manual");
   }, [dismiss]);
 
+  // R3-F1: the machine stays `streaming` for a refused carrier, so the preview keeps its
+  // full height and the banner opens below the fold — 0 visible pixels of it at 360x640,
+  // and 0 of "Keep scanning", while the live QR under "Point at the barcode…" was all the
+  // user could see. That is the silent refusal §6.4 owes an answer to (P7), so the banner
+  // is scrolled to where it can be read. The same move F8 made for the armed delete, for
+  // the same reason, and `block: "nearest"` scrolls the least it can: a screen tall enough
+  // to hold the banner already does not move. The camera is not stopped, hidden or shrunk —
+  // it is still streaming and still decoding, because a scan is never blocked (N1/P1).
+  const carrierRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (carrierError === null) return;
+    carrierRef.current?.scrollIntoView({ block: "nearest" });
+  }, [carrierError]);
+
   const showCamera = useCallback(() => {
     setCarrierError(null);
     setMode("camera");
@@ -162,17 +176,19 @@ export function ScanScreen() {
           />
 
           {carrierError !== null ? (
-            <Banner
-              tone="warn"
-              title="Couldn't read that code"
-              actions={
-                <Button variant="secondary" onClick={() => setCarrierError(null)}>
-                  Keep scanning
-                </Button>
-              }
-            >
-              {carrierError}
-            </Banner>
+            <div ref={carrierRef}>
+              <Banner
+                tone="warn"
+                title="Couldn't read that code"
+                actions={
+                  <Button variant="secondary" onClick={() => setCarrierError(null)}>
+                    Keep scanning
+                  </Button>
+                }
+              >
+                {carrierError}
+              </Banner>
+            </div>
           ) : null}
 
           {pending !== null ? (
