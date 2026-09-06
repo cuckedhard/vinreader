@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { toCanvas } from "qrcode";
 import { groupVin } from "../lib/vin/grammar";
+import { VinDisplay } from "./VinDisplay";
 
 export interface QrViewProps {
   /** The string the code carries — for handoff, the §4.9 URL carrier. */
@@ -374,12 +375,16 @@ export function QrView({ value, vin, note, onClose }: QrViewProps) {
           the padding at once; there the overlay scrolls rather than shrinking either one.
         */}
         <div className="flex w-full max-w-[520px] min-w-[var(--tap)] flex-col items-center gap-4 landscape:flex-1">
-          <p
-            className="max-w-full text-center font-vin text-[18px] font-semibold break-words"
+          {/* §6.1's VIN display, from the one component that knows what that means: this is
+              where a second person reads the number off the screen to key it in, and it used
+              to be 18 px with no letter-spacing at all (R3-F6). The ink is a value, not a
+              token, because this surface is paper for a camera — hence `style`. */}
+          <VinDisplay
+            vin={vin}
+            size="lg"
+            className="max-w-full text-center break-words"
             style={{ color: INK }}
-          >
-            {groupVin(vin)}
-          </p>
+          />
 
           {note !== undefined ? (
             <p className="max-w-full text-center text-sm leading-snug" style={{ color: INK }}>

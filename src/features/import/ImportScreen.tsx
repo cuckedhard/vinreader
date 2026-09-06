@@ -237,7 +237,7 @@ function PreviewRow({ item }: { item: ImportItem }) {
       {headline !== null ? (
         <p className="text-base leading-tight font-bold text-fg">{headline}</p>
       ) : null}
-      <VinDisplay vin={item.vin} size="md" className="block break-words" />
+      <VinDisplay vin={item.vin} size="lg" className="block break-words" />
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-base text-fg-muted">
         {item.unit !== null ? <span className="font-bold text-fg">{item.unit}</span> : null}
         {checkDigitMismatch(item.vin) ? <Chip tone="warn">Check digit mismatch</Chip> : null}
@@ -272,7 +272,7 @@ function PreviewCard({
           {/* §6.4, verbatim shape: "Import 2003 HONDA Accord · 1HG CM826 3 3 A 004352?" */}
           <h2 id="import-preview" className="text-lg leading-snug font-bold text-fg">
             Import{headline === null ? "" : ` ${headline} ·`}{" "}
-            <VinDisplay vin={single.vin} size="md" className="break-words" />?
+            <VinDisplay vin={single.vin} size="lg" className="break-words" />?
           </h2>
           <Details item={single} />
         </>

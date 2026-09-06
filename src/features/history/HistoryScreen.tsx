@@ -64,7 +64,9 @@ function RowBody({ record, nowMs }: { record: VehicleRecord; nowMs: number }) {
     <>
       {/* N2: an ambiguous year leaves this line to the make and model, or drops it. */}
       {title !== null ? <p className="text-lg leading-tight font-bold text-fg">{title}</p> : null}
-      <VinDisplay vin={record.vin} size="md" className="block break-words" />
+      {/* §6.1's ≥ 28 px is about the phone, and this list is the phone (R3-F6). The §6.6
+          table is the other layout, at a width no phone has. */}
+      <VinDisplay vin={record.vin} size="lg" className="block break-words" />
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-base text-fg-muted">
         {record.unit ? <span className="font-bold text-fg">{record.unit}</span> : null}
         <time dateTime={record.lastScannedAt}>{formatScannedAt(record.lastScannedAt, nowMs)}</time>
