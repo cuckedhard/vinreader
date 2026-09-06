@@ -75,6 +75,19 @@ describe("shareText — the §4.9 block", () => {
     );
   });
 
+  it("keeps the paint code out of the text, as §4.9 keeps it out of this block", () => {
+    // Decided from the spec, not from taste. §4.9 fixes this block line by line and its
+    // last line ends at "VIN Relay"; the amendment that added `pc` on 2026-09-06 changed
+    // the JSON field list and the drop order and left the share text exactly as it was.
+    // Adding a line here would be re-deriving a §4 constant (rule 2), and the summary is
+    // §6.5's "Summary" button and the text `parseShareTextVin` reads back — a sixth line
+    // would change both. The paint code travels in the payload beside it, which is what
+    // Share attaches and what Copy link carries.
+    const text = shareText(example({ paint: "NH-731P" }));
+    expect(text).not.toContain("NH-731P");
+    expect(text.split("\n")).toHaveLength(5);
+  });
+
   it("keeps the device label out of the text (§4.9 carries it in the payload's `by`)", () => {
     expect(shareText(example())).toBe(shareText(example()));
   });

@@ -97,9 +97,11 @@ test("exports every saved record as a JSON bundle and as CSV", async ({ page }) 
   const csv = await csvDownload;
   const text = await (await csv.createReadStream())!.toArray().then((c) => c.join(""));
   const [header, first] = text.split("\r\n");
+  // §9-S3's seventeen columns in their fixed order, then S5's `paint` appended — every
+  // earlier column keeps the index a spreadsheet built on an older export expects.
   expect(header).toBe(
     "vin,year,make,model,trim,body,engine,fuel,drive,gvwr,plant,unit,notes," +
-      "firstScannedAt,lastScannedAt,scanCount,decodeStatus",
+      "firstScannedAt,lastScannedAt,scanCount,decodeStatus,paint",
   );
   expect(first).toContain(VIN);
 });

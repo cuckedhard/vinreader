@@ -44,6 +44,14 @@ describe("toTsv", () => {
     expect(toTsv([])).toBe(CSV_COLUMNS.join("\t"));
   });
 
+  it("carries the paint code into §6.5's tab-separated formats too", () => {
+    // The TSV is the CSV in another delimiter (§6.5), so this is the same column reached
+    // through the other two copy buttons: History's "Copy TSV" and the Sheet's "Copy row".
+    const line = toTsvRow(makeRecord({ paint: "NH-731P" }));
+    expect(line.split("\t")[CSV_COLUMNS.indexOf("paint")]).toBe("NH-731P");
+    expect(toTsv([makeRecord({ paint: "NH-731P" })]).split("\r\n")[1]).toContain("NH-731P");
+  });
+
   it("writes one line per record and one cell per column", () => {
     const lines = toTsv([makeRecord(), makeRecord({ vin: OTHER_VIN })]).split("\r\n");
     expect(lines).toHaveLength(3);

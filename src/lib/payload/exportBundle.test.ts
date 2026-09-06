@@ -180,7 +180,40 @@ describe("toCsv — header and columns", () => {
       AT,
       "3",
       "ok",
+      "",
     ]);
+  });
+
+  it("gives the paint code a column, after every column §9-S3 fixed", () => {
+    // §9-S3 names seventeen columns in this order; S5 adds an eighteenth. It is appended
+    // rather than filed beside `unit` and `notes` so that every existing column keeps its
+    // index: a CSV pasted into a sheet somebody already built still lands where it did.
+    expect(CSV_COLUMNS.slice(0, -1)).toEqual([
+      "vin",
+      "year",
+      "make",
+      "model",
+      "trim",
+      "body",
+      "engine",
+      "fuel",
+      "drive",
+      "gvwr",
+      "plant",
+      "unit",
+      "notes",
+      "firstScannedAt",
+      "lastScannedAt",
+      "scanCount",
+      "decodeStatus",
+    ]);
+    expect(CSV_COLUMNS[CSV_COLUMNS.length - 1]).toBe("paint");
+    expect(cell(toCsv([makeRecord({ paint: "NH-731P" })]), "paint")).toBe("NH-731P");
+  });
+
+  it("leaves the paint cell empty for a record nobody typed one into", () => {
+    // N2, as everywhere else: an empty cell, never a dash and never "unknown".
+    expect(cell(toCsv([makeRecord({ paint: null })]), "paint")).toBe("");
   });
 
   it("leaves unknown vPIC values empty and falls back to the structural year", () => {

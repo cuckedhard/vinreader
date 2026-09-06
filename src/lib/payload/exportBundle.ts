@@ -29,6 +29,14 @@ export const CSV_COLUMNS = [
   "lastScannedAt",
   "scanCount",
   "decodeStatus",
+  /**
+   * §5.1 `paint` (S5). Appended rather than filed beside `unit` and `notes`, which is
+   * where it belongs by provenance: §9-S3 fixed seventeen columns and something is already
+   * reading them, so inserting one would move `firstScannedAt` and everything after it by
+   * a place and quietly break a sheet somebody built on last month's export. A new column
+   * at the end is the change a spreadsheet survives.
+   */
+  "paint",
 ] as const;
 
 function text(fields: Record<string, string>, key: string): string {
@@ -75,6 +83,8 @@ function csvRow(record: VehicleRecord): string[] {
     record.lastScannedAt,
     String(record.scanCount),
     record.decode.status,
+    // N2: an empty cell for a record nobody typed a code into — never a dash.
+    record.paint ?? "",
   ];
 }
 
