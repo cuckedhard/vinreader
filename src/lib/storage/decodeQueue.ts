@@ -252,10 +252,7 @@ export async function refreshDecode(vin: string, deps: VpicDeps = {}): Promise<v
  * the same VIN, which §4.7 forbids outright.
  */
 export function startDecodeQueue(deps: VpicDeps = {}): () => void {
-  let stopped = false;
-
   const trigger = (): void => {
-    if (stopped) return;
     void runDecodeQueueOnce(deps).catch(() => {
       // A storage failure must not kill the interval; the next trigger tries again.
     });
@@ -272,8 +269,15 @@ export function startDecodeQueue(deps: VpicDeps = {}): () => void {
 
   trigger();
 
+  // [TA3] The teardown is the whole stop, and there is no `stopped` flag behind it. There
+  // were both, and the flag was unreachable state: `trigger` is reached from the listener,
+  // from the interval and from the line above, so removing the one and clearing the other
+  // leaves nothing that can call it — the flag's own `if` could never run, and its line was
+  // the last uncovered one in `src/lib/storage`. A guard that cannot fire reads like a
+  // guarantee and is not one; that is the defect this ledger keeps finding. Both handles
+  // are idempotent, so a teardown called twice is a no-op rather than something a flag has
+  // to absorb.
   return () => {
-    stopped = true;
     target?.removeEventListener("online", onOnline);
     clearInterval(interval);
   };

@@ -13,6 +13,7 @@ import { db } from "./db";
 import {
   applyDecodeResult,
   DECODE_MAX_ATTEMPTS,
+  DECODE_POLL_MS,
   refreshDecode,
   runDecodeQueueOnce,
   startDecodeQueue,
@@ -646,5 +647,39 @@ describe("startDecodeQueue", () => {
 
     expect(double.urls).toHaveLength(after);
     expect(await decodeOf(VIN_A)).toMatchObject({ attempts: 1 });
+  });
+
+  it("[TA3] is stopped by the teardown alone, on every one of §5.4's triggers", async () => {
+    // What the removed `stopped` flag was standing in for. Both handles the teardown holds
+    // are released there — the listener is removed and the interval is cleared — so there
+    // is nothing left that can reach `trigger`, which is the reason the flag's `if` could
+    // never run. This asserts that against both live triggers at once rather than against
+    // the listener alone, and calls the teardown twice, since removing the flag is what
+    // makes a repeated teardown reach `removeEventListener` and `clearInterval` again.
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    try {
+      await seed(VIN_A, T_OLD);
+      const double = failingFetch("connection refused");
+      const stop = startDecodeQueue(depsFor(double));
+      await settle();
+      // The immediate pass ran and spent §5.4's one attempt (through §4.7's three tries at
+      // the connection), so what follows is measured against a queue that was working.
+      const after = double.urls.length;
+      expect(await decodeOf(VIN_A)).toMatchObject({ status: "pending", attempts: 1 });
+
+      stop();
+      stop();
+
+      window.dispatchEvent(new Event("online"));
+      await vi.advanceTimersByTimeAsync(DECODE_POLL_MS * 3);
+      await settle();
+
+      expect(double.urls).toHaveLength(after);
+      // Still exactly the one attempt the immediate pass spent, and still `pending`, so
+      // §5.4 picks the row up again when something starts the queue next.
+      expect(await decodeOf(VIN_A)).toMatchObject({ status: "pending", attempts: 1 });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
