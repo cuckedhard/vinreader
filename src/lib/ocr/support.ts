@@ -7,6 +7,9 @@
  * a device without SIMD would download it and fail at instantiation. And a `Worker` is not
  * optional: N1/P1 says OCR never shares a thread or a frame loop with the ZXing path.
  *
+ * A fourth was added by layer 2's capture mode: the crop is preprocessed on an
+ * `OffscreenCanvas` inside a worker, which is the only 2D surface a worker has.
+ *
  * Pure: capabilities in, a verdict out. `readOcrCapabilities` is the only part that looks
  * at anything, and what it looks at is passed to it.
  */
@@ -16,11 +19,14 @@ export interface OcrCapabilities {
   wasm: boolean;
   simd: boolean;
   worker: boolean;
+  /** `OffscreenCanvas`: the only 2D surface a worker has to preprocess a crop on. */
+  canvas: boolean;
   cacheStorage: boolean;
 }
 
 export type OcrSupport =
-  "ready" | Extract<OcrFailure, "no_wasm" | "no_simd" | "no_worker" | "no_cache">;
+  | "ready"
+  | Extract<OcrFailure, "no_wasm" | "no_simd" | "no_worker" | "no_canvas" | "no_cache">;
 
 /**
  * The smallest module that uses a SIMD instruction: one function returning `v128`, whose
@@ -36,6 +42,7 @@ export const SIMD_PROBE_MODULE: readonly number[] = [
 export interface OcrEnvironment {
   WebAssembly?: { validate(bytes: BufferSource): boolean } | undefined;
   Worker?: unknown;
+  OffscreenCanvas?: unknown;
   caches?: unknown;
 }
 
@@ -55,6 +62,7 @@ export function readOcrCapabilities(env: OcrEnvironment): OcrCapabilities {
     wasm: env.WebAssembly !== undefined,
     simd: detectSimd(env),
     worker: env.Worker !== undefined,
+    canvas: env.OffscreenCanvas !== undefined,
     cacheStorage: env.caches !== undefined,
   };
 }
@@ -67,6 +75,7 @@ export function ocrSupport(capabilities: OcrCapabilities): OcrSupport {
   if (!capabilities.wasm) return "no_wasm";
   if (!capabilities.simd) return "no_simd";
   if (!capabilities.worker) return "no_worker";
+  if (!capabilities.canvas) return "no_canvas";
   if (!capabilities.cacheStorage) return "no_cache";
   return "ready";
 }

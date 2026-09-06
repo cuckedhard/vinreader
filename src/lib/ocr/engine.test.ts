@@ -16,7 +16,13 @@ import type { TesseractPage, TesseractWorkerLike } from "./runtime";
 import type { OcrCapabilities } from "./support";
 import { OcrError } from "./types";
 
-const ABLE: OcrCapabilities = { wasm: true, simd: true, worker: true, cacheStorage: true };
+const ABLE: OcrCapabilities = {
+  wasm: true,
+  simd: true,
+  worker: true,
+  canvas: true,
+  cacheStorage: true,
+};
 
 const PAGE: TesseractPage = {
   text: "WA8555",

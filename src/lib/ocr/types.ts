@@ -17,6 +17,13 @@ export type OcrFailure =
   | "no_worker"
   /** No Cache Storage, so the engine could only ever be fetched again (§3). */
   | "no_cache"
+  /**
+   * No `OffscreenCanvas`. The crop is rectified, greyed and upscaled on a 2D canvas inside
+   * a worker (§3's preprocessing order), and a worker has no other canvas to draw on.
+   * Costs nothing in practice: WebKit shipped `OffscreenCanvas` and WASM SIMD in the same
+   * release, so a device with the core this build pins has this too.
+   */
+  | "no_canvas"
   /** The camera is live. iOS caps fast WASM memories at 3 per web-content process (§4). */
   | "scanner_live"
   /** The screen went away, or the caller cancelled. Backgrounding is cancellation (§4). */

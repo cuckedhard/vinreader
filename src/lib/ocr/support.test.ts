@@ -9,7 +9,13 @@ import { describe, expect, it } from "vitest";
 import { detectSimd, ocrSupport, readOcrCapabilities, SIMD_PROBE_MODULE } from "./support";
 import type { OcrCapabilities } from "./support";
 
-const ABLE: OcrCapabilities = { wasm: true, simd: true, worker: true, cacheStorage: true };
+const ABLE: OcrCapabilities = {
+  wasm: true,
+  simd: true,
+  worker: true,
+  canvas: true,
+  cacheStorage: true,
+};
 
 describe("detectSimd", () => {
   it("accepts the probe on an engine that has SIMD, which this one does", () => {
@@ -45,18 +51,21 @@ describe("detectSimd", () => {
 
 describe("readOcrCapabilities", () => {
   it("reads what it was handed, and nothing it was not", () => {
-    expect(readOcrCapabilities({ WebAssembly, Worker: class {}, caches: {} })).toEqual(ABLE);
+    expect(
+      readOcrCapabilities({ WebAssembly, Worker: class {}, OffscreenCanvas: class {}, caches: {} }),
+    ).toEqual(ABLE);
     expect(readOcrCapabilities({})).toEqual({
       wasm: false,
       simd: false,
       worker: false,
+      canvas: false,
       cacheStorage: false,
     });
   });
 });
 
 describe("ocrSupport", () => {
-  it("is ready only when all four are present", () => {
+  it("is ready only when all five are present", () => {
     expect(ocrSupport(ABLE)).toBe("ready");
   });
 
@@ -64,6 +73,9 @@ describe("ocrSupport", () => {
     expect(ocrSupport({ ...ABLE, wasm: false, simd: false })).toBe("no_wasm");
     expect(ocrSupport({ ...ABLE, simd: false })).toBe("no_simd");
     expect(ocrSupport({ ...ABLE, worker: false })).toBe("no_worker");
+    // The crop is preprocessed on an OffscreenCanvas inside that worker; without one there
+    // is no 2D surface in there to rectify, grey and upscale on.
+    expect(ocrSupport({ ...ABLE, canvas: false })).toBe("no_canvas");
     expect(ocrSupport({ ...ABLE, cacheStorage: false })).toBe("no_cache");
   });
 });

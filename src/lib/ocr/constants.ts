@@ -80,3 +80,99 @@ export const OCR_PARAMS: Readonly<Record<string, string>> = {
   tessedit_char_whitelist: OCR_CHAR_WHITELIST,
   tessedit_pageseg_mode: OCR_PAGE_SEG_MODE,
 };
+
+/**
+ * The crop box, as a share of the preview (`cropBox.ts` for why it exists at all).
+ *
+ * Wide, because a paint code sits on a line of other tokens and the user needs slack to
+ * put the line inside it; one line tall, because the box is what stops a GVWR row being
+ * read as a paint code. §6.1 floors a target at 48 px and the box is aimed rather than
+ * tapped, but it is aimed by a gloved hand in the cold, so the rendered height is floored
+ * at `--tap` in CSS as well and the fraction below is only the nominal.
+ *
+ * Deliberately not §6.1's ~90% × 22% barcode guide: [SB-3] measured a band of that shape
+ * taking `data_matrix` from 100% clean to 0%. Different target, different box.
+ */
+export const PAINT_BOX_WIDTH_FRACTION = 0.88;
+export const PAINT_BOX_HEIGHT_FRACTION = 0.14;
+
+/**
+ * The glyph height the crop is upscaled to, in pixels.
+ *
+ * S5 addendum §3: resolution is the single biggest accuracy driver in every study found,
+ * and tesseract's LSTM models want roughly 20–30 px of x-height. Every character a paint
+ * code can carry is a capital or a digit (`OCR_CHAR_WHITELIST`), so x-height and cap
+ * height are the same measurement here. 26 is the middle of the band.
+ *
+ * §13.7: there is no corpus of real door-jamb stickers, so this is transferred from
+ * licence plates and container codes like every other figure in the addendum. It is not a
+ * §4 constant and it is not measured on this task.
+ */
+export const OCR_TARGET_GLYPH_PX = 26;
+
+/** Never upscale past this. Past 4x a bicubic resample is inventing edges, not resolving them. */
+export const OCR_MAX_UPSCALE = 4;
+
+/**
+ * The ceiling on the image handed to the engine. A 1920-wide crop upscaled 4x is 60 MP of
+ * RGBA, which is the OOM §4 caps `MAXIMUM_MEMORY` to avoid, arriving from the other side.
+ */
+export const OCR_MAX_CROP_PIXELS = 4_000_000;
+
+/**
+ * What share of the crop's height a glyph is assumed to be when the ink band cannot be
+ * measured — a crop with no contrast in it, or one that is ink from edge to edge.
+ *
+ * Only a fallback: `measureInkBand` measures the real thing whenever the crop has a line
+ * in it, which is the case the box exists to produce.
+ */
+export const OCR_DEFAULT_GLYPH_FRACTION = 0.35;
+
+/**
+ * The ink-band measurement's three thresholds.
+ *
+ * `MIN_CONTRAST` is the deviation from the background level below which a crop is
+ * declared featureless rather than measured: 32 of 255 is a very flat sticker in very bad
+ * light, and guessing a band out of noise would scale the image by whatever the noise
+ * happened to be. `LEVEL` is the share of the largest deviation present at which a pixel
+ * counts as ink, so the measurement follows the crop's own contrast instead of a fixed
+ * grey. `ROW_SHARE` is the share of the busiest row's ink a row needs to still count as
+ * part of the same line, which is what lets a band end at a descender rather than at the
+ * next row of the sticker.
+ */
+export const OCR_INK_MIN_CONTRAST = 32;
+export const OCR_INK_LEVEL = 0.5;
+export const OCR_INK_ROW_SHARE = 0.25;
+
+/** A "band" taller than this share of the crop is not a line of text; the fallback applies. */
+export const OCR_INK_BAND_MAX_SHARE = 0.9;
+
+/**
+ * How many frames a proposal is voted over (S5 addendum §5).
+ *
+ * Confidence-weighted majority bought 66.7% → 81% on licence plates, and it is why the
+ * flow reads several stills rather than the first one that arrives. What it buys is a
+ * better default string and **never** the right to skip the human: an OCR confusion
+ * (`B/8`, `0/O/D/Q`, `1/I/L`, `5/S`, `2/Z`, `6/G`) comes from the glyph's shape and is
+ * identical on every frame of the same sticker in the same light, so agreement across
+ * frames is not evidence the way §6.3's two-read rule is for a barcode (N2).
+ *
+ * Five rather than ten: each frame is a full recognition, the user is holding a phone
+ * still while they run, and iOS suspends a backgrounded page after about seven seconds.
+ */
+export const OCR_VOTE_FRAMES = 5;
+
+/**
+ * Marking, and the honesty threshold under it.
+ *
+ * §5: only the two lowest-confidence positions are ever marked, because marking
+ * everything marks nothing — and a position is only marked at all if it is genuinely
+ * doubtful, which is what `OCR_MARK_BELOW` decides. `OCR_LOW_CONFIDENCE` is the line under
+ * which the screen stops implying the read is good and says what would actually help.
+ */
+export const OCR_MARKED_MAX = 2;
+export const OCR_MARK_BELOW = 80;
+export const OCR_LOW_CONFIDENCE = 70;
+
+/** §5 caps the alternatives at three, none of them preselected. */
+export const OCR_CANDIDATES_MAX = 3;
