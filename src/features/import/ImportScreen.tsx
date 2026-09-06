@@ -5,6 +5,7 @@
  */
 import { useMemo, useRef, useState } from "react";
 import type { ChangeEvent } from "react";
+import { useLiveQuery } from "dexie-react-hooks";
 import { useNavigate, useSearchParams } from "react-router";
 
 import {
@@ -16,8 +17,9 @@ import {
 import type { Payload } from "../../lib/payload/schema";
 import { exportBundleSchema, vehicleRecordSchema } from "../../lib/payload/schema";
 import { parseShareTextVin } from "../../lib/payload/shareText";
+import { db } from "../../lib/storage/db";
 import { kickDecodeQueue } from "../../lib/storage/decodeQueue";
-import { upsertVehicle } from "../../lib/storage/upsert";
+import { setVehicleMeta, upsertVehicle } from "../../lib/storage/upsert";
 import { checkDigitApplies, isCheckDigitValid } from "../../lib/vin/checkDigit";
 import { extractVin } from "../../lib/vin/extractVin";
 import type { VehicleRecord } from "../../lib/vin/types";
@@ -47,6 +49,19 @@ const ERR_NOT_VIN_RELAY = "That file is JSON, but it isn't a VIN Relay record or
 const ERR_EMPTY_BUNDLE = "That export doesn't list any vehicles.";
 const ERR_FILE_UNREADABLE = "That file couldn't be read.";
 
+/**
+ * §5.3's paint-code question, in §6.4's voice. §6.4 supplies no line for it, so these are
+ * written here and logged under §0 rule 4. The two button labels carry the value *inside*
+ * the control the user taps, which is the S5 addendum §5 rule: the reading target and the
+ * tap target are the same pixels, so a code cannot be accepted without being read.
+ */
+const PAINT_LABEL = "Paint code";
+const PAINT_CONFLICT_TITLE = "This phone already has a paint code";
+const PAINT_CONFLICT_BODY =
+  "Nothing can check a paint code, so the import keeps the one already here. Tap the other to use it instead.";
+const PAINT_KEEP = "Keep";
+const PAINT_USE = "Use";
+
 /** §4.3 / D17: shown, never enforced — the record is already someone else's decision. */
 const CHECK_DIGIT_ONE =
   "Check digit doesn't match. The sender may have accepted a misread — you can still import it.";
@@ -61,6 +76,8 @@ interface ImportItem {
   model: string | null;
   unit: string | null;
   notes: string | null;
+  /** §4.9 `pc`. Captured by whoever sent this, never decoded from anything. */
+  paint: string | null;
   at: string | null;
   by: string | null;
   /** §5.2 keeps the bytes the record arrived as; see `itemFromRecord` for the file case. */
@@ -115,6 +132,7 @@ function itemFromPayload(payload: Payload, raw: string): ImportItem {
     model: text(payload.md),
     unit: text(payload.u),
     notes: text(payload.n),
+    paint: text(payload.pc),
     at: text(payload.at),
     by: text(payload.by),
     raw,
@@ -133,6 +151,7 @@ function itemFromVin(vin: string, raw: string): ImportItem {
     model: null,
     unit: null,
     notes: null,
+    paint: null,
     at: null,
     by: null,
     raw,
@@ -150,6 +169,7 @@ function itemFromRecord(record: VehicleRecord): ImportItem {
     model: text(fields.Model),
     unit: text(record.unit),
     notes: text(record.notes),
+    paint: text(record.paint),
     at: record.lastScannedAt,
     by: null,
     // A `.json` record carries no carrier text, and the file itself can be megabytes;
@@ -213,6 +233,9 @@ function readLink(encoded: string): Outcome {
 function Details({ item }: { item: ImportItem }) {
   const rows: { label: string; value: string }[] = [];
   if (item.unit !== null) rows.push({ label: "Unit", value: item.unit });
+  // N2: a payload with no paint code shows no paint row, exactly as the sheet shows no
+  // empty vPIC row. There is nothing to say, and a dash would look like an answer.
+  if (item.paint !== null) rows.push({ label: PAINT_LABEL, value: item.paint });
   const at = item.at === null ? null : formatAt(item.at);
   if (at !== null) rows.push({ label: "Scanned", value: at });
   if (item.by !== null) rows.push({ label: "From", value: item.by });
@@ -228,6 +251,64 @@ function Details({ item }: { item: ImportItem }) {
       ))}
     </dl>
   );
+}
+
+/**
+ * §5.3's confirmation, for the one field on the record that has no other check.
+ *
+ * An import may not replace a stored paint code on its own (`upsert.ts`), so this is where
+ * the user is asked — before the write, on a screen that already exists to preview it, and
+ * never anywhere near the scan path (N1: scanning a §4.9 QR lands here rather than writing
+ * a record, so nothing about this question can hold a scan up).
+ *
+ * Both codes sit *inside* the controls, in `--vin-font`: the reading target and the tap
+ * target are the same pixels, which is the S5 addendum's rule for a value nothing
+ * downstream can check. What will happen if the user simply taps Import is the pressed
+ * button, because a chooser that showed no state would be a guess about the outcome (N2).
+ */
+function PaintChoice({
+  stored,
+  incoming,
+  chosen,
+  onChoose,
+}: {
+  stored: string;
+  incoming: string;
+  chosen: string;
+  onChoose: (code: string) => void;
+}) {
+  return (
+    <div className={`flex flex-col gap-3 p-4 ${PANEL}`} role="group" aria-label={PAINT_LABEL}>
+      <p className="text-base leading-snug font-bold text-fg">{PAINT_CONFLICT_TITLE}</p>
+      <p className="text-base leading-snug text-fg-muted">{PAINT_CONFLICT_BODY}</p>
+      <div className="flex flex-wrap gap-3">
+        <Button
+          variant={chosen === stored ? "primary" : "secondary"}
+          aria-pressed={chosen === stored}
+          onClick={() => onChoose(stored)}
+        >
+          {PAINT_KEEP} <span className="font-vin">{stored}</span>
+        </Button>
+        <Button
+          variant={chosen === incoming ? "primary" : "secondary"}
+          aria-pressed={chosen === incoming}
+          onClick={() => onChoose(incoming)}
+        >
+          {PAINT_USE} <span className="font-vin">{incoming}</span>
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/** The stored paint code this import would land on, when the two differ. */
+function paintConflict(
+  item: ImportItem,
+  storedPaint: Map<string, string> | undefined,
+): string | null {
+  const stored = storedPaint?.get(item.vin) ?? null;
+  if (stored === null || item.paint === null || item.paint === stored) return null;
+  return stored;
 }
 
 function PreviewRow({ item }: { item: ImportItem }) {
@@ -250,11 +331,18 @@ function PreviewRow({ item }: { item: ImportItem }) {
 function PreviewCard({
   preview,
   busy,
+  storedPaint,
+  chosenPaint,
+  onChoosePaint,
   onImport,
   onCancel,
 }: {
   preview: Preview;
   busy: boolean;
+  /** What this device already holds, by VIN — read once for the whole preview. */
+  storedPaint: Map<string, string> | undefined;
+  chosenPaint: Record<string, string>;
+  onChoosePaint: (vin: string, code: string) => void;
   onImport: () => void;
   onCancel: () => void;
 }) {
@@ -275,6 +363,17 @@ function PreviewCard({
             <VinDisplay vin={single.vin} size="lg" className="break-words" />?
           </h2>
           <Details item={single} />
+          {(() => {
+            const stored = paintConflict(single, storedPaint);
+            return stored === null || single.paint === null ? null : (
+              <PaintChoice
+                stored={stored}
+                incoming={single.paint}
+                chosen={chosenPaint[single.vin] ?? stored}
+                onChoose={(code) => onChoosePaint(single.vin, code)}
+              />
+            );
+          })()}
         </>
       ) : (
         <>
@@ -282,9 +381,22 @@ function PreviewCard({
             Import {items.length} vehicles?
           </h2>
           <div className="flex flex-col gap-3">
-            {items.map((item, index) => (
-              <PreviewRow key={`${index}-${item.vin}`} item={item} />
-            ))}
+            {items.map((item, index) => {
+              const stored = paintConflict(item, storedPaint);
+              return (
+                <div key={`${index}-${item.vin}`} className="flex flex-col gap-3">
+                  <PreviewRow item={item} />
+                  {stored === null || item.paint === null ? null : (
+                    <PaintChoice
+                      stored={stored}
+                      incoming={item.paint}
+                      chosen={chosenPaint[item.vin] ?? stored}
+                      onChoose={(code) => onChoosePaint(item.vin, code)}
+                    />
+                  )}
+                </div>
+              );
+            })}
           </div>
         </>
       )}
@@ -328,6 +440,29 @@ export default function ImportScreen() {
   const [override, setOverride] = useState<{ at: string | null; outcome: Outcome } | null>(null);
   const { preview, failure } =
     override !== null && override.at === encoded ? override.outcome : fromLink;
+
+  /**
+   * §5.3: the codes this device already holds for the VINs on screen. Read here and not in
+   * `runImport`, because the question has to be asked *before* the write — R3-C's point
+   * about the unit and notes preview is that a screen which never reads `db.vehicles`
+   * cannot show what is about to be lost.
+   *
+   * Keyed by a joined string rather than the array, which is a new identity every render.
+   * `undefined` — the query has not answered, or storage never opened — shows no chooser
+   * and changes nothing: the upsert keeps the stored code either way (P7, N1).
+   */
+  const vinsKey = (preview?.items ?? []).map((item) => item.vin).join(",");
+  const storedPaint = useLiveQuery(async () => {
+    const vins = vinsKey === "" ? [] : vinsKey.split(",");
+    const rows = await db.vehicles.bulkGet(vins);
+    const found = new Map<string, string>();
+    for (const row of rows) {
+      const code = typeof row?.paint === "string" ? row.paint.trim() : "";
+      if (row !== undefined && code !== "") found.set(row.vin, code);
+    }
+    return found;
+  }, [vinsKey]);
+  const [chosenPaint, setChosenPaint] = useState<Record<string, string>>({});
 
   function replace(outcome: Outcome): void {
     setOverride({ at: encoded, outcome });
@@ -460,7 +595,17 @@ export default function ImportScreen() {
           deviceLabel: item.by,
           unit: item.unit,
           notes: item.notes,
+          // §5.3: this fills an empty field and can never replace a stored code.
+          paint: item.paint,
         });
+        // The replacement §5.3 asks for a confirmation before making. The user gave it on
+        // the chooser above, so it goes through the edit path — the same one the Sheet's
+        // own field uses — which is the only path allowed to overwrite a paint code and
+        // the one that moves §4.12's LWW clock so the choice survives a sync.
+        const stored = paintConflict(item, storedPaint);
+        if (stored !== null && item.paint !== null && chosenPaint[item.vin] === item.paint) {
+          await setVehicleMeta(item.vin, { paint: item.paint });
+        }
         saved += 1;
       }
     } catch (cause) {
@@ -502,6 +647,9 @@ export default function ImportScreen() {
         <PreviewCard
           preview={preview}
           busy={busy}
+          storedPaint={storedPaint}
+          chosenPaint={chosenPaint}
+          onChoosePaint={(vin, code) => setChosenPaint((prev) => ({ ...prev, [vin]: code }))}
           onImport={() => void runImport()}
           onCancel={() => replace(NOTHING)}
         />

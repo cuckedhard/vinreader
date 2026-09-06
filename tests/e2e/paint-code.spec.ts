@@ -13,8 +13,26 @@ import { encodePayload } from "../../src/lib/payload/codec";
 const VIN = "1HGCM82633A004352";
 const PAINT = "NH-731P";
 
-/** Built with the real §4.9 codec, so the test cannot drift from the implementation. */
+const OTHER_PAINT = "WA8555";
+
+/** Built with the real §4.9 codec, so the tests cannot drift from the implementation. */
 const PLAIN = encodePayload({ v: 1, vin: VIN, y: "2003", mk: "HONDA", md: "Accord" });
+const WITH_PAINT = encodePayload({
+  v: 1,
+  vin: VIN,
+  y: "2003",
+  mk: "HONDA",
+  md: "Accord",
+  pc: PAINT,
+});
+const WITH_OTHER_PAINT = encodePayload({
+  v: 1,
+  vin: VIN,
+  y: "2003",
+  mk: "HONDA",
+  md: "Accord",
+  pc: OTHER_PAINT,
+});
 
 async function stubVpic(page: Page) {
   await page.route("**/api/vehicles/DecodeVinValues/**", (route) =>
@@ -91,4 +109,68 @@ test("§6.1: the paint field is a 48 px target on a phone", async ({ page }) => 
   // The rendered box, not the class list: a class cannot say which declaration won (F1-a).
   const box = await page.getByLabel("Paint code").boundingBox();
   expect(box?.height ?? 0).toBeGreaterThanOrEqual(tap);
+});
+
+test("§4.9: an imported paint code lands on the record", async ({ page }) => {
+  await page.goto(`/#/i?d=${WITH_PAINT}`);
+  // The preview says what will be written, before anything is (§6.4).
+  await expect(page.getByText(PAINT)).toBeVisible();
+
+  await page.getByRole("button", { name: /^import$/i }).click();
+  await expect(page).toHaveURL(new RegExp(`#/v/${VIN}`));
+  await expect(page.getByLabel("Paint code")).toHaveValue(PAINT);
+});
+
+test("§5.3: a second code asks before it replaces the one on this phone", async ({ page }) => {
+  await seed(page, WITH_PAINT);
+
+  await page.goto(`/#/i?d=${WITH_OTHER_PAINT}`);
+  const keep = page.getByRole("button", { name: `Keep ${PAINT}` });
+  const use = page.getByRole("button", { name: `Use ${OTHER_PAINT}` });
+
+  // Both codes are on screen, and the one that will survive a plain Import is pressed:
+  // the screen states the outcome rather than leaving it to be discovered (N2).
+  await expect(keep).toHaveAttribute("aria-pressed", "true");
+  await expect(use).toHaveAttribute("aria-pressed", "false");
+
+  await page.getByRole("button", { name: /^import$/i }).click();
+  await expect(page).toHaveURL(new RegExp(`#/v/${VIN}`));
+  await expect(page.getByLabel("Paint code")).toHaveValue(PAINT);
+});
+
+test("§5.3: the replacement happens when the user picks it", async ({ page }) => {
+  await seed(page, WITH_PAINT);
+
+  await page.goto(`/#/i?d=${WITH_OTHER_PAINT}`);
+  await page.getByRole("button", { name: `Use ${OTHER_PAINT}` }).click();
+  await expect(page.getByRole("button", { name: `Use ${OTHER_PAINT}` })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+
+  await page.getByRole("button", { name: /^import$/i }).click();
+  await expect(page).toHaveURL(new RegExp(`#/v/${VIN}`));
+  await expect(page.getByLabel("Paint code")).toHaveValue(OTHER_PAINT);
+
+  // And it is the record that changed, not the box on screen.
+  await page.reload();
+  await expect(page.getByLabel("Paint code")).toHaveValue(OTHER_PAINT);
+});
+
+test("§6.1: both codes are ≥ 48 px targets on a phone, and neither is hidden behind one", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await seed(page, WITH_PAINT);
+  await page.goto(`/#/i?d=${WITH_OTHER_PAINT}`);
+
+  const tap = await page.evaluate(() =>
+    parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--tap")),
+  );
+  for (const name of [`Keep ${PAINT}`, `Use ${OTHER_PAINT}`]) {
+    const box = await page.getByRole("button", { name }).boundingBox();
+    expect(box?.height ?? 0).toBeGreaterThanOrEqual(tap);
+    // No long-press, no swipe: both are visible buttons with the code in the label (N5).
+    expect(box?.width ?? 0).toBeGreaterThan(0);
+  }
 });

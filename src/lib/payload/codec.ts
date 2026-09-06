@@ -18,7 +18,15 @@ export { PAYLOAD_VERSION, TEXT_PREFIX };
 /** §4.9 hard cap, measured on the whole URL in **bytes**. */
 export const MAX_URL_BYTES = 700;
 
-/** §4.9 drop order. Never `vin`, `v`, `y`, `mk` or `md`. */
+/**
+ * §4.9 drop order. Never `vin`, `v`, `y`, `mk`, `md` — or `pc`.
+ *
+ * `pc` is absent from this list on purpose and by Zach's ruling of 2026-09-06: a paint
+ * code is often the reason a handoff is sent to a body shop at all, and a fully populated
+ * heavy-truck record measures 473 of the 700 bytes with it, so shedding it would cost the
+ * point of the message to save nothing. Adding it here is a §4 constant change and Zach's
+ * alone; `codec.test.ts` holds the cap measurement and the survival guard that say so.
+ */
 export const DROP_ORDER = ["n", "en", "dr", "fu", "bc", "tr", "gv"] as const;
 
 export type PayloadErrorKind = "encoding" | "schema" | "version" | "empty";
@@ -86,6 +94,11 @@ export function payloadFromRecord(record: VehicleRecord, deviceLabel: string | n
   put(payload, "u", record.unit);
   put(payload, "n", record.notes);
   put(payload, "by", deviceLabel);
+  // §4.9 `pc` (S5). It rides with `u` and `n` because it shares their provenance — a
+  // person typed all three — and not with the summary keys above, which mirror §4.8's
+  // vPIC map. `put` omits it when nobody has typed one, so an absent paint code costs no
+  // bytes and renders as nothing on the receiver (N2).
+  put(payload, "pc", record.paint);
   return payload;
 }
 

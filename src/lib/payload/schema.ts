@@ -31,6 +31,13 @@ export interface Payload {
   u?: string;
   n?: string;
   by?: string;
+  /**
+   * §4.9 `pc`, the paint code, ruled into the payload by Zach on 2026-09-06. Captured and
+   * never decoded, so it is a string this app carries and never interprets: Toyota `1F7`,
+   * Honda `NH-731P`, Ford `UG`, VW `LC9X` and GM `WA8555` share no grammar to interpret.
+   * It is deliberately absent from `DROP_ORDER` in `codec.ts` — see the note there.
+   */
+  pc?: string;
 }
 
 /** §S3 History → Export all. */
@@ -72,6 +79,9 @@ export const payloadSchema: z.ZodType<Payload> = z.object({
   u: summary.optional(),
   n: summary.optional(),
   by: summary.optional(),
+  // Typed like every other §4.9 summary field: a string, unchecked beyond that. A rule
+  // here would refuse a real code from a manufacturer nobody listed (N2).
+  pc: summary.optional(),
 });
 
 /** §4.10, locked. Copied verbatim; never re-derived. */

@@ -40,6 +40,9 @@ const EXAMPLE: Payload = {
   u: "UNIT-42",
   n: "Rear bumper scuffed",
   by: "Zach's iPhone",
+  // §4.9's example carries the paint code since 4cbc916. It is the one field in this
+  // object that no decoder produced: a human read it off a sticker.
+  pc: "NH-731P",
 };
 
 const MINIMAL: Payload = { v: 1, vin: VIN, y: "2003", mk: "HONDA", md: "Accord" };
@@ -513,6 +516,29 @@ describe("payloadFromRecord", () => {
     expect(payloadFromRecord(ambiguous, null).y).toBeUndefined();
   });
 
+  it("carries the record's paint code as §4.9 `pc`", () => {
+    expect(payloadFromRecord(record({ paint: "NH-731P" }), null).pc).toBe("NH-731P");
+    // §4.9's own five examples: no shared grammar, so the codec carries the string whole.
+    for (const code of ["1F7", "UG", "LC9X", "WA8555", "202 / 040"]) {
+      expect(payloadFromRecord(record({ paint: code }), null).pc).toBe(code);
+    }
+  });
+
+  it("omits `pc` for a record nobody typed one into", () => {
+    // N2 and the byte budget both: an absent paint code is absent, never an empty string
+    // the receiver would render as a field.
+    expect(Object.keys(payloadFromRecord(record({ paint: null }), null))).not.toContain("pc");
+    expect(Object.keys(payloadFromRecord(record({ paint: "   " }), null))).not.toContain("pc");
+  });
+
+  it("round-trips a paint code through both §4.9 carriers", () => {
+    const payload = payloadFromRecord(record({ paint: "  NH-731P  " }), "Zach's iPhone");
+    expect(payload.pc).toBe("NH-731P");
+    expect(decodePayload(encodePayload(payload))).toEqual(payload);
+    expect(parseCarrier(buildTextCarrier(payload))).toEqual(payload);
+    expect(decodePayload(bodyOf(buildPayloadUrl(payload, ORIGIN).url))).toEqual(payload);
+  });
+
   it("trims what it carries", () => {
     const padded = record({ unit: "  UNIT-42  ", notes: "  scuffed  " });
     const payload = payloadFromRecord(padded, "  Zach's iPhone  ");
@@ -602,7 +628,69 @@ describe("buildPayloadUrl", () => {
       at: "2026-09-03T14:12:00-08:00",
       u: "UNIT-42",
       by: "Zach's iPhone",
+      // §4.9, ruled 2026-09-06: `pc` is absent from the drop order, so it is still here
+      // with every droppable field gone. A paint code is often the reason the handoff was
+      // sent at all, and shedding it saves 20 bytes of a 700-byte budget.
+      pc: "NH-731P",
     });
+  });
+
+  it("never sheds the paint code, whatever it costs to keep (§4.9)", () => {
+    // The same overflow, pushed past what the drop order can rescue: `u` is not droppable
+    // either, so the URL ends over the cap. `pc` must still be in it — the codec is not
+    // allowed to trade it for bytes even here.
+    const overflowing: Payload = {
+      ...EXAMPLE,
+      n: "N".repeat(200),
+      en: "E".repeat(200),
+      dr: "D".repeat(200),
+      fu: "F".repeat(200),
+      bc: "B".repeat(200),
+      tr: "T".repeat(200),
+      gv: "G".repeat(200),
+      u: "U".repeat(800),
+    };
+    const { url, dropped } = buildPayloadUrl(overflowing, ORIGIN);
+
+    expect(dropped).toEqual([...DROP_ORDER]);
+    expect(byteLength(url)).toBeGreaterThan(MAX_URL_BYTES);
+    expect(decodePayload(bodyOf(url)).pc).toBe("NH-731P");
+  });
+
+  it("keeps `pc` out of the drop order itself", () => {
+    // §7 item 5: the constant is the authority, so this reads it rather than restating the
+    // list. Adding `pc` to DROP_ORDER is a §4 constant change and Zach's alone.
+    expect([...DROP_ORDER]).toEqual(["n", "en", "dr", "fu", "bc", "tr", "gv"]);
+    expect(DROP_ORDER as readonly string[]).not.toContain("pc");
+  });
+
+  it("holds the 700-byte cap for a fully populated heavy truck carrying a paint code", () => {
+    // The measurement the S5 addendum §2 rests on: every §4.8 summary field filled, a unit,
+    // a note, a device label and a paint code, on the longest realistic host. If the cap
+    // could not hold this, `pc` would need a place in the drop order — it does hold it.
+    const cascadia: Payload = {
+      v: 1,
+      vin: "1FUJGLDR49SAV1234",
+      y: "2009",
+      mk: "FREIGHTLINER",
+      md: "Cascadia",
+      tr: "125 Sleeper",
+      bc: "Truck-Tractor",
+      en: "DD15",
+      fu: "Diesel",
+      dr: "6x4",
+      gv: "Class 8: 33,001 lb or more",
+      at: "2026-09-03T14:12:00-08:00",
+      u: "UNIT-42",
+      n: "Rear light out",
+      by: "Zach's iPhone",
+      pc: "WA8555",
+    };
+    const { url, dropped } = buildPayloadUrl(cascadia, "vinrelay.example");
+
+    expect(dropped).toEqual([]);
+    expect(byteLength(url)).toBeLessThanOrEqual(MAX_URL_BYTES);
+    expect(decodePayload(bodyOf(url))).toEqual(cascadia);
   });
 
   it("never records a drop for a field the payload did not carry", () => {
