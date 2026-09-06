@@ -118,6 +118,34 @@ async function firstShare(page: Page): Promise<Shared> {
   return (await shares(page))[0];
 }
 
+/**
+ * HTML's own rule for the `accept` attribute of a file input (§4.10.5.1.18, "File Upload
+ * state"), which is what decides whether a file is shown to a person in the system picker at
+ * all: a token starting with `.` matches the filename's suffix, a `type/*` token matches the
+ * MIME group, and anything else is an exact MIME match — every comparison ASCII
+ * case-insensitive. No attribute means no filter, which admits everything.
+ *
+ * It is written out here for the same reason `shareFile.test.ts` writes out Chromium's
+ * allowlists: it is a fact about the platform, and asserting against it is the only way this
+ * gate can see what the picker would have hidden. Playwright's `setInputFiles` sets the input's
+ * files directly and never consults `accept`, so opening a file through it proves nothing about
+ * the filter (SH-1's own test claimed it did, and passed with the filter reverted).
+ */
+function acceptAdmits(accept: string | null, file: { name: string; type: string }): boolean {
+  if (accept === null || accept.trim() === "") return true;
+  const name = file.name.toLowerCase();
+  const type = file.type.toLowerCase();
+  return accept
+    .split(",")
+    .map((token) => token.trim().toLowerCase())
+    .filter((token) => token !== "")
+    .some((token) => {
+      if (token.startsWith(".")) return name.endsWith(token);
+      if (token.endsWith("/*")) return type.startsWith(token.slice(0, -1));
+      return token === type;
+    });
+}
+
 test.describe("SH-1: the file Share attaches is one the browser will carry", () => {
   test("sends the record as text/plain, which clears both Chromium allowlists", async ({
     page,
@@ -158,9 +186,19 @@ test.describe("SH-1: the file Share attaches is one the browser will carry", () 
 
     // The receiver's half of §4.9: the same file, arriving as the attachment a message app
     // would hand over. `readFile` parses what it is given rather than trusting the name or
-    // the type — and the picker's own filter now admits it (SH-1, ImportScreen).
+    // the type.
     await page.goto("/#/i");
-    await page.locator('input[type="file"]').setInputFiles({
+    const picker = page.locator('input[type="file"]');
+
+    // The other half of SH-1, and the half `setInputFiles` cannot exercise: on a phone the
+    // picker's filter decides whether this file is even offered, and before SH-1 it was
+    // `application/json,.json` — which hides the `.txt` the app itself had just sent. Read off
+    // the attribute as it ships, against the file that actually left the page.
+    expect(acceptAdmits(await picker.getAttribute("accept"), shared.files[0])).toBe(true);
+    // …and the rule above is not vacuous: the filter that shipped before SH-1 hides it.
+    expect(acceptAdmits("application/json,.json", shared.files[0])).toBe(false);
+
+    await picker.setInputFiles({
       name: shared.files[0].name,
       mimeType: shared.files[0].type,
       buffer: Buffer.from(shared.files[0].text),
