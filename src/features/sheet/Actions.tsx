@@ -8,6 +8,7 @@ import { Button } from "../../ui/Button";
 import { Chip } from "../../ui/Chip";
 import { QrView } from "../../ui/QrView";
 import { buildCopyTexts } from "./copyTexts";
+import { downloadFile, sharedFile } from "./shareFile";
 
 const LABEL = "text-sm font-bold tracking-wide text-fg-muted uppercase";
 
@@ -63,7 +64,10 @@ export function Actions({ record }: { record: VehicleRecord }) {
   const settings = useLiveQuery(() => db.settings.get("settings"), []);
   const deviceLabel = (settings?.deviceLabel ?? "").trim() || null;
 
-  const fileName = `vin-relay-${record.vin}.json`;
+  // Two files, not one: Share's has to pass the browser process's allowlists and Download's
+  // does not (SH-1 — see `./shareFile`). The bytes are the same record either way.
+  const shared = sharedFile(record.vin);
+  const saved = downloadFile(record.vin);
 
   /**
    * Every copyable string, built during render and held in memory. This is not an
@@ -132,7 +136,7 @@ export function Actions({ record }: { record: VehicleRecord }) {
 
   function share() {
     setShareError(null);
-    const file = new File([texts.json], fileName, { type: "application/json" });
+    const file = new File([texts.json], shared.name, { type: shared.type });
     const canFiles =
       typeof navigator.canShare === "function" && navigator.canShare({ files: [file] });
     // §4.9: the readable text always goes; the record rides along as a file when the
@@ -148,10 +152,10 @@ export function Actions({ record }: { record: VehicleRecord }) {
   }
 
   function download() {
-    const url = URL.createObjectURL(new Blob([texts.json], { type: "application/json" }));
+    const url = URL.createObjectURL(new Blob([texts.json], { type: saved.type }));
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = fileName;
+    anchor.download = saved.name;
     // Some browsers only honour the download attribute for an anchor in the document.
     document.body.append(anchor);
     anchor.click();

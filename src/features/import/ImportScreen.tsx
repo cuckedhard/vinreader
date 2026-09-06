@@ -697,10 +697,20 @@ export default function ImportScreen() {
             <p className="text-base leading-snug text-fg-muted">
               A single vehicle, or an export holding many.
             </p>
+            {/*
+             * The other half of SH-1. Share attaches the record as `text/plain` because
+             * Chromium's browser process refuses `application/json` outright, so the file a
+             * receiver saves out of a message is `vin-relay-<vin>.txt` — and a picker
+             * filtered to `.json` would have hidden the very file this app just sent. What
+             * is opened is still read by parsing it (`readFile` below: `file.text()` then
+             * `JSON.parse`, never the name or the type), so this widens what can be *chosen*
+             * and nothing else: a `.txt` that is not a record still answers §6.4's "That
+             * file isn't JSON, so there is nothing to read."
+             */}
             <input
               ref={fileRef}
               type="file"
-              accept="application/json,.json"
+              accept="application/json,.json,text/plain,.txt"
               className="hidden"
               onChange={onFileChange}
             />
