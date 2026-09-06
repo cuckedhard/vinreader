@@ -223,6 +223,18 @@ describe("offeredCandidates", () => {
     expect(offered.map((candidate) => candidate.text)).toEqual(["WA8555", "PNT"]);
   });
 
+  it("caps what it hands the screen at three, whatever it was handed", () => {
+    // Stryker survived `read.slice(0, OCR_CANDIDATES_MAX)` becoming `read`, and it was
+    // right to: `voteOnLines` already caps its own candidates at three, so nothing in the
+    // app reaches this line with more. That is a cap standing on another function's
+    // promise. §5's "cap at 3" is a rule about the *screen*, and this is the function the
+    // screen reads, so it is asserted here rather than inferred two files away.
+    const proposal = voteOnLines([read("WA8555", 90)])!;
+    const many = ["A", "B", "C", "D", "E"].map((text) => ({ text, confidence: 90, frames: 1 }));
+    const offered = offeredCandidates({ ...proposal, candidates: many });
+    expect(offered.map((candidate) => candidate.text)).toEqual(["A", "B", "C"]);
+  });
+
   it("never puts more than §5's three on screen, whatever the read doubted", () => {
     // Every position doubted, and every one of them a lookalike: 0 alone has three.
     const text = "00";
