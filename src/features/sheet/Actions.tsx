@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { appBaseUrl } from "../../app/appBase";
+import { errorLine } from "../../app/errorLine";
 import { db } from "../../lib/storage/db";
 import type { VehicleRecord } from "../../lib/vin/types";
 import { Banner } from "../../ui/Banner";
@@ -9,6 +10,7 @@ import { Chip } from "../../ui/Chip";
 import { QrView } from "../../ui/QrView";
 import { buildCopyTexts } from "./copyTexts";
 import { downloadFile, shareData, sharedFile } from "./shareFile";
+import { shareOutcome } from "./shareOutcome";
 
 const LABEL = "text-sm font-bold tracking-wide text-fg-muted uppercase";
 
@@ -84,7 +86,8 @@ export function Actions({ record }: { record: VehicleRecord }) {
 
   const [copied, setCopied] = useState(false);
   const [manual, setManual] = useState<string | null>(null);
-  const [shareError, setShareError] = useState<string | null>(null);
+  // SH-3: the engine's own line, or null. §6.4's sentence above it never changes.
+  const [shareFailure, setShareFailure] = useState<string | null>(null);
   const [qrOpen, setQrOpen] = useState(false);
   const copiedTimer = useRef<number | null>(null);
   const manualRef = useRef<HTMLTextAreaElement>(null);
@@ -135,7 +138,7 @@ export function Actions({ record }: { record: VehicleRecord }) {
   const canShare = typeof navigator.share === "function";
 
   function share() {
-    setShareError(null);
+    setShareFailure(null);
     const file = new File([texts.json], shared.name, { type: shared.type });
     // Two questions, and `canShare` only answers the first (SH-2). It reports whether this
     // browser does file sharing at all; it does not — cannot — say whether the browser
@@ -146,9 +149,15 @@ export function Actions({ record }: { record: VehicleRecord }) {
       typeof navigator.canShare === "function" && navigator.canShare({ files: [file] });
     const data = shareData(texts.summary, file, browserSharesFiles);
     navigator.share(data).catch((cause: unknown) => {
-      // Backing out of the system sheet is a choice, not a failure to report.
-      if (cause instanceof DOMException && cause.name === "AbortError") return;
-      setShareError(SHARE_FAILED);
+      // Backing out of the system sheet is a choice and stays quiet; an AbortError is not
+      // evidence of one, because Chromium sends its internal failures there too (SH-3, see
+      // `./shareOutcome`). What it cannot tell apart, it does not claim to (N2).
+      if (shareOutcome(cause) === "cancelled") return;
+      // §6.4 gives this banner its sentence and the engine gives the line under it: the
+      // failures that reach here are the platform's, so the only thing this app knows about
+      // one is what it was told, and a user reading it out is how it gets reported at all.
+      // Same shape as "Couldn't save this VIN" and the boundary (R3-F4, F12).
+      setShareFailure(errorLine(cause));
     });
   }
 
@@ -232,7 +241,15 @@ export function Actions({ record }: { record: VehicleRecord }) {
         </p>
       ) : null}
 
-      {shareError !== null ? <Banner tone="warn" title={shareError} /> : null}
+      {shareFailure !== null ? (
+        <Banner tone="warn" title={SHARE_FAILED}>
+          {/* §6.4 prints the underlying error beneath its banner in monospace wherever the
+              app has one, so that a person on a phone can read it back to whoever is asked
+              to fix it. Web Share hands out four different faults under one exception name
+              (SH-3), and this line is the only thing that separates them on a real device. */}
+          <p className="font-vin text-sm break-words text-fg-muted">{shareFailure}</p>
+        </Banner>
+      ) : null}
 
       {manual !== null ? (
         <div className={`flex flex-col gap-3 p-4 ${PANEL}`}>

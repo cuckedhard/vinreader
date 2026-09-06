@@ -228,3 +228,76 @@ test.describe("SH-2: what canShare is allowed to decide", () => {
     expect(isShareableFile(shared.files[0])).toBe(true);
   });
 });
+
+/**
+ * SH-3. Chromium reports a cancel and three separate internal failures through one exception
+ * name, so the handler that returned on every `AbortError` discarded all of them. Each of the
+ * four is armed here in turn, through a stub that rejects exactly as `navigator_share.cc`
+ * does, and the screen is asked what it said about it.
+ */
+async function armRejection(page: Page, name: string, message: string): Promise<void> {
+  await page.evaluate(
+    ([n, m]) => {
+      (window as unknown as ShareWindow).__shareRejection = { name: n, message: m };
+    },
+    [name, message],
+  );
+}
+
+const SHARE_FAILED = "Sharing didn't finish. Copy or download instead.";
+
+test.describe("SH-3: a failure is reported and a cancel is not", () => {
+  test("says nothing when the user backs out of the system sheet", async ({ page }) => {
+    await stubShare(page, { canShare: true });
+    await openSheet(page);
+    await armRejection(page, "AbortError", "Share canceled");
+
+    await page.getByRole("button", { name: /^share$/i }).click();
+    await firstShare(page);
+
+    // Nothing was lost and nothing was chosen wrongly: the screen stays as it was.
+    await expect(page.getByText(SHARE_FAILED)).toHaveCount(0);
+  });
+
+  for (const [label, name, message] of [
+    // ShareError::INTERNAL_ERROR — no window or activity, a temp file that could not be
+    // created, a blob that could not be read.
+    ["an internal error", "AbortError", "Share failed"],
+    // ShareClientImpl::OnConnectionError — the Mojo pipe to the browser process went away.
+    [
+      "a dropped connection",
+      "AbortError",
+      "Internal error: could not connect to Web Share interface.",
+    ],
+    // What SH-1's file produced on every tap, and what the user reported.
+    ["a refused share", "NotAllowedError", "Permission denied"],
+  ] as const) {
+    test(`reports ${label}, with the engine's own words under §6.4's line`, async ({ page }) => {
+      await stubShare(page, { canShare: true });
+      await openSheet(page);
+      await armRejection(page, name, message);
+
+      await page.getByRole("button", { name: /^share$/i }).click();
+
+      const banner = page.getByRole("alert").filter({ hasText: SHARE_FAILED });
+      await expect(banner).toBeVisible();
+      // The detail is what a user can read back over a phone — the only thing that separates
+      // these three on a device nobody in this loop is holding.
+      await expect(banner).toContainText(`${name}: ${message}`);
+    });
+  }
+
+  test("clears the last failure when Share is tapped again", async ({ page }) => {
+    await stubShare(page, { canShare: true });
+    await openSheet(page);
+    await armRejection(page, "AbortError", "Share failed");
+    await page.getByRole("button", { name: /^share$/i }).click();
+    await expect(page.getByText(SHARE_FAILED)).toBeVisible();
+
+    await page.evaluate(() => {
+      (window as unknown as ShareWindow).__shareRejection = null;
+    });
+    await page.getByRole("button", { name: /^share$/i }).click();
+    await expect(page.getByText(SHARE_FAILED)).toHaveCount(0);
+  });
+});
