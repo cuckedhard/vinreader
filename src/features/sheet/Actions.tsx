@@ -91,12 +91,31 @@ export function Actions({ record }: { record: VehicleRecord }) {
   const [qrOpen, setQrOpen] = useState(false);
   const copiedTimer = useRef<number | null>(null);
   const manualRef = useRef<HTMLTextAreaElement>(null);
+  const failureRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     return () => {
       if (copiedTimer.current !== null) window.clearTimeout(copiedTimer.current);
     };
   }, []);
+
+  /**
+   * SH-4. §6.2 puts Share at the top of this section and this banner after the six copy
+   * buttons, the row hint and the QR note, so the answer to a tap opened a long way below the
+   * button that made it: measured at 390×844 with the user scrolled to Share, **0 of 107 px**
+   * of the banner inside `main`'s scroll clip and `elementFromPoint` at its centre returning
+   * nothing, with Share itself fully visible at 56 px. The same at 360×640. The user tapped,
+   * the share failed, and the screen did not change.
+   *
+   * So the notice is scrolled to where it can be read — the move F8 made for the armed delete
+   * and R3-F1 for the carrier rejection, for the same reason. `block: "nearest"` scrolls the
+   * least it can, so a screen already showing the banner does not move under a thumb, and
+   * nothing is hidden, shrunk or stopped to make room.
+   */
+  useEffect(() => {
+    if (shareFailure === null) return;
+    failureRef.current?.scrollIntoView({ block: "nearest" });
+  }, [shareFailure]);
 
   // §6.5: the fallback textarea arrives with its contents already selected.
   useEffect(() => {
@@ -242,13 +261,15 @@ export function Actions({ record }: { record: VehicleRecord }) {
       ) : null}
 
       {shareFailure !== null ? (
-        <Banner tone="warn" title={SHARE_FAILED}>
-          {/* §6.4 prints the underlying error beneath its banner in monospace wherever the
+        <div ref={failureRef}>
+          <Banner tone="warn" title={SHARE_FAILED}>
+            {/* §6.4 prints the underlying error beneath its banner in monospace wherever the
               app has one, so that a person on a phone can read it back to whoever is asked
               to fix it. Web Share hands out four different faults under one exception name
               (SH-3), and this line is the only thing that separates them on a real device. */}
-          <p className="font-vin text-sm break-words text-fg-muted">{shareFailure}</p>
-        </Banner>
+            <p className="font-vin text-sm break-words text-fg-muted">{shareFailure}</p>
+          </Banner>
+        </div>
       ) : null}
 
       {manual !== null ? (

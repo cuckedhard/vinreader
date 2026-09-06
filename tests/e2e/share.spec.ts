@@ -301,3 +301,85 @@ test.describe("SH-3: a failure is reported and a cancel is not", () => {
     await expect(page.getByText(SHARE_FAILED)).toHaveCount(0);
   });
 });
+
+/**
+ * SH-4. A failure that is reported below the fold is still a failure nobody was told about.
+ *
+ * §6.2 puts Share at the top of the handoff section and the banner after the six copy
+ * buttons, the row hint and the QR note — on a phone that is several hundred pixels down a
+ * sheet the user is not scrolled to, so the tap that fails changes nothing they can see. Same
+ * class as F7, F8 and R3-F1, and the same fix those established: scroll the notice to where it
+ * can be read, `block: "nearest"` so a screen tall enough to hold it does not move at all.
+ *
+ * Measured, not read off a class name (§6.1): the box against `main`'s scroll clip, and what
+ * `elementFromPoint` returns at its centre.
+ */
+interface FoldMeasurement {
+  message: string;
+  bannerVisible: number;
+  bannerHeight: number;
+  bannerReachable: boolean;
+  shareVisible: number;
+  scroll: { top: number; client: number; height: number };
+}
+
+async function measureFold(page: Page): Promise<FoldMeasurement> {
+  return page.evaluate((failed: string) => {
+    const main = document.querySelector("main");
+    const banner = Array.from(document.querySelectorAll("[role=alert]")).find((node) =>
+      (node.textContent ?? "").includes(failed),
+    );
+    const share = Array.from(document.querySelectorAll("button")).find(
+      (node) => (node.textContent ?? "").trim() === "Share",
+    );
+    if (!(main instanceof HTMLElement) || !(banner instanceof HTMLElement)) {
+      throw new Error("no sheet, or no failure banner on it");
+    }
+    if (share === undefined) throw new Error("no Share button");
+    const fold = main.getBoundingClientRect();
+    const visibleIn = (el: Element) => {
+      const box = el.getBoundingClientRect();
+      return Math.round(
+        Math.max(0, Math.min(box.bottom, fold.bottom) - Math.max(box.top, fold.top)),
+      );
+    };
+    const box = banner.getBoundingClientRect();
+    const under = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+    return {
+      message: banner.textContent ?? "",
+      bannerVisible: visibleIn(banner),
+      bannerHeight: Math.round(box.height),
+      bannerReachable: under !== null && banner.contains(under),
+      shareVisible: visibleIn(share),
+      scroll: {
+        top: Math.round(main.scrollTop),
+        client: Math.round(main.clientHeight),
+        height: Math.round(main.scrollHeight),
+      },
+    };
+  }, SHARE_FAILED);
+}
+
+test.describe("SH-4: the failure is where it can be read", () => {
+  for (const [label, width, height] of [
+    ["a phone", 390, 844],
+    ["§6.1's floor of a phone", 360, 640],
+  ] as const) {
+    test(`shows the whole banner on ${label}`, async ({ page }) => {
+      await page.setViewportSize({ width, height });
+      await stubShare(page, { canShare: true });
+      await openSheet(page);
+      await armRejection(page, "AbortError", "Share failed");
+
+      await page.getByRole("button", { name: /^share$/i }).click();
+      await expect(page.getByRole("alert").filter({ hasText: SHARE_FAILED })).toBeVisible();
+
+      const seen = await measureFold(page);
+      // The whole banner, not a sliver: it carries §6.4's sentence and the engine's line
+      // under it, and a user who can read neither has been told nothing at all (P7).
+      expect(seen.bannerVisible, JSON.stringify(seen)).toBe(seen.bannerHeight);
+      expect(seen.bannerReachable, JSON.stringify(seen)).toBe(true);
+      expect(seen.message).toContain("AbortError: Share failed");
+    });
+  }
+});
