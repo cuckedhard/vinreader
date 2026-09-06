@@ -190,6 +190,97 @@ test("[N2] it reads the label, offers what it read, and stores nothing until a p
   expect(await storedPaint(page)).toBe(CODE);
 });
 
+test("[§5] the candidates are equal weight, and none of them is dressed as the answer", async ({
+  page,
+}) => {
+  test.setTimeout(180_000);
+  await openCapture(page);
+  await page.getByRole("button", { name: "Read the code" }).click();
+  const candidates = page.getByTestId("paint-candidate");
+  await expect(candidates.first()).toBeVisible({ timeout: 150_000 });
+  await expect(candidates).toHaveCount(2);
+
+  // §5: "equal-weight ≥56 px buttons, nothing preselected". Painted, not declared — the
+  // class list is not the evidence, the pixels are. Styling one of them as the primary is
+  // a guess wearing the clothes of a decision, and N2 says nothing downstream catches it.
+  const painted = await candidates.evaluateAll((nodes) =>
+    nodes.map((node) => {
+      const style = getComputedStyle(node);
+      return [style.backgroundColor, style.borderColor, style.color, style.fontSize].join("|");
+    }),
+  );
+  expect(new Set(painted).size, painted.join(" vs ")).toBe(1);
+});
+
+test("[§5] a character is corrected by tapping it, and the correction is undoable", async ({
+  page,
+}) => {
+  test.setTimeout(180_000);
+  await openCapture(page);
+  const { tapLg } = await tokens(page);
+  await page.getByRole("button", { name: "Read the code" }).click();
+  await expect(page.getByTestId("paint-candidate").first()).toBeVisible({ timeout: 150_000 });
+
+  // §5: "Correction is a row of per-character ≥56 px buttons — tap a character, get its
+  // confusion set. No caret, no long-press." The row is the winner, one button per
+  // character, measured as the browser laid them out.
+  const characters = page.getByTestId("paint-char");
+  await expect(characters).toHaveCount(CODE.length);
+  expect((await characters.allInnerTexts()).join("")).toBe(CODE);
+  for (let index = 0; index < CODE.length; index += 1) {
+    const box = await characters.nth(index).boundingBox();
+    expect(box?.height ?? 0, `character ${index + 1} height`).toBeGreaterThanOrEqual(tapLg);
+    expect(box?.width ?? 0, `character ${index + 1} width`).toBeGreaterThanOrEqual(tapLg);
+  }
+
+  // A `W` has no lookalike in S5 addendum §5's table. It stays in the row — a gap would
+  // read as a character that cannot be wrong — and it is not tappable.
+  await expect(page.getByRole("button", { name: "Character 1, W" })).toBeDisabled();
+
+  // `8` does: the set is offered *including the 8 already there*, which is what makes the
+  // first tap reversible without a second control.
+  await page.getByRole("button", { name: "Character 3, 8" }).click();
+  const swaps = page.getByTestId("paint-swap");
+  await expect(swaps).toHaveCount(2);
+  expect((await swaps.allInnerTexts()).sort()).toEqual(["8", "B"]);
+  for (const option of ["8", "B"]) {
+    const box = await page.getByRole("button", { name: `Character 3 is ${option}` }).boundingBox();
+    expect(box?.height ?? 0, option).toBeGreaterThanOrEqual(tapLg);
+    expect(box?.width ?? 0, option).toBeGreaterThanOrEqual(tapLg);
+  }
+
+  await page.getByRole("button", { name: "Character 3 is B" }).click();
+
+  // What the user built is now the one control, with the value inside it (§5), and the
+  // other token off the line is gone: the question it asked has been answered.
+  await expect(page.getByRole("button", { name: "Save WAB555" })).toBeVisible();
+  await expect(page.getByRole("button", { name: `Save ${NEIGHBOUR}` })).toHaveCount(0);
+  // N2: a correction is not a save either. Nothing has been written.
+  expect(await storedPaint(page)).toBeNull();
+
+  // Undo: the character the engine read is in its own set, so tapping it back restores the
+  // whole offer rather than leaving the user with a string they cannot get out of.
+  await page.getByRole("button", { name: "Character 3, B" }).click();
+  await page.getByRole("button", { name: "Character 3 is 8" }).click();
+  await expect(page.getByRole("button", { name: `Save ${CODE}` })).toBeVisible();
+  await expect(page.getByRole("button", { name: `Save ${NEIGHBOUR}` })).toBeVisible();
+
+  // And a correction the user does keep is what gets stored — the characters they tapped,
+  // not the ones the engine read.
+  await page.getByRole("button", { name: "Character 3, 8" }).click();
+  await page.getByRole("button", { name: "Character 3 is B" }).click();
+  const found = await new AxeBuilder({ page }).analyze();
+  expect(
+    found.violations
+      .filter((violation) => violation.impact === "critical" || violation.impact === "serious")
+      .map((violation) => violation.id),
+  ).toEqual([]);
+
+  await page.getByRole("button", { name: "Save WAB555" }).click();
+  await expect(page).toHaveURL(new RegExp(`#/v/${VIN}$`));
+  expect(await storedPaint(page)).toBe("WAB555");
+});
+
 test("[§5] the typed escape is on screen before anything is read, and it is empty", async ({
   page,
 }) => {

@@ -1,6 +1,14 @@
 import { useState } from "react";
+import type { CSSProperties } from "react";
 import { useNavigate, useParams } from "react-router";
 import { OCR_TOTAL_BYTES } from "../../lib/ocr/assets.generated";
+import {
+  confusionSet,
+  hasAlternatives,
+  offeredCandidates,
+  replaceAt,
+  type OfferedCandidate,
+} from "../../lib/ocr/confusion";
 import { PAINT_CROP_BOX } from "../../lib/ocr/cropBox";
 import type { PaintCaptureState } from "../../lib/ocr/session";
 import type { OcrFailure } from "../../lib/ocr/types";
@@ -42,6 +50,17 @@ const CHECK_IT = "Check this against the sticker before you save it.";
 const CROP_CAPTION = "The last frame it read:";
 const MARKED = "Check the marked characters.";
 const PICK_ONE = "It read these. Pick the one on the sticker.";
+/**
+ * §5's other candidate row, and the reason it is worded differently from `PICK_ONE`.
+ *
+ * `PICK_ONE` is true when every control carries a string some frame returned. When one of
+ * them was synthesised from the confusion table (`confusion.ts`) the engine never read it,
+ * and a heading that said "It read these" would be the screen asserting something false
+ * about the very control it is asking the user to trust (N2).
+ */
+const PICK_UNSURE = "It wasn't sure of the marked characters. Pick the one on the sticker.";
+const FIX_HEADING = "Fix a character";
+const FIX_HINT = "Tap a character to swap it for the one it looks like.";
 const LOW =
   "Low confidence. Hold the phone square to the label and fill the box — a tilt is what this gets wrong.";
 const NOTHING = "Nothing readable in the box.";
@@ -118,12 +137,112 @@ function CodeInControl({ text, marked }: { text: string; marked: readonly number
 }
 
 /**
+ * A ≥56 px square-ish target for one character (§6.1), and no horizontal padding.
+ *
+ * Inline rather than a class for the same reason `TAP_LG_TARGET` is: `Button`'s own `px-6`
+ * and a `px-*` in `className` land on the same element at the same specificity, and which
+ * one wins is Tailwind's emission order, not the order they are written (F4). Six of these
+ * have to fit a 320-wide phone, so the padding has to actually go.
+ */
+const CHAR_TARGET: CSSProperties = {
+  ...TAP_LG_TARGET,
+  minWidth: "var(--tap-lg)",
+  paddingLeft: 0,
+  paddingRight: 0,
+};
+
+/**
+ * §5's correction: "a row of per-character ≥56 px buttons — tap a character, get its
+ * confusion set. No caret, no long-press (§6.1)."
+ *
+ * The set rendered includes the character that is already there, so the first tap is
+ * reversible without a second control: tap `8`, tap `8` again, and the read is back exactly
+ * as the engine returned it. `aria-pressed` says which one that is — state, not a
+ * preselection. §5's "nothing preselected" is about the controls that *save*, and nothing
+ * here saves anything.
+ *
+ * A character the table has no lookalike for is disabled rather than absent: a gap in the
+ * row would read as a character that cannot be wrong, which is the opposite of true. The
+ * typed field below is the route for those, and it is on screen in every state.
+ */
+function CorrectionRow({
+  text,
+  marked,
+  onPick,
+}: {
+  text: string;
+  marked: readonly number[];
+  onPick: (next: string) => void;
+}) {
+  const [openAt, setOpenAt] = useState<number | null>(null);
+
+  return (
+    <section className="flex flex-col gap-3" aria-labelledby="paint-fix-heading">
+      <h3 id="paint-fix-heading" className="text-lg leading-snug font-bold text-fg">
+        {FIX_HEADING}
+      </h3>
+      <p className="text-base leading-snug text-fg-muted">{FIX_HINT}</p>
+      <div className="flex flex-wrap gap-2" role="group" aria-label={text}>
+        {[...text].map((character, index) => (
+          <Button
+            key={index}
+            data-testid="paint-char"
+            variant={openAt === index ? "primary" : "secondary"}
+            style={CHAR_TARGET}
+            disabled={!hasAlternatives(character)}
+            aria-expanded={openAt === index}
+            aria-label={`Character ${index + 1}, ${character}`}
+            onClick={() => setOpenAt(openAt === index ? null : index)}
+          >
+            <CodeInControl text={character} marked={marked.includes(index) ? [0] : []} />
+          </Button>
+        ))}
+      </div>
+      {openAt === null ? null : (
+        <div
+          className="flex flex-wrap gap-2"
+          role="group"
+          aria-label={`Character ${openAt + 1}`}
+        >
+          {confusionSet(text[openAt]).map((option) => (
+            <Button
+              key={option}
+              data-testid="paint-swap"
+              variant="secondary"
+              style={CHAR_TARGET}
+              aria-pressed={option === text[openAt]}
+              aria-label={`Character ${openAt + 1} is ${option}`}
+              onClick={() => {
+                onPick(replaceAt(text, openAt, option));
+                setOpenAt(null);
+              }}
+            >
+              <CodeInControl text={option} marked={[]} />
+            </Button>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+/**
  * The proposal, and every way it refuses to be rubber-stamped.
  *
  * One candidate gets the primary with the value inside it. Two or three get equal-weight
  * ≥56 px buttons with **nothing preselected** and the differing characters marked (§5):
  * when the vote is split, styling one of them as the answer is a guess wearing the clothes
  * of a decision, and N2 says nothing downstream can catch that.
+ *
+ * Where the alternatives come from is `confusion.ts`, and it is the half of §5 this screen
+ * could not have without it: tesseract.js returns no candidate list, so a read the engine
+ * doubted at one position is offered beside the lookalikes of that position, at the same
+ * weight, with nothing preselected. A read it doubted nowhere is offered alone.
+ *
+ * `edited` is what the user built with the correction row. It collapses the offer to one
+ * control on purpose: the alternatives were all about the position they just resolved, and
+ * a row that kept offering them beside the answer would be asking a question that has been
+ * answered. Picking the original character back restores the whole offer.
  */
 function Proposal({
   proposal,
@@ -136,13 +255,26 @@ function Proposal({
   saving: boolean;
   onSave: (code: string) => void;
 }) {
-  const several = proposal.candidates.length > 1;
-  const differing = differingPositions(proposal.candidates.map((candidate) => candidate.text));
+  const [edited, setEdited] = useState<string | null>(null);
+  const offered = offeredCandidates(proposal);
+  const controls: OfferedCandidate[] =
+    edited === null ? offered : [{ text: edited, origin: "confusion", confidence: null }];
+  const several = controls.length > 1;
+  const synthesised = controls.some((candidate) => candidate.origin === "confusion");
+  // What the user changed, when they have changed something: the marks then say "this is
+  // not what it read" rather than "this is what it was unsure of".
+  const changed = edited === null ? [] : differingPositions([proposal.text, edited]);
+  const working = edited ?? proposal.text;
+  const marks = several
+    ? differingPositions(controls.map((candidate) => candidate.text))
+    : edited === null
+      ? proposal.marked
+      : changed;
 
   return (
     <section className="flex flex-col gap-4" aria-labelledby="proposal-heading">
       <h2 id="proposal-heading" className="text-lg leading-snug font-bold text-fg">
-        {several ? PICK_ONE : CHECK_IT}
+        {!several ? CHECK_IT : synthesised ? PICK_UNSURE : PICK_ONE}
       </h2>
 
       {/* §5: the cropped pixels the engine read, above the characters it read them as.
@@ -161,7 +293,7 @@ function Proposal({
       )}
 
       <div className="flex flex-col gap-3">
-        {proposal.candidates.map((candidate) => (
+        {controls.map((candidate) => (
           <Button
             key={candidate.text}
             data-testid="paint-candidate"
@@ -173,21 +305,28 @@ function Proposal({
             disabled={saving}
             onClick={() => onSave(candidate.text)}
           >
-            Save{" "}
-            <CodeInControl
-              text={candidate.text}
-              marked={several ? differing : proposal.marked}
-            />
+            Save <CodeInControl text={candidate.text} marked={marks} />
           </Button>
         ))}
       </div>
 
-      {!several && proposal.marked.length > 0 ? (
+      {!several && edited === null && proposal.marked.length > 0 ? (
         <p className="text-base leading-snug text-warn">{MARKED}</p>
       ) : null}
       {isLowConfidence(proposal) ? (
         <p className="text-base leading-snug text-fg-muted">{LOW}</p>
       ) : null}
+
+      {/* The row edits the winner — the string in the control the user is likeliest to
+          tap — or whatever they have already built from it. Its marks are the read's own
+          doubts, never the candidate row's differing positions: two unrelated tokens off
+          the same line differ everywhere, and a row with every character underlined marks
+          nothing (§5). */}
+      <CorrectionRow
+        text={working}
+        marked={edited === null ? proposal.marked : changed}
+        onPick={(next) => setEdited(next === proposal.text ? null : next)}
+      />
     </section>
   );
 }
