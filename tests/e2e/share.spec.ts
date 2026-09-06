@@ -222,12 +222,13 @@ test.describe("SH-1: the file Share attaches is one the browser will carry", () 
 });
 
 /**
- * SH-2. `canShare` reports one thing — whether this browser does file sharing at all — and the
- * code was reading it as though it reported another. Both halves are asserted here: the answer
- * it can give is obeyed, and the file that goes when it says yes is one the app has checked
- * against Chromium's lists itself.
+ * §4.9's older half, and not SH-2's: the text always goes, and a browser that does not do file
+ * sharing gets it on its own. Both of these behaved exactly the same way before the SH-2 diff —
+ * that branch is unchanged — so neither can detect it, and neither is written as though it
+ * could. They are here because the rule is worth holding: the two answers `canShare` is
+ * entitled to give are obeyed, and losing the file never costs the share.
  */
-test.describe("SH-2: what canShare is allowed to decide", () => {
+test.describe("§4.9: the text always goes, whatever happens to the file", () => {
   test("sends no file when the browser says it does not do files", async ({ page }) => {
     await stubShare(page, { canShare: false });
     await openSheet(page);
@@ -251,18 +252,74 @@ test.describe("SH-2: what canShare is allowed to decide", () => {
     expect(shared.files).toHaveLength(0);
     expect(shared.text).toContain("VIN 1HG CM826 3 3 A 004352");
   });
+});
 
-  test("sends a file the app has itself checked, not one canShare waved through", async ({
-    page,
-  }) => {
+/**
+ * SH-2, this time in a form that can fail.
+ *
+ * The fix taught `share()` to ask a second question — `isShareableFile`, the app's own copy of
+ * Chromium's allowlists — because `canShare` cannot answer it and says `true` to everything. On
+ * the shipped tree the guard never fires: SH-1 had already made the attachment a `.txt`, so
+ * every file the page builds passes, and any assertion over it holds on the pre-SH-2 code too.
+ * That is why the three tests written for SH-2 all passed with `Actions.tsx` restored to
+ * 182fea5, and why the commit's "0 files attached, text still went" was true only of an
+ * out-of-tree source edit that no assertion carried.
+ *
+ * So the source-level mistake the guard exists to catch is put back into the page instead. `File`
+ * is a global and `share()` builds its attachment with it, so `refuseTheFile` hands back exactly
+ * the file this app shipped until SH-1 — `vin-relay-<vin>.json`, `application/json`, the pair
+ * that fails both of Chromium's lists and cost a real user every share they tried. No app source
+ * is touched, the same way `scan-storage-failure.spec.ts` injects a full disk by patching
+ * `IDBObjectStore.prototype.put`.
+ */
+async function refuseTheFile(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const Real = window.File;
+    class PreSh1File extends Real {
+      constructor(bits: BlobPart[], name: string, options?: FilePropertyBag) {
+        // Only the share attachment: anything else the page builds is left alone.
+        const refused = name.endsWith(".txt");
+        super(bits, refused ? `${name.slice(0, -4)}.json` : name, {
+          ...options,
+          ...(refused ? { type: "application/json" } : {}),
+        });
+      }
+    }
+    window.File = PreSh1File as unknown as typeof File;
+  });
+}
+
+test.describe("SH-2: the guard drops a file canShare waved through", () => {
+  test("drops the refused file and still sends §4.9's text", async ({ page }) => {
+    await stubShare(page, { canShare: true });
+    await refuseTheFile(page);
+    await openSheet(page);
+
+    await page.getByRole("button", { name: /^share$/i }).click();
+
+    const shared = await firstShare(page);
+    // `canShare` was asked about that exact file and said yes — it says yes to anything, which
+    // is the whole finding — and the browser process behind it would then have refused the
+    // share entirely, text and all, with NotAllowedError.
+    const offered = await page.evaluate(() => (window as unknown as ShareWindow).__canShareFiles);
+    expect(offered).toBe(1);
+    // The app's own check runs after it, so what actually leaves is the text alone.
+    expect(shared.files).toEqual([]);
+    expect(shared.text).toContain("VIN 1HG CM826 3 3 A 004352");
+    // A dropped file is not a failed share: nothing is reported to the user (§4.9, P7).
+    await expect(page.getByText("Sharing didn't finish.")).toHaveCount(0);
+  });
+
+  test("attaches the file when the page builds the one the platform carries", async ({ page }) => {
+    // The positive half of the same guard, without the injection: same code path, opposite
+    // answer, so the test above cannot pass by dropping every file there is.
     await stubShare(page, { canShare: true });
     await openSheet(page);
 
     await page.getByRole("button", { name: /^share$/i }).click();
 
     const shared = await firstShare(page);
-    // The app's own rule, run over the file that actually left the page. This is the
-    // assertion `canShare` could never have made: it returns `true` for anything.
+    expect(shared.files).toHaveLength(1);
     expect(isShareableFile(shared.files[0])).toBe(true);
   });
 });
