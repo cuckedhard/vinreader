@@ -5,6 +5,16 @@ import { runDecodeQueueOnce, startDecodeQueue } from "./decodeQueue";
  * The queue's environment guards, exercised in BOTH directions. The unit tests run
  * under node, where `window` and `document` are absent, so without these the
  * browser-side branch of every guard would never execute (§5.4, P7).
+ *
+ * [TA2] `document.visibilityState` used to be one of them, under "polls only while the
+ * document is visible". It ran both branches of `isVisible()` — satisfying §13.5's branch
+ * coverage — and then asserted `fetchImpl.mock.calls.length >= whileHidden` against a
+ * database with nothing pending, which is true of every implementation including one with
+ * no visibility check at all: the R4-H' / F1-a class, a guard that cannot fail. `bun run
+ * mutate` said the same from the other side, ten survivors on a nine-line function. It is
+ * gone, and §5.4's "every 60 s while the app is visible and online" is measured in
+ * `decodeQueue.visibility.test.ts` instead, against a pending row, where the two branches
+ * differ in what reaches the network.
  */
 const offlineFetch = (async () => {
   throw new Error("no network");
@@ -36,26 +46,5 @@ describe("decode queue environment guards", () => {
     expect(listeners).toContain("online");
     stop();
     expect(removed).toContain("online");
-  });
-
-  it("polls only while the document is visible", async () => {
-    vi.useFakeTimers();
-    vi.stubGlobal("document", { visibilityState: "hidden" });
-    vi.stubGlobal("navigator", { onLine: true });
-    const fetchImpl = vi.fn(offlineFetch);
-    const stop = startDecodeQueue({
-      fetchImpl: fetchImpl as unknown as typeof fetch,
-      sleep: async () => {},
-    });
-    await vi.advanceTimersByTimeAsync(180_000);
-    const whileHidden = fetchImpl.mock.calls.length;
-
-    vi.stubGlobal("document", { visibilityState: "visible" });
-    await vi.advanceTimersByTimeAsync(180_000);
-    stop();
-    vi.useRealTimers();
-    // Nothing is pending in this database, so neither figure grows; what matters is
-    // that the hidden branch and the visible branch both execute.
-    expect(fetchImpl.mock.calls.length).toBeGreaterThanOrEqual(whileHidden);
   });
 });
