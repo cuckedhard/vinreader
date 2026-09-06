@@ -148,8 +148,11 @@ export function HistoryTable({
                   </td>
                 ) : null}
 
-                {/* §6.5: "the VIN cell copies on click". */}
-                <th scope="row" className={`${CELL} font-normal whitespace-nowrap`}>
+                {/* §6.5: "the VIN cell copies on click". No `whitespace-nowrap`: `VinDisplay`
+                    already wraps at the §4.1 group breaks, and pinning this cell to one line
+                    put 304 px of min-content into a table that had 770 to spend on eight
+                    columns, which is how Status and Copy ended up outside the container (F9). */}
+                <th scope="row" className={`${CELL} font-normal`}>
                   <button
                     type="button"
                     style={COPY_TARGET}
@@ -164,8 +167,10 @@ export function HistoryTable({
                   </button>
                 </th>
 
-                {/* N2: a year vPIC has not resolved shows both candidates, never one. */}
-                <td className={`${CELL} whitespace-nowrap`}>{year ?? ""}</td>
+                {/* N2: a year vPIC has not resolved shows both candidates, never one — and
+                    "1996 or 2026" is three times the width of a resolved year, so it wraps
+                    rather than widening the whole table past its container (F9). */}
+                <td className={CELL}>{year ?? ""}</td>
                 <td className={CELL}>{field(record.decode.fields, "Make") ?? ""}</td>
                 <td className={CELL}>{field(record.decode.fields, "Model") ?? ""}</td>
                 <td className={`${CELL} font-bold`}>{record.unit ?? ""}</td>
@@ -174,9 +179,18 @@ export function HistoryTable({
                     {formatScannedAt(record.lastScannedAt, nowMs)}
                   </time>
                 </td>
-                {/* `ok` is deliberately blank — see `display.ts`. */}
+                {/* `ok` is deliberately blank — see `display.ts`. The chip keeps its text on
+                    one line by default, which is right on a phone and wrong in a column that
+                    has to share 770 px with seven others: "Details failed — tap to retry" is
+                    the longest §6.4 status there is, and unwrapped it alone took the table
+                    340 px past its container (F9). Same idiom as `ManualEntry`'s neutral
+                    chip: the white-space set on the child wins by inheritance. */}
                 <td className={CELL}>
-                  {decode !== null ? <Chip tone={decode.tone}>{decode.label}</Chip> : null}
+                  {decode !== null ? (
+                    <Chip tone={decode.tone}>
+                      <span className="whitespace-normal">{decode.label}</span>
+                    </Chip>
+                  ) : null}
                 </td>
 
                 {/* §6.6: "every row has a copy button" — §6.5's Row format, tab-separated. */}
