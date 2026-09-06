@@ -329,6 +329,93 @@ test("[§5] a character is corrected by tapping it, and the correction is undoab
   await expect(page.getByText(HINT_TYPED)).toBeVisible();
 });
 
+test("[§5] the value is inside the primary control, in the VIN face, at VIN size", async ({
+  page,
+}) => {
+  test.setTimeout(180_000);
+  await openCapture(page);
+  const { tapLg } = await tokens(page);
+  await page.getByRole("button", { name: "Read the code" }).click();
+  const candidate = page.getByRole("button", { name: `Save ${CODE}` });
+  await expect(candidate).toBeVisible({ timeout: 150_000 });
+
+  /*
+   * §5: "The value lives **inside** the primary control — `Save  NH-731P`, in `--vin-font`
+   * at VinDisplay size on a ≥56 px primary. Tap target and reading target are the same
+   * pixels. A pre-filled field with a Save button beside it is auto-accept with extra
+   * steps."
+   *
+   * The accessible name having the code in it says the characters are inside the control;
+   * these say they are *readable* there. A 16 px code in the UI face inside a 56 px button
+   * satisfies every other assertion in this file and is exactly the thing a human confirms
+   * without reading — which is §5's stated risk and the one N2 has no downstream check for.
+   */
+  const shown = await candidate.evaluate((node) => {
+    const span = [...node.querySelectorAll("span")].find((each) => each.textContent === "5");
+    const style = getComputedStyle(span as Element);
+    const root = getComputedStyle(document.documentElement);
+    return {
+      family: style.fontFamily,
+      vinFont: root.getPropertyValue("--vin-font").trim(),
+      size: parseFloat(style.fontSize),
+      height: (node as HTMLElement).getBoundingClientRect().height,
+    };
+  });
+  // The same stack `tokens.css` declares for a VIN, not merely "some monospace".
+  expect(shown.family).toBe(shown.vinFont);
+  // §6.1's VIN floor is 28 px on a phone, and `VIN_TEXT_SIZES.lg` is what §5 points at.
+  expect(shown.size).toBeGreaterThanOrEqual(28);
+  expect(shown.height).toBeGreaterThanOrEqual(tapLg);
+});
+
+test("[§12] the pixels the engine read are memory only, and go when the screen does", async ({
+  page,
+}) => {
+  test.setTimeout(180_000);
+  await openCapture(page);
+  await page.getByRole("button", { name: "Read the code" }).click();
+  const crop = page.getByTestId("paint-crop");
+  await expect(crop).toBeVisible({ timeout: 150_000 });
+
+  // §12 forbids attaching the photo to the record, and N3 keeps it off the network. It is
+  // an object URL over a Blob that exists only while this screen does.
+  const url = await crop.getAttribute("src");
+  expect(url).toMatch(/^blob:/);
+  expect(await page.evaluate((href) => fetch(href!).then(() => "alive", () => "gone"), url)).toBe(
+    "alive",
+  );
+
+  await page.getByRole("button", { name: "Back to the vehicle" }).click();
+  await expect(page).toHaveURL(new RegExp(`#/v/${VIN}$`));
+  // The hash changes before React swaps the screen, and the revoke is the capture screen's
+  // unmount. Waiting for the sheet's own field is waiting for that unmount to have run.
+  await expect(page.getByLabel("Paint code")).toBeVisible();
+
+  // Revoked on the way out, not left for the tab to collect: a frame of a door jamb held
+  // alive by a URL nobody can see is still a photo this app is keeping.
+  await expect
+    .poll(() => page.evaluate((href) => fetch(href!).then(() => "alive", () => "gone"), url), {
+      timeout: 5_000,
+    })
+    .toBe("gone");
+  // And nothing about it reached the record.
+  const row = await page.evaluate(async (vin) => {
+    const open = indexedDB.open("vinrelay");
+    const handle: IDBDatabase = await new Promise((res, rej) => {
+      open.onsuccess = () => res(open.result);
+      open.onerror = () => rej(open.error);
+    });
+    const request = handle.transaction("vehicles", "readonly").objectStore("vehicles").get(vin);
+    const found = await new Promise<Record<string, unknown> | undefined>((res, rej) => {
+      request.onsuccess = () => res(request.result as Record<string, unknown>);
+      request.onerror = () => rej(request.error);
+    });
+    return JSON.stringify(found ?? {});
+  }, VIN);
+  expect(row).not.toContain("blob:");
+  expect(row).not.toContain("data:image");
+});
+
 test("[§5] the typed escape is on screen before anything is read, and it is empty", async ({
   page,
 }) => {
