@@ -12,7 +12,12 @@ import {
 import { PAINT_CROP_BOX } from "../../lib/ocr/cropBox";
 import type { PaintCaptureState } from "../../lib/ocr/session";
 import type { OcrFailure } from "../../lib/ocr/types";
-import { differingPositions, isLowConfidence, type PaintProposal } from "../../lib/ocr/vote";
+import {
+  differingPositions,
+  highlightedPositions,
+  isLowConfidence,
+  type PaintProposal,
+} from "../../lib/ocr/vote";
 import { setVehicleMeta } from "../../lib/storage/upsert";
 import type { PaintSource } from "../../lib/vin/types";
 import { asciiUpper } from "../../lib/vin/grammar";
@@ -267,7 +272,7 @@ function Proposal({
   const changed = edited === null ? [] : differingPositions([proposal.text, edited]);
   const working = edited ?? proposal.text;
   const marks = several
-    ? differingPositions(controls.map((candidate) => candidate.text))
+    ? highlightedPositions(controls.map((candidate) => candidate.text))
     : edited === null
       ? proposal.marked
       : changed;

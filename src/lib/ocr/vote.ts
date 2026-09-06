@@ -174,6 +174,21 @@ export function isLowConfidence(proposal: PaintProposal): boolean {
 }
 
 /**
+ * What the candidate row actually underlines — `differingPositions`, unless that is every
+ * position there is.
+ */
+export function highlightedPositions(texts: readonly string[]): number[] {
+  const differing = differingPositions(texts);
+  const width = Math.max(...texts.map((text) => text.length));
+  // §5's rule about marks, applied to the highlight: "marking everything marks nothing."
+  // Two lookalikes of the same read part company at one or two positions and the highlight
+  // is the whole point of showing both. Two *different tokens* off the same label line —
+  // `PNT` beside `WA8555`, which is what the crop box actually catches — share nothing, and
+  // underlining every character of both teaches the user that the underline means nothing.
+  return differing.length === width ? [] : differing;
+}
+
+/**
  * The positions two or three candidates disagree about (§5: "differing characters
  * highlighted").
  *

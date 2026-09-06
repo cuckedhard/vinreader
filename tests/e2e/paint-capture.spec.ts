@@ -252,6 +252,17 @@ test("[§5] the candidates are equal weight, and none of them is dressed as the 
     }),
   );
   expect(new Set(painted).size, painted.join(" vs ")).toBe(1);
+
+  // §5 highlights "the differing characters", and these two candidates are different
+  // *tokens* off the same label line rather than two readings of one: they differ
+  // everywhere, and underlining all of both is §5's "marking everything marks nothing".
+  const underlined = await candidates.evaluateAll((nodes) =>
+    nodes
+      .flatMap((node) => [...node.querySelectorAll("span span")])
+      .filter((span) => getComputedStyle(span).textDecorationLine.includes("underline"))
+      .map((span) => span.textContent ?? ""),
+  );
+  expect(underlined).toEqual([]);
 });
 
 test("[§5] a character is corrected by tapping it, and the correction is undoable", async ({

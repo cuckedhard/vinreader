@@ -16,7 +16,13 @@ import {
   OCR_MARK_BELOW,
 } from "./constants";
 import type { OcrLine, OcrToken } from "./types";
-import { differingPositions, isLowConfidence, markedPositions, voteOnLines } from "./vote";
+import {
+  differingPositions,
+  highlightedPositions,
+  isLowConfidence,
+  markedPositions,
+  voteOnLines,
+} from "./vote";
 
 function token(text: string, confidence: number, chars?: number[]): OcrToken {
   return {
@@ -205,6 +211,28 @@ describe("isLowConfidence", () => {
 
   it("is false for a clean read, so the hint is not permanent furniture", () => {
     expect(isLowConfidence(voteOnLines([read("WA8555", 95)])!)).toBe(false);
+  });
+});
+
+describe("highlightedPositions", () => {
+  it("underlines where two lookalikes part company", () => {
+    expect(highlightedPositions(["WA8555", "WA8S55"])).toEqual([3]);
+    expect(highlightedPositions(["1F7", "1E7", "1F1"])).toEqual([1, 2]);
+  });
+
+  it("underlines nothing when the candidates share nothing", () => {
+    // The row the crop box actually produces: two *different tokens* off the same label
+    // line. Every position differs, and underlining all of both teaches the user that the
+    // underline means nothing — §5's "marking everything marks nothing", applied to the
+    // highlight rather than to the marks.
+    expect(highlightedPositions(["WA8555", "PNT"])).toEqual([]);
+    expect(highlightedPositions(["PNT", "935"])).toEqual([]);
+  });
+
+  it("still underlines a difference that runs off the end of a shorter candidate", () => {
+    // `UG` and `UG7` agree about everything they both have; the third position is the
+    // whole question, and it is one of three, not three of three.
+    expect(highlightedPositions(["UG", "UG7"])).toEqual([2]);
   });
 });
 
