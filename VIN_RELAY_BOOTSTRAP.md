@@ -299,7 +299,8 @@ create table public.vehicles (
   vin              text not null check (vin ~ '^[A-HJ-NPR-Z0-9]{17}$'),
   unit             text,
   notes            text,
-  meta_updated_at  timestamptz not null,                 -- client clock at last unit/notes edit (LWW);
+  paint            text,                                 -- paint code (S5); LWW on the same clock
+  meta_updated_at  timestamptz not null,                 -- client clock at last unit/notes/paint edit (LWW);
                                                         -- the epoch sentinel until one happens
   structural       jsonb not null default '{}'::jsonb,
   decode           jsonb not null default '{}'::jsonb,   -- { status, source, fetchedAt, fields }
@@ -364,18 +365,31 @@ create or replace function public.better_decode(a jsonb, b jsonb) returns jsonb 
     else a end $$;
 
 create or replace function public.upsert_vehicle_meta(
-  p_vin text, p_unit text, p_notes text, p_meta_updated_at timestamptz, p_structural jsonb, p_decode jsonb
+  p_vin text, p_unit text, p_notes text, p_meta_updated_at timestamptz, p_structural jsonb, p_decode jsonb,
+  p_paint text default null
 ) returns void language plpgsql security invoker as $$
 begin
-  insert into public.vehicles (user_id, vin, unit, notes, meta_updated_at, structural, decode)
-  values (auth.uid(), p_vin, p_unit, p_notes, p_meta_updated_at, coalesce(p_structural, '{}'), coalesce(p_decode, '{}'))
+  insert into public.vehicles (user_id, vin, unit, notes, paint, meta_updated_at, structural, decode)
+  values (auth.uid(), p_vin, p_unit, p_notes, p_paint, p_meta_updated_at, coalesce(p_structural, '{}'), coalesce(p_decode, '{}'))
   on conflict (user_id, vin) do update set
     unit            = case when excluded.meta_updated_at > vehicles.meta_updated_at then excluded.unit  else vehicles.unit  end,
     notes           = case when excluded.meta_updated_at > vehicles.meta_updated_at then excluded.notes else vehicles.notes end,
+    paint           = case when excluded.meta_updated_at > vehicles.meta_updated_at then excluded.paint else vehicles.paint end,
     meta_updated_at = greatest(vehicles.meta_updated_at, excluded.meta_updated_at),
     structural      = case when vehicles.structural = '{}'::jsonb then excluded.structural else vehicles.structural end,
     decode          = public.better_decode(vehicles.decode, excluded.decode);
 end $$;
+```
+`p_paint` carries a default so a client built before S5 still lands its queued rows — PostgREST
+resolves RPC arguments by name, and `create or replace` cannot change a parameter list, so the
+migration drops and recreates the function rather than adding an overload (two candidates would
+make every six-argument call ambiguous). **The hazard that default creates is real and open as
+ledger row S5-1:** a device still on a pre-S5 build pushes the six-argument form with a newer
+`meta_updated_at`, `p_paint` defaults to null, and the `case` above therefore writes that null over
+a paint code the account holds — which the next pull spreads to every device. This is *not* the
+`unit`/`notes` hazard §4.12 already accepts, where an old build pushes a value it genuinely holds;
+here it erases a column it has never heard of. Resolving it is Zach's.
+```sql
 
 create or replace function public.delete_vehicle(p_vin text) returns void language sql security invoker as $$
   update public.vehicles set deleted_at = now() where user_id = auth.uid() and vin = p_vin $$;
@@ -427,11 +441,12 @@ interface VehicleRecord {
   };
   unit: string | null;              // fleet unit / asset tag (user-entered)
   notes: string | null;
+  paint: string | null;             // paint code (S5) — typed off the sticker, never decoded (§4.9 `pc`)
   firstScannedAt: string;           // ISO 8601 with offset
   lastScannedAt: string;
   scanCount: number;
   origin: "scan" | "manual" | "import" | "cloud";
-  metaUpdatedAt: string;            // device clock at last unit/notes edit — the LWW clock (§4.12)
+  metaUpdatedAt: string;            // device clock at last unit/notes/paint edit — the LWW clock (§4.12)
   deletedAt: string | null;
 }
 ```
@@ -669,7 +684,7 @@ History becomes a table (VIN · Year · Make · Model · Unit · Last scanned ·
 - Sheet actions: **Share** (Web Share: text §4.9 + attached `vin-relay-<vin>.json` when `navigator.canShare({ files })`; text-only fallback; when Web Share is absent, show Copy/Download instead) · **QR** (full-screen, max brightness hint, the URL carrier) · **Copy link** (text-prefix carrier) · **Download JSON**.
 - Import screen: `/#/i?d=` auto-parse on open; paste box (payload URL, `VINRELAY1:` text, or bare VIN); `.json` file picker (single record or export bundle); preview → confirm → upsert (§5.3) → kick decode.
 - Scan screen: a scanned **QR that is a VIN Relay payload URL** imports directly (so phone-to-phone is "show QR, scan QR"). A computer with a webcam can do the same on `/#/scan`.
-- History: **Export all** as JSON bundle `{ app: "vin-relay", v: 1, exportedAt, vehicles: [...] }` and CSV (columns: vin, year, make, model, trim, body, engine, fuel, drive, gvwr, plant, unit, notes, firstScannedAt, lastScannedAt, scanCount, decodeStatus).
+- History: **Export all** as JSON bundle `{ app: "vin-relay", v: 1, exportedAt, vehicles: [...] }` and CSV (columns: vin, year, make, model, trim, body, engine, fuel, drive, gvwr, plant, unit, notes, firstScannedAt, lastScannedAt, scanCount, decodeStatus, paint). `paint` is **appended last**, out of provenance order, so every column before it keeps the index a spreadsheet built on an earlier export depends on.
 - **DoD extras:** iPhone → AirDrop → Mac opens JSON → import on `/#/i` works; Android → Nearby Share works; phone QR → second phone scan → imported; 700-byte cap verified with a long-notes record.
 
 ### S4 — Accounts & cloud history (`start S4`; optional to the user, not to the build)
