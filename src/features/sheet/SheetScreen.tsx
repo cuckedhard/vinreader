@@ -202,7 +202,12 @@ function MetaEditor({ record }: { record: VehicleRecord }) {
 function NoRecord({ vin, onBack }: { vin: string; onBack?: () => void }) {
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 p-4">
-      <VinDisplay vin={vin} size="lg" className="break-all" />
+      {/* The VIN is what this screen is about, exactly as it is when the record exists,
+          so it is the screen's heading here too — a state with no `<h1>` is one nobody
+          reaches by heading navigation (§6.6, F13). */}
+      <h1>
+        <VinDisplay vin={vin} size="lg" className="break-all" />
+      </h1>
       <p className="text-lg text-fg">No record for this VIN.</p>
       {onBack ? (
         <Button variant="primary" full onClick={onBack}>

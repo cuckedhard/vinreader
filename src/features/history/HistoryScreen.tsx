@@ -475,7 +475,7 @@ export default function HistoryScreen() {
     // Still `null` while the query is merely in flight; a notice only once storage has said
     // it cannot answer at all (§6.4, P7).
     if (storageFailure !== null)
-      body = <FailureNotice error={storageFailure.cause} fromStorage />;
+      body = <FailureNotice error={storageFailure.cause} fromStorage standalone={false} />;
   } else {
     if (total === 0) {
       body = <EmptyHistory />;

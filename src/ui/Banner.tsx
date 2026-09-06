@@ -15,6 +15,17 @@ export interface BannerProps {
    * won on source order, so the row silently *lowered* an action's target.
    */
   actions?: ReactNode;
+  /**
+   * The element the title renders as. A banner that *is* the screen — a boundary's notice,
+   * a route whose whole content is this — is that screen's heading, and a screen with no
+   * `<h1>` is one nobody can arrive at by heading navigation (§6.6's "everything is
+   * keyboard-reachable", §13.2's axe `page-has-heading-one`, F13). Everywhere else the
+   * title stays a paragraph: the banner is a region inside a screen that has its own
+   * heading, and a second `<h1>` would describe the page by its worst news.
+   *
+   * Only the element changes; the type scale and tone do not.
+   */
+  titleAs?: "p" | "h1";
   className?: string;
 }
 
@@ -25,7 +36,14 @@ const TONES: Record<BannerTone, { edge: string; title: string }> = {
   info: { edge: "border-l-accent", title: "text-accent" },
 };
 
-export function Banner({ tone, title, children, actions, className }: BannerProps) {
+export function Banner({
+  tone,
+  title,
+  children,
+  actions,
+  titleAs: Title = "p",
+  className,
+}: BannerProps) {
   const { edge, title: titleTone } = TONES[tone];
   const urgent = tone === "warn" || tone === "danger";
   const classes = [
@@ -37,7 +55,7 @@ export function Banner({ tone, title, children, actions, className }: BannerProp
     .join(" ");
   return (
     <div className={classes} role={urgent ? "alert" : "status"}>
-      <p className={`text-lg leading-tight font-bold ${titleTone}`}>{title}</p>
+      <Title className={`text-lg leading-tight font-bold ${titleTone}`}>{title}</Title>
       {children ? <div className="mt-2 text-base leading-snug text-fg">{children}</div> : null}
       {actions ? (
         <div className="mt-4 flex flex-wrap gap-3 [&>*]:min-h-[var(--tap-target,var(--tap))]">

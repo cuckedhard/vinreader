@@ -90,15 +90,30 @@ interface FailureNoticeProps {
    * the wrong sentence on the one fault this flag exists for (F1-b).
    */
   fromStorage?: boolean;
+  /**
+   * Whether this notice is the screen. It usually is — a boundary fallback replaces
+   * everything the route would have drawn — and then its title is the page's `<h1>` (F13).
+   * A host that renders it *inside* a screen with a heading of its own passes `false`.
+   *
+   * The default is the standalone case on purpose: a new boundary that forgets this prop
+   * gets a heading, and forgetting it the other way costs a second `<h1>` rather than a
+   * screen an assistive reader cannot enter.
+   */
+  standalone?: boolean;
 }
 
-export function FailureNotice({ error, fromStorage = false }: FailureNoticeProps) {
+export function FailureNotice({
+  error,
+  fromStorage = false,
+  standalone = true,
+}: FailureNoticeProps) {
   const copy = fromStorage || isStorageError(error) ? STORAGE_COPY : RENDER_COPY;
   return (
     <div className="p-4">
       <Banner
         tone="danger"
         title={copy.title}
+        titleAs={standalone ? "h1" : "p"}
         actions={
           /* §6.1's ≥ 56 px list names Scan, Use as-is, Share, Copy and Sign in, and not
              Reload — but this is the notice's only action, and §6.4 reads §6.1 the same way

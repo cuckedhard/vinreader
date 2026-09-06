@@ -263,7 +263,7 @@ export function SettingsScreen() {
           <p className="mt-4 text-base text-fg-muted">Loading…</p>
         ) : (
           <div className="-mx-4 mt-4">
-            <FailureNotice error={unreadable.cause} fromStorage />
+            <FailureNotice error={unreadable.cause} fromStorage standalone={false} />
           </div>
         )}
       </div>

@@ -112,7 +112,10 @@ export interface DeletedNoticeProps {
 export function DeletedNotice({ vin, onBack }: DeletedNoticeProps) {
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 p-4">
-      <VinDisplay vin={vin} size="lg" className="break-all" />
+      {/* Still this vehicle's screen, so still this vehicle's heading (§6.6, F13). */}
+      <h1>
+        <VinDisplay vin={vin} size="lg" className="break-all" />
+      </h1>
       <Banner tone="ok" title={DELETED_TITLE}>
         {DELETED_BODY}
       </Banner>
