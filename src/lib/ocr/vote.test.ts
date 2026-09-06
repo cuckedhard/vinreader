@@ -132,6 +132,20 @@ describe("voteOnLines", () => {
     expect(Number.isNaN(proposal.agreement)).toBe(false);
   });
 
+  it("breaks a weight tie on the number of frames that produced the string", () => {
+    // Equal weight, 90 either way: one read at 90 against three reads at 30. §5's vote is
+    // confidence-weighted and the frame count is the second question, not the first — a
+    // string three frames produced is the better default than one a single frame did.
+    const proposal = voteOnLines([
+      read("WA8555", 90),
+      read("WA8SSS", 30),
+      read("WA8SSS", 30),
+      read("WA8SSS", 30),
+    ])!;
+    expect(proposal.text).toBe("WA8SSS");
+    expect(proposal.candidates[0]!.frames).toBe(3);
+  });
+
   it("breaks a tie the same way every time it is asked", () => {
     const lines = [read("UG", 50), read("U6", 50)];
     expect(voteOnLines(lines)!.text).toBe("UG");
@@ -194,8 +208,29 @@ describe("markedPositions", () => {
   });
 
   it("returns them in reading order, whatever order they were least certain in", () => {
-    const chars = [10, 95, 20].map((confidence) => ({ char: "X", confidence }));
-    expect(markedPositions(chars)).toEqual([0, 2]);
+    // The two doubts are at 1 and 4, and the *worse* of them is the later one, so the
+    // confidence sort hands them over as [4, 1] and only the final sort puts them back in
+    // the order they are underlined in. Data where the two orders coincide cannot tell.
+    const chars = [95, 40, 95, 95, 20, 95].map((confidence) => ({ char: "X", confidence }));
+    expect(markedPositions(chars)).toEqual([1, 4]);
+  });
+
+  it("takes the earlier positions when the doubts are equal", () => {
+    // Three positions doubted exactly alike and only two slots: which two is decided by
+    // reading order, so the same read always marks the same characters.
+    const chars = [50, 50, 50].map((confidence) => ({ char: "X", confidence }));
+    expect(markedPositions(chars)).toEqual([0, 1]);
+  });
+
+  it("does not mark a position sitting exactly on the threshold", () => {
+    // `OCR_MARK_BELOW` is a floor, not a ceiling: at 80 the engine is as sure as the
+    // threshold asks it to be, and marking there would put a mark on most reads — §5's
+    // "marking everything marks nothing" arriving one character at a time.
+    const chars = [OCR_MARK_BELOW, OCR_MARK_BELOW - 1].map((confidence) => ({
+      char: "X",
+      confidence,
+    }));
+    expect(markedPositions(chars)).toEqual([1]);
   });
 });
 
@@ -207,6 +242,21 @@ describe("isLowConfidence", () => {
     const marked = voteOnLines([read("WA8555", 95, [95, 95, 95, 30, 95, 95])])!;
     expect(marked.marked).toEqual([3]);
     expect(isLowConfidence(marked)).toBe(true);
+  });
+
+  it("is true on the confidence alone, with every character above the mark", () => {
+    // The two clauses are independent and only this one exercises the first: every
+    // position is 95 so nothing is marked, and the read is still under the line. Without
+    // it, `proposal.confidence < OCR_LOW_CONFIDENCE` could be deleted and every test here
+    // would still pass — which is the shape of a guard that cannot fail.
+    const weak = voteOnLines([read("WA8555", OCR_LOW_CONFIDENCE - 1, [95, 95, 95, 95, 95, 95])])!;
+    expect(weak.marked).toEqual([]);
+    expect(isLowConfidence(weak)).toBe(true);
+  });
+
+  it("is false exactly on the line, which is where a threshold has to be pinned", () => {
+    const onIt = voteOnLines([read("WA8555", OCR_LOW_CONFIDENCE, [95, 95, 95, 95, 95, 95])])!;
+    expect(isLowConfidence(onIt)).toBe(false);
   });
 
   it("is false for a clean read, so the hint is not permanent furniture", () => {

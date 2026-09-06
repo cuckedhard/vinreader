@@ -101,7 +101,11 @@ export function markedPositions(chars: readonly OcrChar[]): number[] {
   return chars
     .map((char, index) => ({ index, confidence: char.confidence }))
     .filter((entry) => entry.confidence < OCR_MARK_BELOW)
-    .sort((a, b) => a.confidence - b.confidence || a.index - b.index)
+    // No index tiebreak. `Array#sort` is stable (ES2019), the entries arrive in reading
+    // order, and equal confidences therefore already come out in it — a second comparator
+    // here could never change an answer, which makes it a line no test could catch going
+    // wrong. `voteOnLines` records the same reasoning about its own ranking.
+    .sort((a, b) => a.confidence - b.confidence)
     .slice(0, OCR_MARKED_MAX)
     .map((entry) => entry.index)
     .sort((a, b) => a - b);
