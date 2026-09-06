@@ -238,9 +238,12 @@ describe("preprocessCrop", () => {
     expect(d.canvases).toHaveLength(2);
     expect([d.canvases[1]!.width, d.canvases[1]!.height]).toEqual([result.width, result.height]);
     // High-quality resampling on both surfaces: this is the "bicubic" in the pipeline.
-    expect(d.canvases[0]!.quality).toContain("high");
-    expect(d.canvases[1]!.quality).toContain("high");
-    expect(d.canvases[1]!.smoothing).toContain(true);
+    // Both halves on both canvases — smoothing off on either one is a nearest-neighbour
+    // resample, which is the opposite of what the upscale is for.
+    for (const canvas of d.canvases) {
+      expect(canvas.quality).toContain("high");
+      expect(canvas.smoothing).toEqual([true]);
+    }
   });
 
   it("makes no second canvas when the crop is already big enough", async () => {

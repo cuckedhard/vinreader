@@ -171,11 +171,14 @@ describe("markedPositions", () => {
   const doubtful = OCR_MARK_BELOW - 30;
 
   it("marks at most two, and the two least certain", () => {
-    const chars = [90, doubtful + 5, 92, doubtful, 91, doubtful + 10].map((confidence, index) => ({
-      char: String(index),
-      confidence,
-    }));
-    expect(markedPositions(chars)).toEqual([1, 3]);
+    // Three positions are under the threshold and the two worst are the *last* two of
+    // them, so taking the first two in reading order gets a different answer. The earlier
+    // version of this test used data where both answers coincided, which is a test that
+    // cannot fail: dropping the sort left it green.
+    const chars = [90, OCR_MARK_BELOW - 2, 92, doubtful, 91, doubtful + 3].map(
+      (confidence, index) => ({ char: String(index), confidence }),
+    );
+    expect(markedPositions(chars)).toEqual([3, 5]);
     expect(markedPositions(chars).length).toBeLessThanOrEqual(OCR_MARKED_MAX);
   });
 
