@@ -27,10 +27,22 @@ export type PayloadErrorKind = "encoding" | "schema" | "version" | "empty";
 export class PayloadError extends Error {
   readonly kind: PayloadErrorKind;
 
-  constructor(kind: PayloadErrorKind, message: string) {
+  /**
+   * The §4.9 fields the schema refused, in schema order — `["payload"]` where the payload
+   * itself is not an object, and empty for every other kind.
+   *
+   * `message` already names them, but only inside a sentence written for the general case,
+   * and a caller cannot read a sentence. §6.4 gives one of these fields a line of its own —
+   * "That payload's VIN isn't 17 valid characters, so there is nothing to save." — and this
+   * is how the Import screen knows it is in that state without matching on prose (F10).
+   */
+  readonly fields: readonly string[];
+
+  constructor(kind: PayloadErrorKind, message: string, fields: readonly string[] = []) {
     super(message);
     this.name = "PayloadError";
     this.kind = kind;
+    this.fields = fields;
   }
 }
 
@@ -108,6 +120,7 @@ export function decodePayload(encoded: string): Payload {
     throw new PayloadError(
       "schema",
       `This payload is not a VIN Relay record: ${summarize(result.error)}`,
+      result.error.issues.map(faultOf),
     );
   }
   return result.data;
@@ -206,10 +219,15 @@ function describe(version: unknown): string {
   return typeof version === "number" ? String(version) : JSON.stringify(version);
 }
 
+/** The field a zod issue is about. A fault with no path is the payload itself, not a field. */
+function faultOf(issue: { path: PropertyKey[] }): string {
+  return issue.path.join(".") || "payload";
+}
+
 function summarize(error: { issues: readonly { path: PropertyKey[]; message: string }[] }): string {
   return error.issues
     .slice(0, 3)
-    .map((issue) => `${issue.path.join(".") || "payload"} ${issue.message}`)
+    .map((issue) => `${faultOf(issue)} ${issue.message}`)
     .join("; ");
 }
 

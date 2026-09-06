@@ -20,7 +20,6 @@ import { kickDecodeQueue } from "../../lib/storage/decodeQueue";
 import { upsertVehicle } from "../../lib/storage/upsert";
 import { checkDigitApplies, isCheckDigitValid } from "../../lib/vin/checkDigit";
 import { extractVin } from "../../lib/vin/extractVin";
-import { isVinGrammarValid } from "../../lib/vin/grammar";
 import type { VehicleRecord } from "../../lib/vin/types";
 import { Banner } from "../../ui/Banner";
 import { Button } from "../../ui/Button";
@@ -90,6 +89,22 @@ function messageOf(cause: unknown): string {
   if (cause instanceof PayloadError) return cause.message;
   if (cause instanceof Error) return cause.message;
   return String(cause);
+}
+
+/**
+ * A refused carrier as this screen says it (§6.4).
+ *
+ * §6.4 gives one rejection a line of its own — a payload that parses but carries no usable
+ * VIN — and until F10 that line could not render: it sat behind an
+ * `isVinGrammarValid(payload.vin)` check *after* the codec had already validated the same
+ * field with the same regex, so the codec always threw first and what a field user read was
+ * zod's wording quoting §4.1. The state is real; only the place it was detected was wrong.
+ * `PayloadError.fields` names the field, so the case is recognised where it actually
+ * happens, and every other rejection keeps the message the codec wrote for it.
+ */
+function failureOf(cause: unknown): Failure {
+  const badVin = cause instanceof PayloadError && cause.fields.includes("vin");
+  return { title: badVin ? ERR_BAD_VIN : messageOf(cause), hint: HINT_LINK };
 }
 
 function itemFromPayload(payload: Payload, raw: string): ImportItem {
@@ -186,15 +201,12 @@ const NOTHING: Outcome = { preview: null, failure: null };
 function readLink(encoded: string): Outcome {
   try {
     const payload = decodePayload(encoded);
-    if (!isVinGrammarValid(payload.vin)) {
-      return { preview: null, failure: { title: ERR_BAD_VIN, hint: HINT_LINK } };
-    }
     return {
       preview: { source: "Shared link", items: [itemFromPayload(payload, `#/i?d=${encoded}`)] },
       failure: null,
     };
   } catch (cause) {
-    return { preview: null, failure: { title: messageOf(cause), hint: HINT_LINK } };
+    return { preview: null, failure: failureOf(cause) };
   }
 }
 
@@ -338,15 +350,11 @@ export default function ImportScreen() {
       payload = parseCarrier(raw);
     } catch (cause) {
       // A carrier whose body is bad — as opposed to text that is not a carrier at all.
-      fail(messageOf(cause), HINT_LINK);
+      replace({ preview: null, failure: failureOf(cause) });
       return;
     }
 
     if (payload !== null) {
-      if (!isVinGrammarValid(payload.vin)) {
-        fail(ERR_BAD_VIN, HINT_LINK);
-        return;
-      }
       accept({ source: "Pasted link", items: [itemFromPayload(payload, raw)] });
       return;
     }

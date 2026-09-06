@@ -98,6 +98,21 @@ function rejection(call: () => unknown): { kind: PayloadErrorKind; message: stri
   throw new Error("expected a PayloadError; nothing was thrown");
 }
 
+/**
+ * The fields a rejection names (`PayloadError.fields`), which is how a caller recognises a
+ * state §6.4 has its own sentence for without matching on the sentence the codec wrote
+ * (F10). Separate from `rejection` above so the `toEqual` assertions there stay exact.
+ */
+function faultsOf(call: () => unknown): readonly string[] {
+  try {
+    call();
+  } catch (error) {
+    expect(error).toBeInstanceOf(PayloadError);
+    return (error as PayloadError).fields;
+  }
+  throw new Error("expected a PayloadError; nothing was thrown");
+}
+
 function fromBase64Url(body: string): string {
   const binary = atob(body.replace(/-/g, "+").replace(/_/g, "/"));
   const bytes = new Uint8Array(binary.length);
@@ -373,6 +388,40 @@ describe("decodePayload rejections", () => {
       // zod's own wording is not this file's to pin — which field it named is.
       expect(message, json).toContain(`${SCHEMA}${field} `);
     }
+  });
+
+  /**
+   * §6.4 gives one rejection a line of its own — "That payload's VIN isn't 17 valid
+   * characters, so there is nothing to save." — and the screen that renders it has to know
+   * it is in that state. `message` names the field inside a sentence, which a caller cannot
+   * read; `fields` is the same fact as data. Before this, the Import screen guarded that
+   * sentence with its own grammar check *after* this function had already run the same
+   * regex, so the sentence was unreachable and zod's wording rendered instead (F10).
+   */
+  it("names the fields it refused, in schema order, as data", () => {
+    const faults = (payload: unknown) =>
+      faultsOf(() => decodePayload(toBase64Url(JSON.stringify(payload))));
+
+    expect(faults({ v: 1, vin: "123" })).toEqual(["vin"]);
+    expect(faults({ v: 1 })).toEqual(["vin"]);
+    expect(faults({ v: 1, vin: "1HGCM8263IA004352" })).toEqual(["vin"]);
+    // Every fault, not the three `message` prints, and in the schema's own order.
+    expect(faults({ v: 1, vin: "NOT A VIN", mk: 42, at: "yesterday", u: 7 })).toEqual([
+      "vin",
+      "mk",
+      "at",
+      "u",
+    ]);
+    // A VIN that is a VIN is never named, whatever else is wrong.
+    expect(faults({ v: 1, vin: VIN, at: "yesterday" })).toEqual(["at"]);
+    // A fault with no path is the payload itself.
+    expect(faultsOf(() => decodePayload(toBase64Url("[1,2,3]")))).toEqual(["payload"]);
+    // Nothing to name: the other three kinds carry no fields.
+    expect(faultsOf(() => decodePayload(""))).toEqual([]);
+    expect(faultsOf(() => decodePayload("____"))).toEqual([]);
+    expect(faultsOf(() => decodePayload(toBase64Url(JSON.stringify({ v: 2, vin: VIN }))))).toEqual(
+      [],
+    );
   });
 
   it("rejects JSON that is not an object as `schema`, naming the payload itself", () => {
