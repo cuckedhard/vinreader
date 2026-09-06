@@ -55,6 +55,18 @@ const PROBE_FILE = "tailwind-source-probe.html";
 const MD_PROBE_FILES = ["tailwind-source-probe.md", "hardening/tailwind-source-probe.md"];
 const MD_PROBE_CLASS = ["py-", "[2468px]"].join("");
 
+/**
+ * [F3-b] The vendored OCR engine (S5). Four files, 4.4 MB, three of them minified builds
+ * of `tesseract.js`, and they live in `public/` rather than in a build directory — so
+ * none of the four directives above covers them and the scan walks straight in. The files
+ * as shipped happen to contain no class candidate, which is precisely why this needs a
+ * probe: the property being asserted is that the directory is not a source, not that
+ * today's copy of a dependency is quiet.
+ */
+const OCR_PROBE_DIR = "public/ocr";
+const OCR_PROBE_FILE = "tailwind-source-probe.js";
+const OCR_PROBE_CLASS = ["mt-", "[9731px]"].join("");
+
 /** The two rules the leak actually shipped, one a font style and one a filter. */
 const STRAYS = [
   ["ital", "ic"],
@@ -72,6 +84,8 @@ beforeAll(() => {
     }
     writeFileSync(resolve(path, PROBE_FILE), `<div class="${PROBE_CLASS}">probe</div>\n`);
   }
+  // The vendored engine, with a class candidate in it the way minified JavaScript has one.
+  writeFileSync(resolve(ROOT, OCR_PROBE_DIR, OCR_PROBE_FILE), `var s="${OCR_PROBE_CLASS}";\n`);
   // A ledger row reporting on a rule, written the way a ledger row writes one.
   for (const file of MD_PROBE_FILES) {
     writeFileSync(
@@ -85,6 +99,7 @@ afterAll(() => {
   for (const dir of BUILD_DIRS) rmSync(resolve(ROOT, dir, PROBE_FILE), { force: true });
   for (const path of created) rmSync(path, { recursive: true, force: true });
   for (const file of MD_PROBE_FILES) rmSync(resolve(ROOT, file), { force: true });
+  rmSync(resolve(ROOT, OCR_PROBE_DIR, OCR_PROBE_FILE), { force: true });
 });
 
 /** One scan for the file: the assertions differ, the tree and the probes they read do not. */
@@ -139,4 +154,16 @@ it("does not build the stylesheet out of the prose that reports on it", async ()
 
   // Planted in a root document and in a ledger, so neither location can pass by absence.
   expect(css, "a class named in prose reached the stylesheet").not.toContain("2468px");
+});
+
+it("[F3-b] does not build the stylesheet out of the OCR engine it self-hosts", async () => {
+  const { css, scanned } = await stylesheet();
+
+  // Same floor as above: without it every assertion here passes on an empty stylesheet.
+  expect(css, "no utility was emitted at all — the scan found nothing").toMatch(/\.flex\s*\{/);
+
+  const vendored = scanned.filter((file) => file.startsWith(`${resolve(ROOT, OCR_PROBE_DIR)}/`));
+  expect(vendored, "a vendored OCR asset was scanned as a source").toEqual([]);
+
+  expect(css, "a class from the vendored engine reached the stylesheet").not.toContain("9731px");
 });

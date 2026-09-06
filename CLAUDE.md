@@ -23,7 +23,7 @@ Bun · Vite · React + TypeScript strict · react-router `HashRouter` · Tailwin
 See Appendix A of the bootstrap. Pure logic in `src/lib/*`, screens in `src/features/*`, primitives in `src/ui/`, agents in `.claude/agents/`, ledgers and reports in `hardening/`, scan corpus and bench in `bench/`, auth and sync in `src/lib/auth/` and `src/lib/sync/`, backend in `supabase/`.
 
 ## Commands
-`bun install` · `bun run dev` (HTTPS, `--host`) · `bun run typecheck` · `bun run lint` · `bun run test` · `bun run test:e2e` · `bun run bench` · `bun run mutate` · `bun run build` · `bun run seed:wmi` · S4: `supabase start` · `supabase db push` · `supabase functions deploy delete-account`
+`bun install` · `bun run dev` (HTTPS, `--host`) · `bun run typecheck` · `bun run lint` · `bun run test` · `bun run test:e2e` · `bun run bench` · `bun run mutate` · `bun run build` · `bun run seed:wmi` · `bun run build:ocr` · S4: `supabase start` · `supabase db push` · `supabase functions deploy delete-account`
 
 ## Triggers (from Zach, verbatim)
 `start S<n>` — build slice n · `harden spec` — audit the bootstrap, propose diffs, apply only approved ones · `harden S<n>` — run the §13 loop on slice n until §13.6 or budget
@@ -62,6 +62,8 @@ Runtimes: Bun 1.3.11 · Node 22.22.2 (executes vitest, tsc and eslint under `bun
 | `react-dom` | 19.2.8 | S0 |
 | `react-router` | 8.3.1 | S0 |
 | `tailwindcss` | 4.3.3 | S0 |
+| `tesseract.js` | 7.0.0 | S5 |
+| `tesseract.js-core` | 7.0.0 | S5 |
 | `typescript` | 6.0.3 | S0 |
 | `typescript-eslint` | 8.69.0 | S0 |
 | `vite` | 8.2.2 | S0 |

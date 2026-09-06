@@ -6,6 +6,7 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { VitePWA } from "vite-plugin-pwa";
 import { buildYear } from "./scripts/build-year";
+import { OCR_ASSET_ROUTE, OCR_CACHE_NAME } from "./src/lib/ocr/constants";
 
 /**
  * GitHub Pages build. **Additive** — `vite.config.ts` is untouched and remains the
@@ -104,6 +105,11 @@ export default defineConfig({
         // App shell only. Decode results are cached in Dexie, never in the SW,
         // so vPIC is network-only (§9-S0).
         globPatterns: ["**/*.{js,css,html,svg,png,woff2}"],
+        // S5 addendum §3's landmine, the same one `vite.config.ts` documents at length:
+        // the base64-embedded core ends in `.js` and matches the glob above, and workbox
+        // will not precache 3.9 MB. The engine is lazily fetched and served by the route
+        // below instead, so an install costs the same whether or not OCR is ever used.
+        globIgnores: ["ocr/**"],
         // Precache entries themselves are relative to the service worker's own
         // location, so they land under the sub-path with no help. This one is a
         // lookup key handed to `createHandlerBoundToURL`, so it is written out in
@@ -113,6 +119,16 @@ export default defineConfig({
           {
             urlPattern: /^https:\/\/vpic\.nhtsa\.dot\.gov\/.*/i,
             handler: "NetworkOnly",
+          },
+          {
+            // Matches under the sub-path too: the pattern is anchored on `/ocr/` and not
+            // on the site root.
+            urlPattern: OCR_ASSET_ROUTE,
+            handler: "CacheFirst",
+            options: {
+              cacheName: OCR_CACHE_NAME,
+              cacheableResponse: { statuses: [200] },
+            },
           },
         ],
       },

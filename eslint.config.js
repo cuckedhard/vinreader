@@ -12,6 +12,10 @@ export default tseslint.config(
       "dev-dist",
       "coverage",
       "node_modules",
+      // The self-hosted OCR engine: four vendored files, three of them minified builds
+      // from `tesseract.js`. `scripts/build-ocr-assets.ts` is what produces them and it
+      // is linted; they are not this project's source and never were.
+      "public/ocr",
       ".stryker-tmp",
       "reports",
     ],

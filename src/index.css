@@ -50,6 +50,19 @@
    to be handed back by name is that failure on the first day. This subtracts prose instead. */
 @source not "../**/*.md";
 
+/* And the self-hosted OCR engine, which is 4.1 MB of vendored minified JavaScript sitting
+   in `public/` where the scan reaches it. Measured: a probe class planted in
+   `public/ocr/probe.js` and then `bun run build` puts that class in the shipped CSS, so
+   the directory is a source in exactly the way `docs/` was. The four files themselves
+   contribute nothing today — with and without them the stylesheet is 22,258 bytes,
+   md5 3d84fdf4ff30b52e7fc3b6e3c7598239, the same 192 rules — which is the whole problem:
+   it holds by luck over a dependency this project does not write, and the next
+   `tesseract.js` bump re-rolls that luck. `src/index.sources.test.ts` plants the probe.
+
+   Scoped to `ocr/` rather than to `public/`, because everything else there — the icons,
+   the manifest, `favicon.svg` — is this project's own and should stay scannable. */
+@source not "../public/ocr";
+
 @theme inline {
   --color-bg: var(--bg);
   --color-bg-elev: var(--bg-elev);
