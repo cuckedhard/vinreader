@@ -57,6 +57,12 @@ export interface VehicleDecode {
   fields: Record<string, string>;
 }
 
+/**
+ * Where a stored paint code's characters came from (S5 layer 2, additive to §5.1).
+ * `null` is "this device does not know", never "typed".
+ */
+export type PaintSource = "typed" | "ocr" | null;
+
 /** §5.1, keyed by `vin`. */
 export interface VehicleRecord {
   vin: string;
@@ -78,6 +84,30 @@ export interface VehicleRecord {
    * on the way in, which is why no Dexie version bump was needed (see `db.ts`).
    */
   paint: string | null;
+  /**
+   * How the characters in `paint` got there, and what the engine thought of them.
+   *
+   * **Additive to §5.1** (S5 layer 2). The bootstrap does not name these two fields; they
+   * are supplied here and reported to Zach rather than written into §5.1 by an agent. S5
+   * addendum §5 requires them — "persist `source: \"ocr\"` and the confidence so nothing
+   * downstream mistakes it for a decoded fact" — and layer 1 deliberately left them out
+   * because nothing produced an OCR value yet.
+   *
+   * `"ocr"` means the string is exactly what the engine returned, confirmed by a tap on a
+   * control with the characters inside it. `"typed"` means a person put those characters
+   * there: the typed field, a per-character correction, or a lookalike they picked off
+   * `confusion.ts`'s table after looking at the sticker — in every one of those a human
+   * read the glyph, which is the distinction that matters (N2). `null` is a paint code
+   * whose provenance this device does not know: a row written before layer 2, or one that
+   * arrived over §4.12, whose `upsert_vehicle_meta` RPC has no parameter for it.
+   *
+   * `paintConfidence` is 0–100 as tesseract reports it, and **null** for anything typed,
+   * corrected or arrived-from-elsewhere. It is stored and deliberately not rendered:
+   * §13.7 records that there is no corpus of real door-jamb stickers, so the number is
+   * uncalibrated for this task, and project rule 6 forbids showing a guess as a fact.
+   */
+  paintSource: PaintSource;
+  paintConfidence: number | null;
   firstScannedAt: string;
   lastScannedAt: string;
   scanCount: number;

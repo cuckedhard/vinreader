@@ -26,6 +26,8 @@ function record(vin: string, fields: Record<string, string> = {}): VehicleRecord
     unit: null,
     notes: null,
     paint: null,
+    paintSource: null,
+    paintConfidence: null,
     firstScannedAt: AT,
     lastScannedAt: AT,
     scanCount: 1,

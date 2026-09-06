@@ -139,6 +139,16 @@ export const vehicleRecordSchema: z.ZodType<VehicleRecord> = z.object({
    * nobody typed one, which is exactly `null`.
    */
   paint: z.string().nullable().default(null),
+  /**
+   * S5 layer 2's provenance (additive to §5.1). Defaulted for the same reason `paint` is,
+   * and **not** applied by the import: `ImportScreen` maps the fields it passes to
+   * `upsertVehicle` by hand and does not pass these, so a record that arrives from another
+   * device lands with `null` — this phone does not know how another phone captured it, and
+   * neither §4.9's payload nor §4.12's `upsert_vehicle_meta` has a slot to tell it. They
+   * are here so a bundle this app wrote parses back without losing keys.
+   */
+  paintSource: z.enum(["typed", "ocr"]).nullable().default(null),
+  paintConfidence: z.number().nullable().default(null),
   firstScannedAt: isoDateTime,
   lastScannedAt: isoDateTime,
   scanCount: z.number().int(),

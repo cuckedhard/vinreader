@@ -24,6 +24,8 @@ function record(vin: string): VehicleRecord {
     unit: null,
     notes: null,
     paint: null,
+    paintSource: null,
+    paintConfidence: null,
     firstScannedAt: AT,
     lastScannedAt: AT,
     scanCount: 1,

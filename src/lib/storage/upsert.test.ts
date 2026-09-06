@@ -636,3 +636,135 @@ describe("setVehicleMeta — the paint code a user confirmed", () => {
     expect(untouched.unit).toBe("TRK-118");
   });
 });
+
+/**
+ * S5 addendum §5: "Persist `source: \"ocr\"` and the confidence so nothing downstream
+ * mistakes it for a decoded fact." Additive to §5.1 — the bootstrap names neither field.
+ *
+ * The rule under all of these is that provenance describes a *value*, so it lives and dies
+ * with the value it describes. A paint code has no check digit, no grammar and no
+ * downstream lookup (N2), so the label on it is the only thing that will ever say how
+ * carefully it was read, and a label that drifts off the value it belonged to is worse
+ * than no label at all.
+ */
+describe("§5 the paint code's provenance", () => {
+  const PAINT = "NH-731P";
+  const OTHER_PAINT = "WA8555";
+
+  it("records an engine read as `ocr`, with the confidence the engine gave it", async () => {
+    await upsertVehicle(scan({ at: T1 }));
+    const record = await setVehicleMeta(VIN, {
+      paint: PAINT,
+      paintSource: "ocr",
+      paintConfidence: 91.5,
+    });
+
+    expect(record.paintSource).toBe("ocr");
+    expect(record.paintConfidence).toBe(91.5);
+    expect((await db.vehicles.get(VIN))?.paintSource).toBe("ocr");
+
+    // A read the caller could not put a number to stores no number, rather than a zero
+    // that would render as "the engine was certain of nothing" if it were ever shown.
+    const unquantified = await setVehicleMeta(VIN, { paint: OTHER_PAINT, paintSource: "ocr" });
+    expect(unquantified.paintSource).toBe("ocr");
+    expect(unquantified.paintConfidence).toBeNull();
+  });
+
+  it("records anything a person put there as typed, with no confidence", async () => {
+    // The Sheet's field, the capture screen's typed escape, a per-character correction and
+    // a lookalike picked off the confusion table all arrive here without a source: no
+    // frame produced the string, so there is no read for a confidence to be about.
+    await upsertVehicle(scan({ at: T1 }));
+    const record = await setVehicleMeta(VIN, { paint: PAINT });
+
+    expect(record.paintSource).toBe("typed");
+    expect(record.paintConfidence).toBeNull();
+  });
+
+  it("keeps the provenance when a save does not move the paint code", async () => {
+    // The Sheet saves unit, notes and paint on one tap, so a unit edit hands this function
+    // the paint code that is already stored. Deriving provenance from "the patch carried a
+    // paint" would relabel a camera read as typed on an edit that never touched it.
+    await upsertVehicle(scan({ at: T1 }));
+    await setVehicleMeta(VIN, { paint: PAINT, paintSource: "ocr", paintConfidence: 88 });
+    const record = await setVehicleMeta(VIN, { unit: "TRK-118", paint: PAINT, notes: "x" });
+
+    expect(record.paintSource).toBe("ocr");
+    expect(record.paintConfidence).toBe(88);
+  });
+
+  it("drops both when a person changes the characters", async () => {
+    await upsertVehicle(scan({ at: T1 }));
+    await setVehicleMeta(VIN, { paint: PAINT, paintSource: "ocr", paintConfidence: 88 });
+    const record = await setVehicleMeta(VIN, { paint: OTHER_PAINT });
+
+    expect(record.paint).toBe(OTHER_PAINT);
+    expect(record.paintSource).toBe("typed");
+    expect(record.paintConfidence).toBeNull();
+  });
+
+  it("keeps no provenance for a paint code that is no longer there", async () => {
+    await upsertVehicle(scan({ at: T1 }));
+    await setVehicleMeta(VIN, { paint: PAINT, paintSource: "ocr", paintConfidence: 88 });
+    const record = await setVehicleMeta(VIN, { paint: "" });
+
+    expect(record.paint).toBeNull();
+    expect(record.paintSource).toBeNull();
+    expect(record.paintConfidence).toBeNull();
+  });
+
+  it("refuses to attach a confidence to characters a person typed", async () => {
+    // A number describing a string no engine read describes nothing, and this field is
+    // read by the sheet to decide what it says about the code (N2).
+    await upsertVehicle(scan({ at: T1 }));
+    const record = await setVehicleMeta(VIN, { paint: PAINT, paintConfidence: 99 });
+
+    expect(record.paintSource).toBe("typed");
+    expect(record.paintConfidence).toBeNull();
+  });
+
+  it("gives an imported paint code no provenance at all, rather than calling it typed", async () => {
+    // §4.9's payload has no slot for it and neither has §4.12's `upsert_vehicle_meta`, so
+    // "another device had this string" is the whole of what this one knows.
+    const record = await upsertVehicle(
+      scan({ at: T2, origin: "import", symbology: "import", paint: PAINT }),
+    );
+
+    expect(record.paint).toBe(PAINT);
+    expect(record.paintSource).toBeNull();
+    expect(record.paintConfidence).toBeNull();
+  });
+
+  it("does not lend an incoming code the provenance of a code that is not there", async () => {
+    // The write-path twin of `normalizeVehicle`'s guard, and this file already carries two
+    // of those (`countedScans`, `instant`). A row can reach this device with a label and no
+    // code for it to be about — healed on read, not yet rewritten — and the next code to
+    // arrive must not inherit it. "Read by the camera on this phone" about characters that
+    // came from another phone is exactly the fact N2 says nothing downstream can catch.
+    await upsertVehicle(scan({ at: T1 }));
+    const stored = (await db.vehicles.get(VIN)) as VehicleRecord;
+    await db.vehicles.put({ ...stored, paint: null, paintSource: "ocr", paintConfidence: 92 });
+
+    const record = await upsertVehicle(
+      scan({ at: T2, origin: "import", symbology: "import", paint: OTHER_PAINT }),
+    );
+
+    expect(record.paint).toBe(OTHER_PAINT);
+    expect(record.paintSource).toBeNull();
+    expect(record.paintConfidence).toBeNull();
+  });
+
+  it("leaves a stored code's provenance alone when a later scan cannot replace it", async () => {
+    await upsertVehicle(scan({ at: T1 }));
+    await setVehicleMeta(VIN, { paint: PAINT, paintSource: "ocr", paintConfidence: 88 });
+    // §5.3: an incoming paint code never replaces a stored one, so neither does its
+    // (absent) provenance.
+    const record = await upsertVehicle(
+      scan({ at: T2, origin: "import", symbology: "import", paint: OTHER_PAINT }),
+    );
+
+    expect(record.paint).toBe(PAINT);
+    expect(record.paintSource).toBe("ocr");
+    expect(record.paintConfidence).toBe(88);
+  });
+});

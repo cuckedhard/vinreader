@@ -14,6 +14,8 @@ function syncShaped(): VehicleRecord {
     unit: null,
     notes: null,
     paint: null,
+    paintSource: null,
+    paintConfidence: null,
     firstScannedAt: "2026-01-01T00:00:00.000+00:00",
     lastScannedAt: "2026-01-01T00:00:00.000+00:00",
     scanCount: 1,
@@ -70,6 +72,50 @@ describe("normalizeVehicle", () => {
   it("keeps a paint code a human typed", () => {
     const typed = { ...syncShaped(), paint: "NH-731P" };
     expect(must(normalizeVehicle(typed, 2026)).paint).toBe("NH-731P");
+  });
+
+  it("reads a row written before the provenance existed as not knowing it", () => {
+    // S5 layer 2's two fields are additive to §5.1 and unindexed, so a row written by
+    // layer 1 has neither. Null is "this device does not know how that code was captured",
+    // and it is deliberately not "typed" — the sheet says something different about each.
+    const older = { ...syncShaped(), paint: "NH-731P" } as Partial<VehicleRecord>;
+    delete older.paintSource;
+    delete older.paintConfidence;
+    const got = must(normalizeVehicle(older as VehicleRecord, 2026));
+    expect(got.paint).toBe("NH-731P");
+    expect(got.paintSource).toBeNull();
+    expect(got.paintConfidence).toBeNull();
+  });
+
+  it("reads a provenance that is not one of the two as not knowing it", () => {
+    const wrong = { ...syncShaped(), paint: "NH-731P", paintSource: "camera" };
+    expect(must(normalizeVehicle(wrong as unknown as VehicleRecord, 2026)).paintSource).toBeNull();
+  });
+
+  it("keeps a provenance the app itself wrote", () => {
+    const read = { ...syncShaped(), paint: "WA8555", paintSource: "ocr" as const, paintConfidence: 91 };
+    const got = must(normalizeVehicle(read, 2026));
+    expect(got.paintSource).toBe("ocr");
+    expect(got.paintConfidence).toBe(91);
+  });
+
+  it("drops a provenance with no paint code left to describe", () => {
+    // A row whose code was cleared elsewhere, or whose `paint` this normaliser has just
+    // refused: the label must not outlive the value, or the sheet says a code was read by
+    // the camera when there is no code at all (N2).
+    const orphan = { ...syncShaped(), paint: null, paintSource: "ocr" as const, paintConfidence: 91 };
+    const got = must(normalizeVehicle(orphan, 2026));
+    expect(got.paintSource).toBeNull();
+    expect(got.paintConfidence).toBeNull();
+  });
+
+  it("drops a confidence that describes no engine read", () => {
+    const typed = { ...syncShaped(), paint: "NH-731P", paintSource: "typed" as const, paintConfidence: 99 };
+    expect(must(normalizeVehicle(typed, 2026)).paintConfidence).toBeNull();
+    const wrongType = { ...syncShaped(), paint: "WA8555", paintSource: "ocr" as const, paintConfidence: "91" };
+    expect(
+      must(normalizeVehicle(wrongType as unknown as VehicleRecord, 2026)).paintConfidence,
+    ).toBeNull();
   });
 
   it("leaves a complete record untouched", () => {

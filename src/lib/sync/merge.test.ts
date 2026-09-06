@@ -42,6 +42,8 @@ function local(overrides: Partial<VehicleRecord> = {}): VehicleRecord {
     unit: null,
     notes: null,
     paint: null,
+    paintSource: null,
+    paintConfidence: null,
     firstScannedAt: T.mid,
     lastScannedAt: T.mid,
     scanCount: 1,
@@ -165,6 +167,50 @@ describe("the paint code — the same LWW as unit and notes (§4.12, migration 0
       { currentYear: YEAR },
     );
     expect(merged?.paint).toBe("WA8555");
+  });
+
+  it("drops this device's provenance when the account's code replaces it", () => {
+    // S5 layer 2, additive to §5.1: `upsert_vehicle_meta` has no parameter for provenance
+    // and §4.12 has no column, so a code that arrives from the account arrives with none.
+    // Keeping "read by the camera on this phone" over a string that came from another
+    // phone is a claim about characters this device never saw (N2).
+    const merged = mergeVehicle(
+      local({ paint: "NH-731P", paintSource: "ocr", paintConfidence: 92 }),
+      remote({ paint: "WA8555", metaUpdatedAt: T.late }),
+      { currentYear: YEAR },
+    );
+    expect(merged?.paint).toBe("WA8555");
+    expect(merged?.paintSource).toBeNull();
+    expect(merged?.paintConfidence).toBeNull();
+  });
+
+  it("keeps the provenance when the account agrees with the code already here", () => {
+    // The clock moved but the characters did not, so this device's knowledge of how they
+    // were captured is still knowledge about the string it is looking at.
+    const merged = mergeVehicle(
+      local({ paint: "WA8555", paintSource: "ocr", paintConfidence: 92 }),
+      remote({ paint: "WA8555", metaUpdatedAt: T.late }),
+      { currentYear: YEAR },
+    );
+    expect(merged?.paintSource).toBe("ocr");
+    expect(merged?.paintConfidence).toBe(92);
+  });
+
+  it("keeps the provenance when this device's code wins", () => {
+    const merged = mergeVehicle(
+      local({ paint: "NH-731P", paintSource: "ocr", paintConfidence: 92, metaUpdatedAt: T.late }),
+      remote({ paint: "WA8555", metaUpdatedAt: T.early }),
+      { currentYear: YEAR },
+    );
+    expect(merged?.paint).toBe("NH-731P");
+    expect(merged?.paintSource).toBe("ocr");
+  });
+
+  it("gives a record this device has never seen no provenance", () => {
+    const merged = mergeVehicle(undefined, remote({ paint: "WA8555" }), { currentYear: YEAR });
+    expect(merged?.paint).toBe("WA8555");
+    expect(merged?.paintSource).toBeNull();
+    expect(merged?.paintConfidence).toBeNull();
   });
 
   it("keeps this device's code when its clock is newer, and on a tie", () => {

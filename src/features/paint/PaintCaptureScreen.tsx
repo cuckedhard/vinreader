@@ -14,6 +14,7 @@ import type { PaintCaptureState } from "../../lib/ocr/session";
 import type { OcrFailure } from "../../lib/ocr/types";
 import { differingPositions, isLowConfidence, type PaintProposal } from "../../lib/ocr/vote";
 import { setVehicleMeta } from "../../lib/storage/upsert";
+import type { PaintSource } from "../../lib/vin/types";
 import { asciiUpper } from "../../lib/vin/grammar";
 import { Banner } from "../../ui/Banner";
 import { Button, TAP_LG_TARGET } from "../../ui/Button";
@@ -253,7 +254,7 @@ function Proposal({
   proposal: PaintProposal;
   cropUrl: string | null;
   saving: boolean;
-  onSave: (code: string) => void;
+  onSave: (code: string, provenance: { source: PaintSource; confidence: number | null }) => void;
 }) {
   const [edited, setEdited] = useState<string | null>(null);
   const offered = offeredCandidates(proposal);
@@ -303,7 +304,14 @@ function Proposal({
             full
             style={TAP_LG_TARGET}
             disabled={saving}
-            onClick={() => onSave(candidate.text)}
+            onClick={() =>
+              onSave(
+                candidate.text,
+                candidate.origin === "read"
+                  ? { source: "ocr", confidence: candidate.confidence }
+                  : { source: "typed", confidence: null },
+              )
+            }
           >
             Save <CodeInControl text={candidate.text} marked={marks} />
           </Button>
@@ -377,14 +385,28 @@ export default function PaintCaptureScreen() {
   // fold on a 320-wide phone rather than under 470 px of dead video (F7, F11).
   const aiming = !blocked && state.kind !== "proposal";
 
-  async function save(code: string) {
+  /**
+   * S5 addendum §5: "Persist `source: \"ocr\"` and the confidence so nothing downstream
+   * mistakes it for a decoded fact."
+   *
+   * `"ocr"` is reserved for a string the engine actually returned. A lookalike picked off
+   * the confusion table and a character swapped in the correction row are strings no frame
+   * ever produced — a person read the glyph on the sticker and chose them — so they are
+   * stored exactly as the typed field is, and with no confidence, because there is no read
+   * for a confidence to be about (N2).
+   */
+  async function save(code: string, provenance: { source: PaintSource; confidence: number | null }) {
     if (saving) return;
     setSaving(true);
     setSaveFailed(false);
     try {
       // §5.3: the one path that may replace a stored paint code, because everything it
       // carries was confirmed by a person on this screen (D11, §4.12's LWW clock).
-      await setVehicleMeta(vin, { paint: code });
+      await setVehicleMeta(vin, {
+        paint: code,
+        paintSource: provenance.source,
+        paintConfidence: provenance.confidence,
+      });
       void navigate(`/v/${vin}`);
     } catch {
       setSaveFailed(true);
@@ -474,7 +496,7 @@ export default function PaintCaptureScreen() {
           proposal={state.proposal}
           cropUrl={cropUrl}
           saving={saving}
-          onSave={(code) => void save(code)}
+          onSave={(code, provenance) => void save(code, provenance)}
         />
       ) : null}
 
@@ -526,7 +548,7 @@ export default function PaintCaptureScreen() {
           full
           style={TAP_LG_TARGET}
           disabled={typed.trim() === "" || saving}
-          onClick={() => void save(typed)}
+          onClick={() => void save(typed, { source: "typed", confidence: null })}
         >
           {TYPE_SAVE}
         </Button>

@@ -13,7 +13,13 @@
  * decode queue, which fills `decode` after the fact.
  */
 import { buildStructural } from "../vin/structural";
-import type { ScanEvent, Symbology, VehicleDecode, VehicleRecord } from "../vin/types";
+import type {
+  PaintSource,
+  ScanEvent,
+  Symbology,
+  VehicleDecode,
+  VehicleRecord,
+} from "../vin/types";
 import { META_NEVER_EDITED } from "../vin/types";
 import { currentYear, db, newId, nowIso } from "./db";
 import { appendOutbox, scanEventRow, vehicleDeleteRow, vehicleMetaRow } from "./outbox";
@@ -112,7 +118,19 @@ export async function upsertVehicle(input: UpsertInput): Promise<VehicleRecord> 
      * saves offline, in one transaction, and the incoming value is offered afterwards
      * or not at all (N1, P1).
      */
-    const paint = meaningful(existing?.paint) ?? meaningful(input.paint);
+    const storedPaint = meaningful(existing?.paint);
+    const paint = storedPaint ?? meaningful(input.paint);
+    /**
+     * S5 layer 2, additive to §5.1: provenance travels with the value it describes.
+     *
+     * The stored code keeps its own — this write did not touch it. A code that arrives
+     * here fills an empty field and lands with **null**, because no write that reaches
+     * this function can say how it was captured: §4.9's payload has no slot for it and
+     * neither has §4.12's `upsert_vehicle_meta`, so "another device had this string" is
+     * the whole of what this device knows. Null is that, and it is not "typed" (N2).
+     */
+    const paintSource = storedPaint === null ? null : (existing?.paintSource ?? null);
+    const paintConfidence = storedPaint === null ? null : (existing?.paintConfidence ?? null);
     // D11: the LWW clock moves only when this write actually lands unit, notes or the
     // paint code — a user edit, or an import carrying them. A plain re-scan must leave it
     // alone, or a scan on one device silently wipes an earlier real edit made on another
@@ -136,6 +154,8 @@ export async function upsertVehicle(input: UpsertInput): Promise<VehicleRecord> 
       unit,
       notes,
       paint,
+      paintSource,
+      paintConfidence,
       // §4.12 aggregates: first = min, last = max. An import may carry an older `at`.
       firstScannedAt:
         existing && instant(existing.firstScannedAt) < instant(at) ? existing.firstScannedAt : at,
@@ -184,16 +204,55 @@ export async function upsertVehicle(input: UpsertInput): Promise<VehicleRecord> 
  */
 export async function setVehicleMeta(
   vin: string,
-  patch: { unit?: string | null; notes?: string | null; paint?: string | null },
+  patch: {
+    unit?: string | null;
+    notes?: string | null;
+    paint?: string | null;
+    /**
+     * S5 layer 2. Only the capture screen ever passes `"ocr"`, and only for a string the
+     * engine returned and a person then tapped with the characters inside the control.
+     * Absent means a person put these characters here — the Sheet's field, a per-character
+     * correction, a lookalike picked off `confusion.ts`'s table, or the incoming value on
+     * the import screen's conflict prompt. All of those are `"typed"`.
+     */
+    paintSource?: PaintSource;
+    paintConfidence?: number | null;
+  },
 ): Promise<VehicleRecord> {
   return db.transaction("rw", db.vehicles, db.outbox, async () => {
     const existing = await db.vehicles.get(vin);
     if (!existing) throw new Error(`setVehicleMeta: no record for VIN ${vin}`);
+    const paint = patch.paint === undefined ? (existing.paint ?? null) : meaningful(patch.paint);
+    /**
+     * Provenance changes only when the value it describes changes.
+     *
+     * The Sheet saves unit, notes and paint together on every tap of one button, so a
+     * user editing only the unit hands this function the paint code that is already
+     * stored. Deriving the provenance from "this patch carried a paint" would relabel a
+     * camera read as typed on an edit that never touched it — a lie about the one field
+     * nothing downstream can check (N2). It is derived from the value moving instead.
+     *
+     * A cleared code keeps no provenance, and nothing but an `ocr` source may carry a
+     * confidence: a number attached to characters a person typed describes nothing.
+     */
+    const paintChanged = paint !== (existing.paint ?? null);
+    const paintSource: PaintSource = !paintChanged
+      ? (existing.paintSource ?? null)
+      : paint === null
+        ? null
+        : (patch.paintSource ?? "typed");
+    const paintConfidence = !paintChanged
+      ? (existing.paintConfidence ?? null)
+      : paintSource === "ocr"
+        ? (patch.paintConfidence ?? null)
+        : null;
     const next: VehicleRecord = {
       ...existing,
       unit: patch.unit === undefined ? existing.unit : meaningful(patch.unit),
       notes: patch.notes === undefined ? existing.notes : meaningful(patch.notes),
-      paint: patch.paint === undefined ? (existing.paint ?? null) : meaningful(patch.paint),
+      paint,
+      paintSource,
+      paintConfidence,
       metaUpdatedAt: nowIso(),
     };
     await db.vehicles.put(next);

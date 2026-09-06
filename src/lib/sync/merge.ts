@@ -193,6 +193,12 @@ export function mergeVehicle(
       unit: remote.unit,
       notes: remote.notes,
       paint: remote.paint,
+      // S5 layer 2 (additive to §5.1): a row this device has never seen carries a paint
+      // code whose provenance nothing can tell it. `upsert_vehicle_meta` has no parameter
+      // for it and §4.12 has no column, so null — "not known" — rather than a guess that
+      // would render as a fact (N2).
+      paintSource: null,
+      paintConfidence: null,
       // The server's aggregates are all this device knows; `apply_scan_event` leaves them
       // null only for a row born of `upsert_vehicle_meta`, whose meta clock is the one
       // timestamp such a row does carry.
@@ -220,6 +226,12 @@ export function mergeVehicle(
     //  excluded.paint else vehicles.paint end` (migration 0002) — the same clock and the
     //  same comparison, so a clear propagates and a tie keeps this device's value.
     paint: takeRemoteMeta ? remote.paint : local.paint,
+    // Provenance travels with the value: this device's own knowledge of how a code was
+    // captured survives exactly as long as the code it was about. A remote value winning
+    // the clock replaces the string, and nothing came with it to say where it came from.
+    paintSource: takeRemoteMeta && remote.paint !== local.paint ? null : local.paintSource,
+    paintConfidence:
+      takeRemoteMeta && remote.paint !== local.paint ? null : local.paintConfidence,
     // `meta_updated_at = greatest(vehicles.meta_updated_at, excluded.meta_updated_at)`.
     metaUpdatedAt: latest(local.metaUpdatedAt, remote.metaUpdatedAt) ?? local.metaUpdatedAt,
     // §4.12: first = min, last = max.

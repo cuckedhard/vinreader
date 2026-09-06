@@ -32,5 +32,33 @@ export function normalizeVehicle(row: VehicleRecord, currentYear: number): Vehic
   // either, and it is read as absent rather than rendered as one (N2).
   const paint = typeof row.paint === "string" ? row.paint : null;
 
-  return { ...row, structural: buildStructural(row.vin, currentYear), decode, paint };
+  /**
+   * S5 layer 2's provenance, additive to §5.1 and read with the same suspicion as `paint`
+   * itself. Absent on every row written before layer 2 and on every row §4.12 delivers,
+   * because the RPC has no parameter for it — both mean "this device does not know", which
+   * is null and is not "typed".
+   *
+   * Tied to the value it describes: a row with no paint code has no provenance to carry,
+   * and a confidence without an `ocr` source is a number describing nothing. Both are
+   * dropped rather than rendered, because a stored figure nothing can calibrate (§13.7 —
+   * there is no corpus of real stickers) is exactly the guess project rule 6 forbids
+   * showing as a fact.
+   */
+  const paintSource =
+    paint !== null && (row.paintSource === "ocr" || row.paintSource === "typed")
+      ? row.paintSource
+      : null;
+  const paintConfidence =
+    paintSource === "ocr" && typeof row.paintConfidence === "number"
+      ? row.paintConfidence
+      : null;
+
+  return {
+    ...row,
+    structural: buildStructural(row.vin, currentYear),
+    decode,
+    paint,
+    paintSource,
+    paintConfidence,
+  };
 }

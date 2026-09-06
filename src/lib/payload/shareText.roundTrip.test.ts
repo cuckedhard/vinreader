@@ -55,6 +55,8 @@ function record(vin: string, fields: Record<string, string>, unit: string | null
     unit,
     notes: null,
     paint: null,
+    paintSource: null,
+    paintConfidence: null,
     firstScannedAt: AT,
     lastScannedAt: AT,
     scanCount: 1,

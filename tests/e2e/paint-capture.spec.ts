@@ -77,6 +77,38 @@ async function storedPaint(page: Page): Promise<string | null | undefined> {
   }, VIN);
 }
 
+/**
+ * S5 addendum §5's "persist `source: \"ocr\"` and the confidence", read out of Dexie.
+ *
+ * Additive to §5.1 and local-only: §4.9's payload and §4.12's `upsert_vehicle_meta` have
+ * no slot for either, so this is the one place the two fields can be observed at all.
+ */
+async function storedProvenance(page: Page) {
+  return page.evaluate(async (vin) => {
+    const open = indexedDB.open("vinrelay");
+    const handle: IDBDatabase = await new Promise((res, rej) => {
+      open.onsuccess = () => res(open.result);
+      open.onerror = () => rej(open.error);
+    });
+    const request = handle.transaction("vehicles", "readonly").objectStore("vehicles").get(vin);
+    const row = await new Promise<
+      { paintSource?: string | null; paintConfidence?: number | null } | undefined
+    >((res, rej) => {
+      request.onsuccess = () => res(request.result);
+      request.onerror = () => rej(request.error);
+    });
+    return {
+      source: row?.paintSource ?? null,
+      confidence: row?.paintConfidence ?? null,
+    };
+  }, VIN);
+}
+
+const HINT_TYPED =
+  "Typed in from the paint sticker. The VIN doesn't carry it and NHTSA doesn't publish it.";
+const HINT_OCR =
+  "Read off the sticker by the camera on this phone. The VIN doesn't carry it and NHTSA doesn't publish it.";
+
 async function tokens(page: Page) {
   return page.evaluate(() => {
     const css = getComputedStyle(document.documentElement);
@@ -188,6 +220,16 @@ test("[N2] it reads the label, offers what it read, and stores nothing until a p
   await page.reload();
   await expect(page.getByLabel("Paint code")).toHaveValue(CODE);
   expect(await storedPaint(page)).toBe(CODE);
+
+  // §5: "Persist `source: \"ocr\"` and the confidence so nothing downstream mistakes it
+  // for a decoded fact." These characters are exactly what the engine returned, so the
+  // record says so and the sheet — which is where someone reads the code out at a paint
+  // counter three weeks later — says so too.
+  const provenance = await storedProvenance(page);
+  expect(provenance.source).toBe("ocr");
+  expect(typeof provenance.confidence).toBe("number");
+  await expect(page.getByText(HINT_OCR)).toBeVisible();
+  await expect(page.getByText(HINT_TYPED)).toHaveCount(0);
 });
 
 test("[§5] the candidates are equal weight, and none of them is dressed as the answer", async ({
@@ -279,6 +321,12 @@ test("[§5] a character is corrected by tapping it, and the correction is undoab
   await page.getByRole("button", { name: "Save WAB555" }).click();
   await expect(page).toHaveURL(new RegExp(`#/v/${VIN}$`));
   expect(await storedPaint(page)).toBe("WAB555");
+
+  // No frame ever returned this string — a person looked at the glyph and chose it — so it
+  // is stored exactly as a typed one is, with no confidence to describe a read that never
+  // happened (N2).
+  expect(await storedProvenance(page)).toEqual({ source: "typed", confidence: null });
+  await expect(page.getByText(HINT_TYPED)).toBeVisible();
 });
 
 test("[§5] the typed escape is on screen before anything is read, and it is empty", async ({
@@ -296,6 +344,9 @@ test("[§5] the typed escape is on screen before anything is read, and it is emp
   await page.getByRole("button", { name: "Save what I typed" }).click();
   await expect(page).toHaveURL(new RegExp(`#/v/${VIN}$`));
   expect(await storedPaint(page)).toBe("NH-731P");
+  expect(await storedProvenance(page)).toEqual({ source: "typed", confidence: null });
+  await expect(page.getByText(HINT_TYPED)).toBeVisible();
+  await expect(page.getByText(HINT_OCR)).toHaveCount(0);
 });
 
 test("[§4] a device that cannot run the engine is told, and its camera is left alone", async ({

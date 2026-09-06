@@ -41,6 +41,8 @@ function record(overrides: Partial<VehicleRecord> = {}): VehicleRecord {
     unit: "UNIT-42",
     notes: null,
     paint: null,
+    paintSource: null,
+    paintConfidence: null,
     firstScannedAt: "2026-09-01T09:00:00.000-08:00",
     lastScannedAt: "2026-09-03T14:12:00.000-08:00",
     scanCount: 2,
