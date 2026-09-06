@@ -32,6 +32,16 @@ const DECODE_UNSUPPORTED =
   "This looks like an off-highway machine PIN. NHTSA can't decode it — showing what the number itself tells us.";
 const DECODE_FAILED = "Couldn't reach NHTSA after several tries. Tap Refresh details to retry.";
 
+/**
+ * §6.4 supplies no line for the paint code, so these two are written in its voice and
+ * logged under §0 rule 4 for Zach to sign off. The hint is the whole provenance in one
+ * sentence: nothing decoded this, and nothing can check it — which is why the sheet keeps
+ * it out of "From the VIN" and out of "Vehicle details" (N2).
+ */
+const PAINT_LABEL = "Paint code";
+const PAINT_HINT =
+  "Typed in from the paint sticker. The VIN doesn't carry it and NHTSA doesn't publish it.";
+
 /** §4.4: with a vPIC `ModelYear` on screen, the structural year row is dropped, not rewritten. */
 const NO_STRUCTURAL_YEAR: ModelYear = { candidates: [], resolved: null };
 
@@ -119,22 +129,30 @@ function DecodeSection({ record }: { record: VehicleRecord }) {
 
 function MetaEditor({ record }: { record: VehicleRecord }) {
   const [unit, setUnit] = useState(record.unit ?? "");
+  const [paint, setPaint] = useState(record.paint ?? "");
   const [notes, setNotes] = useState(record.notes ?? "");
-  const [saved, setSaved] = useState({ unit: record.unit ?? "", notes: record.notes ?? "" });
+  const [saved, setSaved] = useState({
+    unit: record.unit ?? "",
+    paint: record.paint ?? "",
+    notes: record.notes ?? "",
+  });
   const [status, setStatus] = useState<SaveStatus>("idle");
-  const dirty = unit !== saved.unit || notes !== saved.notes;
+  const dirty = unit !== saved.unit || paint !== saved.paint || notes !== saved.notes;
 
   // D11: an edit goes through setVehicleMeta, never upsertVehicle, so it moves the
   // last-writer-wins clock while a later re-scan of the same VIN leaves it alone (§4.12).
+  // It is also the only path §5.3 lets replace a paint code, because everything typed
+  // here was typed by the person holding the phone.
   async function save() {
     if (!dirty || status === "saving") return;
     setStatus("saving");
     try {
-      const next = await setVehicleMeta(record.vin, { unit, notes });
+      const next = await setVehicleMeta(record.vin, { unit, paint, notes });
       // Storage trims; mirror what it kept so the boxes and the record cannot disagree.
       setUnit(next.unit ?? "");
+      setPaint(next.paint ?? "");
       setNotes(next.notes ?? "");
-      setSaved({ unit: next.unit ?? "", notes: next.notes ?? "" });
+      setSaved({ unit: next.unit ?? "", paint: next.paint ?? "", notes: next.notes ?? "" });
       setStatus("saved");
     } catch {
       setStatus("error");
@@ -163,6 +181,41 @@ function MetaEditor({ record }: { record: VehicleRecord }) {
           spellCheck={false}
           enterKeyHint="done"
         />
+      </div>
+
+      {/*
+       * §4.9 `pc`. It sits in this section and in no other, because the sheet's three
+       * blocks are three provenances and this is the third one: "From the VIN" is derived
+       * from the 17 characters, "Vehicle details" is what NHTSA answered, and everything
+       * here was typed by the person holding the phone. A paint code is not derivable and
+       * NHTSA does not carry it, so rendering it above would state it as a decoded fact
+       * (N2) — and it has no check digit and no grammar, so nothing could catch that.
+       *
+       * The field is not validated, uppercased or masked. Toyota `1F7`, Honda `NH-731P`,
+       * Ford `UG`, VW `LC9X`, GM `WA8555` share no shape, so any rule here would refuse a
+       * real code; monospace is for reading it back — the confusions are `0/O`, `B/8`,
+       * `1/I` — and not a claim about the format. No placeholder either: a greyed example
+       * inside an empty box is a code the eye can take for this vehicle's.
+       */}
+      <div className="flex flex-col gap-2">
+        <label htmlFor="sheet-paint" className={LABEL}>
+          {PAINT_LABEL}
+        </label>
+        <input
+          id="sheet-paint"
+          value={paint}
+          onChange={(event) => setPaint(event.target.value)}
+          onBlur={() => void save()}
+          className={`${FIELD} min-h-[var(--tap)] font-vin`}
+          autoCapitalize="characters"
+          autoCorrect="off"
+          spellCheck={false}
+          enterKeyHint="done"
+          aria-describedby="sheet-paint-hint"
+        />
+        <p id="sheet-paint-hint" className="text-base leading-snug text-fg-muted">
+          {PAINT_HINT}
+        </p>
       </div>
 
       <div className="flex flex-col gap-2">
