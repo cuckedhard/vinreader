@@ -15,7 +15,14 @@
  * `NotAllowedError` in the page: the Android Chrome report.
  */
 import { describe, expect, it } from "vitest";
-import { downloadFile, sharedFile, type HandoffFile } from "./shareFile";
+import {
+  downloadFile,
+  isShareableFile,
+  shareData,
+  sharedFile,
+  SHAREABLE_FILE_TYPES,
+  type HandoffFile,
+} from "./shareFile";
 
 /** §4.11's fixture VIN. */
 const VIN = "1HGCM82633A004352";
@@ -150,6 +157,84 @@ describe("SH-1: the file Download JSON writes", () => {
     expect(downloadFile(VIN).name.replace(/\.json$/, "")).toBe(
       sharedFile(VIN).name.replace(/\.txt$/, ""),
     );
+  });
+});
+
+/**
+ * SH-2. The guard that was written to keep an unacceptable file out of a share could not
+ * detect one: `navigator.canShare({ files })` runs `CanShareInternal`, which tests only that
+ * some known field is present and that any `url` parses — no MIME test, no extension test,
+ * nothing that could ever have answered "will this browser accept *this* file". It said yes
+ * to the `application/json` file the browser process then refused.
+ *
+ * `isShareableFile` is the question `canShare` was being asked, and this is where it is
+ * pinned: every pair the app is allowed to send is put through the Chromium fixture above,
+ * so a second entry cannot be added without showing that Chromium permits it.
+ */
+describe("SH-2: the allowlist that answers what canShare cannot", () => {
+  it("holds only pairs Chromium permits, by its own two checks", () => {
+    expect(SHAREABLE_FILE_TYPES.size).toBeGreaterThan(0);
+    for (const [extension, type] of SHAREABLE_FILE_TYPES) {
+      expect(chromiumRefuses({ name: `vin-relay-${VIN}.${extension}`, type })).toBe(false);
+    }
+  });
+
+  it("admits the file Share builds", () => {
+    expect(isShareableFile(sharedFile(VIN))).toBe(true);
+  });
+
+  it("refuses the file Share used to build, which canShare answered `true` for", () => {
+    expect(isShareableFile(downloadFile(VIN))).toBe(false);
+  });
+
+  it("checks the name and the type separately, because Chromium does", () => {
+    // A permitted extension carrying an unpermitted type, and the other way round: either
+    // one on its own is `PERMISSION_DENIED`.
+    expect(isShareableFile({ name: "vin-relay-x.txt", type: "application/json" })).toBe(false);
+    expect(isShareableFile({ name: "vin-relay-x.json", type: "text/plain" })).toBe(false);
+    // A type Chromium permits, under an extension this app does not send.
+    expect(isShareableFile({ name: "vin-relay-x.csv", type: "text/csv" })).toBe(false);
+    // No extension at all is `dotIndex <= 0` in `isDangerousFilename`.
+    expect(isShareableFile({ name: "vin-relay-x", type: "text/plain" })).toBe(false);
+    expect(isShareableFile({ name: ".txt", type: "text/plain" })).toBe(false);
+  });
+
+  it("reads the File as the platform will, not as it was asked for", () => {
+    // `new File([...], name, { type })` lowercases the type on the way in, and a name can
+    // reach this from anywhere; both are compared case-insensitively rather than trusted.
+    expect(isShareableFile({ name: `vin-relay-${VIN}.TXT`, type: "TEXT/PLAIN" })).toBe(true);
+  });
+});
+
+describe("SH-2: what goes to navigator.share", () => {
+  const summary = "2003 HONDA Accord";
+  const txt = () => new File(["{}"], `vin-relay-${VIN}.txt`, { type: "text/plain" });
+  const json = () => new File(["{}"], `vin-relay-${VIN}.json`, { type: "application/json" });
+
+  it("attaches the record when both questions answer yes", () => {
+    const file = txt();
+    expect(shareData(summary, file, true)).toEqual({ text: summary, files: [file] });
+  });
+
+  it("drops a file the platform would refuse rather than losing the whole share", () => {
+    // `canShare` said yes — it says yes to everything — and this is the file Chromium
+    // answers with PERMISSION_DENIED. Before SH-2 it was attached anyway and the share
+    // failed entirely; now the text goes without it.
+    expect(shareData(summary, json(), true)).toEqual({ text: summary });
+  });
+
+  it("obeys the one thing canShare does report", () => {
+    expect(shareData(summary, txt(), false)).toEqual({ text: summary });
+  });
+
+  it("never drops the text, whatever happens to the file (§4.9)", () => {
+    for (const data of [
+      shareData(summary, txt(), true),
+      shareData(summary, json(), true),
+      shareData(summary, txt(), false),
+    ]) {
+      expect(data.text).toBe(summary);
+    }
   });
 });
 

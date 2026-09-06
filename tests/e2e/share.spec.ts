@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 import { encodePayload } from "../../src/lib/payload/codec";
+import { isShareableFile } from "../../src/features/sheet/shareFile";
 
 /**
  * The Share button, through the browser, with `navigator.share` stubbed.
@@ -179,5 +180,51 @@ test.describe("SH-1: the file Share attaches is one the browser will carry", () 
     await page.getByRole("button", { name: /download json/i }).click();
     const file = await download;
     expect(file.suggestedFilename()).toBe(`vin-relay-${VIN}.json`);
+  });
+});
+
+/**
+ * SH-2. `canShare` reports one thing — whether this browser does file sharing at all — and the
+ * code was reading it as though it reported another. Both halves are asserted here: the answer
+ * it can give is obeyed, and the file that goes when it says yes is one the app has checked
+ * against Chromium's lists itself.
+ */
+test.describe("SH-2: what canShare is allowed to decide", () => {
+  test("sends no file when the browser says it does not do files", async ({ page }) => {
+    await stubShare(page, { canShare: false });
+    await openSheet(page);
+
+    await page.getByRole("button", { name: /^share$/i }).click();
+
+    const shared = await firstShare(page);
+    expect(shared.files).toHaveLength(0);
+    // §4.9: the readable text always goes. Losing the file never blocks the share.
+    expect(shared.text).toContain("VIN 1HG CM826 3 3 A 004352");
+    await expect(page.getByText("Sharing didn't finish.")).toHaveCount(0);
+  });
+
+  test("sends no file when the browser has no canShare at all", async ({ page }) => {
+    await stubShare(page, { canShare: "absent" });
+    await openSheet(page);
+
+    await page.getByRole("button", { name: /^share$/i }).click();
+
+    const shared = await firstShare(page);
+    expect(shared.files).toHaveLength(0);
+    expect(shared.text).toContain("VIN 1HG CM826 3 3 A 004352");
+  });
+
+  test("sends a file the app has itself checked, not one canShare waved through", async ({
+    page,
+  }) => {
+    await stubShare(page, { canShare: true });
+    await openSheet(page);
+
+    await page.getByRole("button", { name: /^share$/i }).click();
+
+    const shared = await firstShare(page);
+    // The app's own rule, run over the file that actually left the page. This is the
+    // assertion `canShare` could never have made: it returns `true` for anything.
+    expect(isShareableFile(shared.files[0])).toBe(true);
   });
 });

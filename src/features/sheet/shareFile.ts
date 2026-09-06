@@ -51,3 +51,53 @@ export function downloadFile(vin: string): HandoffFile {
 export function sharedFile(vin: string): HandoffFile {
   return { name: `${STEM}${vin}.txt`, type: "text/plain" };
 }
+
+/**
+ * Every extension this app may attach, with the one type each may carry — a pair at a time,
+ * because Chromium checks the name and the type separately and refuses on either.
+ *
+ * This exists because `navigator.canShare({ files })` cannot answer the question it was being
+ * asked (SH-2). Blink's `NavigatorShare::canShare` calls `CanShareInternal`, whose whole body
+ * is: reject if none of title/text/url/files is present, and reject if `data.url` does not
+ * parse as http-family. There is no MIME test and no extension test anywhere in
+ * `navigator_share.cc` — all of that lives in the browser process, which `canShare` never
+ * consults. It answered `true` for the `application/json` file the browser then refused, so
+ * the code always took the branch that could not work, and the comment that said the record
+ * "is dropped rather than blocking the share" described something that never happened.
+ *
+ * So `canShare` is read for the one thing it does report — whether this browser does file
+ * sharing at all — and this list answers the other one. One entry, because the app sends one
+ * file; its test pins it against Chromium's own two lists, so adding a second is a decision
+ * that has to be shown to be safe rather than assumed.
+ */
+export const SHAREABLE_FILE_TYPES: ReadonlyMap<string, string> = new Map([["txt", "text/plain"]]);
+
+/**
+ * Whether the platform will carry this file, as far as anything in the page can know. Read
+ * off the `File` that was actually built rather than the descriptor that asked for it: `Blob`
+ * lowercases and normalises a type on the way in, and it is the normalised one the browser
+ * process checks.
+ */
+export function isShareableFile(file: HandoffFile): boolean {
+  const dot = file.name.lastIndexOf(".");
+  if (dot <= 0) return false;
+  return (
+    SHAREABLE_FILE_TYPES.get(file.name.slice(dot + 1).toLowerCase()) === file.type.toLowerCase()
+  );
+}
+
+/**
+ * §4.9, as one expression: the readable text always goes, and the record rides along as a
+ * file when — and only when — both questions about the platform answer yes.
+ *
+ * `browserSharesFiles` is `navigator.canShare({ files })`, which is worth exactly one bit:
+ * whether this browser implements file sharing at all. The second question is this module's,
+ * because no API in the page will answer it (SH-2). A file that fails either one is dropped
+ * and the text goes without it, which is what the old comment claimed and the old code never
+ * did — it sent the file regardless and lost the whole share with it.
+ */
+export function shareData(summary: string, file: File, browserSharesFiles: boolean): ShareData {
+  return browserSharesFiles && isShareableFile(file)
+    ? { text: summary, files: [file] }
+    : { text: summary };
+}

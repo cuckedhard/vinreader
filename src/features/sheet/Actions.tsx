@@ -8,7 +8,7 @@ import { Button } from "../../ui/Button";
 import { Chip } from "../../ui/Chip";
 import { QrView } from "../../ui/QrView";
 import { buildCopyTexts } from "./copyTexts";
-import { downloadFile, sharedFile } from "./shareFile";
+import { downloadFile, shareData, sharedFile } from "./shareFile";
 
 const LABEL = "text-sm font-bold tracking-wide text-fg-muted uppercase";
 
@@ -137,13 +137,14 @@ export function Actions({ record }: { record: VehicleRecord }) {
   function share() {
     setShareError(null);
     const file = new File([texts.json], shared.name, { type: shared.type });
-    const canFiles =
+    // Two questions, and `canShare` only answers the first (SH-2). It reports whether this
+    // browser does file sharing at all; it does not — cannot — say whether the browser
+    // process will accept *this* file, because `CanShareInternal` holds no MIME or extension
+    // test of any kind. `shareData` asks the second one before attaching anything, so a file
+    // the platform would refuse is dropped and §4.9's text still goes.
+    const browserSharesFiles =
       typeof navigator.canShare === "function" && navigator.canShare({ files: [file] });
-    // §4.9: the readable text always goes; the record rides along as a file when the
-    // platform accepts files, and is dropped rather than blocking the share when it does not.
-    const data: ShareData = canFiles
-      ? { text: texts.summary, files: [file] }
-      : { text: texts.summary };
+    const data = shareData(texts.summary, file, browserSharesFiles);
     navigator.share(data).catch((cause: unknown) => {
       // Backing out of the system sheet is a choice, not a failure to report.
       if (cause instanceof DOMException && cause.name === "AbortError") return;
