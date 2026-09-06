@@ -16,6 +16,7 @@ import type { RefObject } from "react";
 import type { IScannerControls } from "@zxing/browser";
 import { ChecksumException, FormatException, NotFoundException } from "@zxing/library";
 import type { Result } from "@zxing/library";
+import { acquireScanner } from "../../lib/ocr/scannerLive";
 import { isPayloadCarrier } from "../../lib/payload/carrier";
 import { extractVin } from "../../lib/vin/extractVin";
 import { buildScanHints, stripAimIdentifier, toSymbology } from "../../lib/vin/symbologies";
@@ -370,6 +371,12 @@ export function useScanner(options: {
 
   useEffect(() => {
     if (!wantsCamera) return;
+    // N1/P1 and S5 addendum §4: the OCR engine refuses to run while this camera is live —
+    // ZXing already decodes every frame and §13.4 measures what that costs, and iOS caps
+    // fast WASM memories at three per web-content process. `engine.ts` takes that signal
+    // as a required dependency; this is where it comes from. Held for exactly as long as
+    // this effect wants a camera, released by the same cleanup that stops the tracks.
+    const releaseScannerLock = acquireScanner();
     let cancelled = false;
 
     async function start() {
@@ -437,6 +444,7 @@ export function useScanner(options: {
     void start();
     return () => {
       cancelled = true;
+      releaseScannerLock();
       release();
     };
   }, [wantsCamera, handleResult, handleTrackEnded, release]);
