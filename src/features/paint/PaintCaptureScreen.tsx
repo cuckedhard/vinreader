@@ -18,7 +18,10 @@ import { usePaintCapture } from "./usePaintCapture";
 
 /**
  * §6.4 has no line for any of this — layer 2 is new — so every sentence below is supplied
- * here and logged under §0 rule 4 for Zach to sign off.
+ * here and logged under §0 rule 4 for Zach to sign off. Two sets of them are not below:
+ * the refusals are `failureText.ts` and the proposal's own sentences are `proposalView.ts`,
+ * because which sentence those pick is a rule, and a rule inside a React file has no unit
+ * test in this repo.
  *
  * The one that is a finding rather than a phrasing choice is `WHERE`. S5 addendum §3:
  * "Point at the door jamb" is wrong for a meaningful fraction of vehicles. VW and Audi put
