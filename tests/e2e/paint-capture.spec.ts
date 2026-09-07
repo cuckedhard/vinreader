@@ -454,6 +454,55 @@ test("[§5] the typed escape is on screen before anything is read, and it is emp
   await expect(page.getByText(HINT_OCR)).toHaveCount(0);
 });
 
+test("[P7] a failed save says so, and names what is actually on the screen", async ({ page }) => {
+  test.setTimeout(180_000);
+  await openCapture(page);
+  await page.getByRole("button", { name: "Read the code" }).click();
+  const candidate = page.getByRole("button", { name: `Save ${CODE}` });
+  await expect(candidate).toBeVisible({ timeout: 150_000 });
+
+  // The connection is already open — `openCapture` imported a record through it — so the
+  // injected fault lands on the first attempt rather than on a Dexie retry.
+  await page.evaluate(() => {
+    const put = IDBObjectStore.prototype.put;
+    (window as unknown as { restorePut: () => void }).restorePut = () => {
+      IDBObjectStore.prototype.put = put;
+    };
+    IDBObjectStore.prototype.put = function () {
+      throw new Error("storage full");
+    };
+  });
+
+  await candidate.click();
+  await expect(page.getByText("Could not save")).toBeVisible();
+  const body = page.getByText("Nothing was saved. The code is still on this screen — try again.");
+  await expect(body).toBeVisible();
+  await expect(page).toHaveURL(new RegExp(`#/v/${VIN}/paint$`));
+  expect(await storedPaint(page)).toBeNull();
+
+  /*
+   * What the sentence claims, on the route that used to make it false. The banner said
+   * "The paint code is still in the box above. Tap Save to try again.": the box is below
+   * the banner, on this route it is *empty* — the characters are inside a button — and no
+   * control on this screen is called Save.
+   */
+  await expect(page.getByLabel("Or type the paint code")).toHaveValue("");
+  await expect(candidate).toBeVisible();
+
+  // And the other route, where the box is the thing that still holds the code.
+  await page.getByLabel("Or type the paint code").fill("LC9X");
+  await page.getByRole("button", { name: "Save what I typed" }).click();
+  await expect(body).toBeVisible();
+  await expect(page.getByLabel("Or type the paint code")).toHaveValue("LC9X");
+  expect(await storedPaint(page)).toBeNull();
+
+  // "Try again" has to be a thing that works: the same tap, once storage is back.
+  await page.evaluate(() => (window as unknown as { restorePut: () => void }).restorePut());
+  await page.getByRole("button", { name: "Save what I typed" }).click();
+  await expect(page).toHaveURL(new RegExp(`#/v/${VIN}$`));
+  expect(await storedPaint(page)).toBe("LC9X");
+});
+
 test("[§4] a device that cannot run the engine is told, and its camera is left alone", async ({
   page,
 }) => {

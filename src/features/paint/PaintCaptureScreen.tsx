@@ -48,7 +48,15 @@ const TYPE_LABEL = "Or type the paint code";
 const TYPE_SAVE = "Save what I typed";
 const BACK = "Back to the vehicle";
 const SAVE_FAILED_TITLE = "Could not save";
-const SAVE_FAILED = "The paint code is still in the box above. Tap Save to try again.";
+/**
+ * §6.4's Sheet line — "What you typed is still in the boxes above. Tap Save to try again."
+ * — is not true of this screen, and was shipped here anyway. The banner sits above the
+ * typed field, so "above" points the wrong way; a candidate save leaves that field empty
+ * and the characters inside a button; and no control here is called Save — they read
+ * "Save WA8555" and "Save what I typed". What holds on both routes is that the write did
+ * not land and that what the user was saving is still in front of them.
+ */
+const SAVE_FAILED = "Nothing was saved. The code is still on this screen — try again.";
 const CAMERA_FAILED = "The camera didn't start here. You can still type the code.";
 
 /**
