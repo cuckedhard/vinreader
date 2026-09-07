@@ -17,6 +17,8 @@ import {
   ENGINE_FAILED,
   UNUSABLE_BUILD,
   failureText,
+  isDeadEnd,
+  retryCanHelp,
 } from "./failureText";
 
 /** §4's `OcrFailure`, pinned here the way N6 asks tests to pin a constant. */
@@ -109,5 +111,47 @@ describe("a remedy the user can actually carry out (§6.4)", () => {
     // The one it used to share a sentence with keeps it: that engine really did stop.
     expect(failureText("engine_failed")).toBe(ENGINE_FAILED);
     expect(ENGINE_FAILED).toMatch(/stopped/i);
+  });
+});
+
+describe("the sentence and the button under it (§6.3's rule for this screen)", () => {
+  it("marks exactly the refusals another tap cannot change", () => {
+    for (const reason of EVERY_REASON) {
+      expect(retryCanHelp(reason), reason).toBe(!NO_RETRY_CAN_HELP.includes(reason));
+    }
+  });
+
+  it("never asks for a retry the screen does not offer, or offers one it does not ask for", () => {
+    // The screen hides Read again wherever `retryCanHelp` is false, so a sentence saying
+    // "Try again" there would name a control that is not on screen — and a sentence that
+    // has given up while the button is still live is the screen arguing with itself. One
+    // list decides both (§7 item 5).
+    for (const reason of EVERY_REASON) {
+      expect(/try again/i.test(failureText(reason)), reason).toBe(
+        retryCanHelp(reason) && reason !== "busy",
+      );
+    }
+    // `busy` is the one retryable refusal whose remedy is to wait first, so it says that
+    // instead — and the button stays.
+    expect(retryCanHelp("busy")).toBe(true);
+    expect(BUSY).toMatch(/wait/i);
+  });
+});
+
+describe("what the screen and the camera do with a refusal", () => {
+  it("is a dead end only where no second tap can change the answer", () => {
+    // The screen drops the preview and the Read again button on this, and the hook releases
+    // the camera on it. Both read this one function, so a refusal cannot be a dead end for
+    // one of them and not the other.
+    expect(isDeadEnd({ kind: "unsupported", reason: "no_wasm" })).toBe(true);
+    expect(isDeadEnd({ kind: "failed", reason: "dictionary_present" })).toBe(true);
+    expect(isDeadEnd({ kind: "failed", reason: "no_cache" })).toBe(true);
+
+    // Everything a tap can still change keeps the camera and the button.
+    for (const reason of EVERY_REASON.filter((each) => retryCanHelp(each))) {
+      expect(isDeadEnd({ kind: "failed", reason }), reason).toBe(false);
+    }
+    expect(isDeadEnd({ kind: "offer" })).toBe(false);
+    expect(isDeadEnd({ kind: "nothing" })).toBe(false);
   });
 });

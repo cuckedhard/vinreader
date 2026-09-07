@@ -33,6 +33,7 @@ import {
   type PaintCaptureState,
 } from "../../lib/ocr/session";
 import { OcrError, type OcrFailure } from "../../lib/ocr/types";
+import { isDeadEnd } from "./failureText";
 
 /**
  * Resolution is the single biggest accuracy driver in S5 addendum §3, and iOS has no torch
@@ -53,6 +54,12 @@ export interface PaintCaptureApi {
   state: PaintCaptureState;
   /** True once the camera failed to start. The typed escape is the route, never a dead end. */
   cameraFailed: boolean;
+  /**
+   * Nothing left to aim at: unsupported, or a refusal a second tap cannot change — a
+   * capability this device does not have, or a dictionary in the model this build shipped.
+   * The camera is released here and the screen has nothing to offer but the typed field.
+   */
+  deadEnd: boolean;
   /** True once the stream reports a frame size, which is what the crop is measured against. */
   cameraReady: boolean;
   videoRef: RefObject<HTMLVideoElement | null>;
@@ -95,7 +102,9 @@ export function usePaintCapture(): PaintCaptureApi {
   const cropUrlRef = useRef<string | null>(null);
   const pageHidden = useSyncExternalStore(subscribeVisibility, isPageHidden);
 
-  const supported = state.kind !== "unsupported";
+  // Unsupported before a camera was ever asked for, or a refusal no second tap can change:
+  // one predicate, shared with the screen so the two cannot drift (`failureText.ts`).
+  const deadEnd = isDeadEnd(state);
 
   /**
    * One camera, for as long as this screen is the thing on screen.
@@ -112,7 +121,7 @@ export function usePaintCapture(): PaintCaptureApi {
    * already does with the scan screen's camera.
    */
   useEffect(() => {
-    if (!supported || pageHidden) return;
+    if (deadEnd || pageHidden) return;
     // Copied once: this element is mounted for the life of the effect, and the cleanup
     // must stop the tracks it attached rather than whatever the ref points at later.
     const video = videoRef.current;
@@ -152,7 +161,7 @@ export function usePaintCapture(): PaintCaptureApi {
       if (stream !== null) for (const track of stream.getTracks()) track.stop();
       if (video !== null) video.srcObject = null;
     };
-  }, [supported, pageHidden]);
+  }, [deadEnd, pageHidden]);
 
   // The engine, the worker and the object URL all outlive a render, and none of them
   // outlives the screen. Backgrounding is already cancellation inside `engine.ts` (§4).
@@ -251,5 +260,15 @@ export function usePaintCapture(): PaintCaptureApi {
     return () => video.removeEventListener("loadedmetadata", onMetadata);
   }, [onMetadata]);
 
-  return { state, cameraFailed, cameraReady, videoRef, previewRef, boxRef, cropUrl, read };
+  return {
+    state,
+    cameraFailed,
+    deadEnd,
+    cameraReady,
+    videoRef,
+    previewRef,
+    boxRef,
+    cropUrl,
+    read,
+  };
 }

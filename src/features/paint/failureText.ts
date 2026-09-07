@@ -21,6 +21,7 @@
  *
  * None of them blames the user.
  */
+import type { PaintCaptureState } from "../../lib/ocr/session";
 import type { OcrFailure } from "../../lib/ocr/types";
 
 /**
@@ -53,6 +54,39 @@ export const ENGINE_FAILED = "The reader stopped. Try again, or type the code.";
 /** `engine.ts`: one worker, one instance. The reader has not stopped — it is running. */
 export const BUSY = "A read is already running. Wait for it to finish, or type the code.";
 
+/**
+ * Whether tapping Read again could ever produce a different answer.
+ *
+ * The same list the sentences are built on, because the two have to agree: a screen that
+ * says "Type the code instead" and leaves a Read again button under it has moved the
+ * impossible remedy from the sentence to the control rather than removed it. A capability
+ * the device does not have is not acquired by asking twice, and a dictionary in the model
+ * this build shipped is in it on every fetch — `assets.ts` has already matched the digest
+ * by the time it looks.
+ *
+ * Everything else is worth another tap: a dropped download, a truncated asset, a worker
+ * that died, a read that was cancelled, a camera the scanner still holds, a recognition
+ * that is still in flight.
+ */
+export function retryCanHelp(reason: OcrFailure): boolean {
+  switch (reason) {
+    case "no_wasm":
+    case "no_simd":
+    case "no_worker":
+    case "no_canvas":
+    case "no_cache":
+    case "dictionary_present":
+      return false;
+    case "scanner_live":
+    case "aborted":
+    case "download_failed":
+    case "corrupt_asset":
+    case "engine_failed":
+    case "busy":
+      return true;
+  }
+}
+
 export function failureText(reason: OcrFailure): string {
   switch (reason) {
     case "no_wasm":
@@ -76,4 +110,18 @@ export function failureText(reason: OcrFailure): string {
     case "busy":
       return BUSY;
   }
+}
+
+/**
+ * Whether this screen has anything left to aim at.
+ *
+ * Both consumers are one expression each, and they are the same expression on purpose: the
+ * screen drops the preview and the Read again button, and the hook releases the camera —
+ * streaming frames into a preview nobody can read from is a light left on. §6.4's rule for
+ * a notice with no retry then applies to what is left: the typed field takes the primary
+ * weight, because it is the only route there is.
+ */
+export function isDeadEnd(state: PaintCaptureState): boolean {
+  if (state.kind === "unsupported") return true;
+  return state.kind === "failed" && !retryCanHelp(state.reason);
 }

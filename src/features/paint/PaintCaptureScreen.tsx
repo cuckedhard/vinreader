@@ -319,9 +319,13 @@ export default function PaintCaptureScreen() {
   const [saving, setSaving] = useState(false);
   const [saveFailed, setSaveFailed] = useState(false);
 
-  const { state, cameraFailed, cameraReady, cropUrl, videoRef, previewRef, boxRef, read } =
+  const { state, cameraFailed, cameraReady, cropUrl, deadEnd, videoRef, previewRef, boxRef, read } =
     capture;
-  const blocked = state.kind === "unsupported" || cameraFailed;
+  // A refusal no second tap can change is this screen's other dead end, and it gets the
+  // same shape as the one the support test finds before the camera is ever asked for: no
+  // preview to aim with, no Read again to press, and the typed field takes the primary
+  // weight because it is the only route left (§6.4).
+  const blocked = deadEnd || cameraFailed;
   // §6.3's rule, applied to this screen: the status line never says something the banner
   // below it contradicts. "Starting camera…" over "The camera didn't start here" is the
   // screen arguing with itself, and the one the user acts on is the one they read first.
