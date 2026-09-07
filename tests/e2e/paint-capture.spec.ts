@@ -489,6 +489,32 @@ test("[§4] a device that cannot run the engine is told, and its camera is left 
   expect(await storedPaint(page)).toBe("LC9X");
 });
 
+test("[§4] the WebAssembly case is told the same thing, and not a setting it cannot see", async ({
+  page,
+}) => {
+  // §1's real device: iOS Lockdown Mode disables WebAssembly outright. `support.ts` sees an
+  // absence and nothing else — an old browser and a stripped WebView hand it the same
+  // signal — so the screen may not say the user turned something off (N2). This is the one
+  // capability the app itself never needs, so deleting it leaves a working app on a device
+  // that cannot run the reader, which is exactly the state under test.
+  await page.addInitScript(() => {
+    Reflect.deleteProperty(globalThis, "WebAssembly");
+  });
+  await openCapture(page);
+
+  await expect(
+    page.getByText("This browser can't run the reader. Type the code instead."),
+  ).toBeVisible();
+  await expect(page.getByText(/WebAssembly/)).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Read the code" })).toHaveCount(0);
+
+  // And the route that is left is the one the sentence names.
+  await page.getByLabel("Or type the paint code").fill("UG");
+  await page.getByRole("button", { name: "Save what I typed" }).click();
+  await expect(page).toHaveURL(new RegExp(`#/v/${VIN}$`));
+  expect(await storedPaint(page)).toBe("UG");
+});
+
 test("[§6.3] a camera that will not start says so, and the screen does not argue with it", async ({
   page,
 }) => {

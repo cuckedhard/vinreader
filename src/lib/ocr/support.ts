@@ -68,8 +68,13 @@ export function readOcrCapabilities(env: OcrEnvironment): OcrCapabilities {
 }
 
 /**
- * The first missing capability, in the order the user should hear about it: no
- * WebAssembly at all before no SIMD, because they are different sentences.
+ * The first missing capability, in the order a bug report needs it: no WebAssembly at all
+ * before no SIMD, which is the more specific fact about the same device.
+ *
+ * The *user* is told one sentence for all five (`failureText.ts`). This detects an absence,
+ * never a setting — an old browser, a stripped WebView and a Lockdown-Mode iPhone hand it
+ * the same signal — so a sentence per reason would be five guesses at a cause the client
+ * cannot see (N2).
  */
 export function ocrSupport(capabilities: OcrCapabilities): OcrSupport {
   if (!capabilities.wasm) return "no_wasm";

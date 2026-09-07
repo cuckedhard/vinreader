@@ -5,7 +5,6 @@ import { OCR_TOTAL_BYTES } from "../../lib/ocr/assets.generated";
 import { confusionSet, hasAlternatives, replaceAt } from "../../lib/ocr/confusion";
 import { PAINT_CROP_BOX } from "../../lib/ocr/cropBox";
 import type { PaintCaptureState } from "../../lib/ocr/session";
-import type { OcrFailure } from "../../lib/ocr/types";
 import { isLowConfidence, type PaintProposal } from "../../lib/ocr/vote";
 import { setVehicleMeta } from "../../lib/storage/upsert";
 import type { PaintSource } from "../../lib/vin/types";
@@ -13,6 +12,7 @@ import { asciiUpper } from "../../lib/vin/grammar";
 import { Banner } from "../../ui/Banner";
 import { Button, TAP_LG_TARGET } from "../../ui/Button";
 import { VIN_TEXT_SIZES, VinDisplay } from "../../ui/VinDisplay";
+import { failureText } from "./failureText";
 import { nextEdit, proposalView } from "./proposalView";
 import { usePaintCapture } from "./usePaintCapture";
 
@@ -50,33 +50,6 @@ const BACK = "Back to the vehicle";
 const SAVE_FAILED_TITLE = "Could not save";
 const SAVE_FAILED = "The paint code is still in the box above. Tap Save to try again.";
 const CAMERA_FAILED = "The camera didn't start here. You can still type the code.";
-
-/** One sentence per §4-recorded refusal. None of them blames the user (§6.4). */
-function failureText(reason: OcrFailure): string {
-  switch (reason) {
-    case "no_wasm":
-      // §1: iOS Lockdown Mode disables WebAssembly outright, which is why typing stays
-      // load-bearing however well this works.
-      return "This browser has WebAssembly turned off, so the reader can't run. Type the code instead.";
-    case "no_simd":
-    case "no_worker":
-    case "no_canvas":
-    case "no_cache":
-      return "This browser can't run the reader. Type the code instead.";
-    case "scanner_live":
-      return "The camera is busy with a barcode scan. Go back, then try again.";
-    case "aborted":
-      return "The read stopped when the screen went away. Try again.";
-    case "download_failed":
-      return "The reader didn't download. Check your signal and try again, or type the code.";
-    case "corrupt_asset":
-    case "dictionary_present":
-      return "The reader didn't download cleanly. Try again, or type the code.";
-    case "engine_failed":
-    case "busy":
-      return "The reader stopped. Try again, or type the code.";
-  }
-}
 
 /**
  * Megabytes as a data plan counts them, not as a disk does. The number under this button is
