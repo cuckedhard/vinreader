@@ -10,7 +10,7 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { browserOcrEngine, ocrPaths } from "./browser";
-import { acquireScanner } from "./scannerLive";
+import { openScannerCamera } from "./scannerLive";
 
 const BASE = "https://phone.example/vinreader/";
 
@@ -34,14 +34,23 @@ describe("browserOcrEngine", () => {
   it("refuses to read while the barcode scanner holds a camera", async () => {
     ableBrowser();
     const engine = browserOcrEngine(BASE);
-    const release = acquireScanner();
+    // Not "the dependency was passed", and not the counter poked directly either: the same
+    // function `useScanner` awaits for its stream, holding the same module-level store,
+    // refusing a real run before a byte is downloaded.
+    const camera = await openScannerCamera(
+      {
+        getUserMedia: async () =>
+          ({ getTracks: () => [{ stop: () => undefined }] }) as unknown as MediaStream,
+      } as unknown as MediaDevices,
+      { video: true },
+    );
     try {
-      // Not "the dependency was passed" — the real store, taken by the real scan screen's
-      // own acquire, refusing a real run before a byte is downloaded.
       await expect(engine.recognize("frame")).rejects.toMatchObject({ reason: "scanner_live" });
     } finally {
-      release();
+      camera.close();
     }
+    // And the refusal is not permanent furniture: the camera closes, OCR is allowed again.
+    await expect(engine.recognize("frame")).rejects.not.toMatchObject({ reason: "scanner_live" });
   });
 
   it("says no_canvas on a browser with no OffscreenCanvas for the worker to draw on", () => {

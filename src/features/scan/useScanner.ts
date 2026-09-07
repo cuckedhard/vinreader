@@ -16,7 +16,7 @@ import type { RefObject } from "react";
 import type { IScannerControls } from "@zxing/browser";
 import { ChecksumException, FormatException, NotFoundException } from "@zxing/library";
 import type { Result } from "@zxing/library";
-import { acquireScanner } from "../../lib/ocr/scannerLive";
+import { openScannerCamera, type ScannerCamera } from "../../lib/ocr/scannerLive";
 import { isPayloadCarrier } from "../../lib/payload/carrier";
 import { extractVin } from "../../lib/vin/extractVin";
 import { buildScanHints, stripAimIdentifier, toSymbology } from "../../lib/vin/symbologies";
@@ -371,31 +371,34 @@ export function useScanner(options: {
 
   useEffect(() => {
     if (!wantsCamera) return;
-    // N1/P1 and S5 addendum §4: the OCR engine refuses to run while this camera is live —
-    // ZXing already decodes every frame and §13.4 measures what that costs, and iOS caps
-    // fast WASM memories at three per web-content process. `engine.ts` takes that signal
-    // as a required dependency; this is where it comes from. Held for exactly as long as
-    // this effect wants a camera, released by the same cleanup that stops the tracks.
-    const releaseScannerLock = acquireScanner();
     let cancelled = false;
+    /** Held from the moment the camera is asked for; closed by whichever path gets there. */
+    let camera: ScannerCamera | null = null;
 
     async function start() {
       if (navigator.mediaDevices === undefined) {
         dispatch({ type: "stream_failed", error: "no_camera" });
         return;
       }
-      let stream: MediaStream;
+      let opened: ScannerCamera;
       try {
+        // N1/P1 and S5 addendum §4: the OCR engine refuses to run while this camera is
+        // live — ZXing already decodes every frame and §13.4 measures what that costs, and
+        // iOS caps fast WASM memories at three per web-content process. The interlock is
+        // taken *with* the stream rather than on a line beside it, because a line beside it
+        // is a guard no test in this repo can hold up (`scannerLive.ts` says why).
         // §6.3: an insecure context never reaches here, so no permission prompt can appear.
-        stream = await navigator.mediaDevices.getUserMedia(VIDEO_CONSTRAINTS);
+        opened = await openScannerCamera(navigator.mediaDevices, VIDEO_CONSTRAINTS);
       } catch (error) {
         if (!cancelled) dispatch({ type: "stream_failed", error: toScanError(error) });
         return;
       }
       if (cancelled) {
-        stopTracks(stream);
+        opened.close();
         return;
       }
+      camera = opened;
+      const stream = opened.stream;
       try {
         // §4.6's hints, read through a luminance source that can rotate: `TRY_HARDER`'s 90°
         // retry threw once per miss frame on the stock one and never recovered a sideways
@@ -413,7 +416,7 @@ export function useScanner(options: {
         );
         if (cancelled) {
           controls.stop();
-          stopTracks(stream);
+          opened.close();
           return;
         }
         controlsRef.current = controls;
@@ -436,7 +439,8 @@ export function useScanner(options: {
         }
         dispatch({ type: "stream_started" });
       } catch (error) {
-        stopTracks(stream);
+        opened.close();
+        camera = null;
         if (!cancelled) dispatch({ type: "stream_failed", error: toScanError(error) });
       }
     }
@@ -444,7 +448,9 @@ export function useScanner(options: {
     void start();
     return () => {
       cancelled = true;
-      releaseScannerLock();
+      // Null while `openScannerCamera` is still awaiting — that path closes its own camera
+      // on the `cancelled` check above, so the count is balanced whichever order they land in.
+      camera?.close();
       release();
     };
   }, [wantsCamera, handleResult, handleTrackEnded, release]);
