@@ -493,20 +493,52 @@ test.describe("SH-4: the failure is where it can be read", () => {
  * extensions.
  */
 test.describe("SH-5: the Import screen does not name the wrong file", () => {
+  /**
+   * Every file extension this screen says out loud, minus the one Share actually sends.
+   * Naming a shape is not wrong in itself — naming one the app's own Share does not
+   * produce is what turned the receiver away.
+   */
+  async function extensionsNamed(page: Page): Promise<{ named: string[]; words: string }> {
+    const words = (await page.locator("main").innerText()).replace(/\s+/g, " ");
+    const name = sharedFile(VIN).name;
+    const sent = name.slice(name.lastIndexOf(".")).toLowerCase();
+    const named = (words.match(/\.[A-Za-z0-9]{2,5}\b/g) ?? []).filter(
+      (ext) => ext.toLowerCase() !== sent,
+    );
+    return { named, words };
+  }
+
   test("asks for no file shape but the one Share actually sends", async ({ page }) => {
     await page.goto("/#/i");
 
     // The button the receiver taps, holding the file the app sent them.
     await expect(page.getByRole("button", { name: /^choose a file$/i })).toBeVisible();
 
-    const words = (await page.locator("main").innerText()).replace(/\s+/g, " ");
-    const name = sharedFile(VIN).name;
-    const sent = name.slice(name.lastIndexOf(".")).toLowerCase();
-    // Every file extension this screen says out loud. Naming one is not wrong in itself —
-    // naming one the app's own Share does not produce is what turned the receiver away.
-    const named = (words.match(/\.[A-Za-z0-9]{2,5}\b/g) ?? []).filter(
-      (ext) => ext.toLowerCase() !== sent,
-    );
+    const { named, words } = await extensionsNamed(page);
+    expect(named, words).toEqual([]);
+  });
+
+  /**
+   * The half SH-5 could not see. This sweep ran on a clean `/#/i`, where no failure banner
+   * is mounted — and the sentence that still said ".json" was the file hint, which only
+   * renders once a pick has failed. So the screen passed the guard while telling every
+   * receiver who picked the wrong file to go and find a shape the app never sends.
+   *
+   * The pick here fails the way a receiver's honest mistake fails: a real file, not JSON.
+   */
+  test("and does not name one when a pick has just failed", async ({ page }) => {
+    await page.goto("/#/i");
+
+    await page.locator("input[type=file]").setInputFiles({
+      name: sharedFile(VIN).name,
+      mimeType: "text/plain",
+      buffer: Buffer.from("thanks, here is the truck"),
+    });
+
+    // §6.4: "That file isn't JSON, so there is nothing to read." — with the hint under it.
+    await expect(page.getByRole("alert")).toContainText("so there is nothing to read");
+
+    const { named, words } = await extensionsNamed(page);
     expect(named, words).toEqual([]);
   });
 });

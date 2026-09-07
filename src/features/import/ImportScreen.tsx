@@ -40,7 +40,16 @@ const LABEL = "text-sm font-bold tracking-wide text-fg-muted uppercase";
 const HINT_LINK = "Ask the sender to share it again, or paste the VIN below.";
 const HINT_PASTE =
   "A link looks like https://…/#/i?d=…, a code starts with VINRELAY1:, and a VIN is 17 characters.";
-const HINT_FILE = "Pick a .json file VIN Relay exported, or paste a link or a VIN instead.";
+/**
+ * SH-5, the copy this screen was still contradicting. SH-1 attaches the shared record as
+ * `vin-relay-<vin>.txt` because Chromium refuses `application/json` outright, so a receiver
+ * holding the file this app just sent them was told, the moment they picked it, to go and
+ * find a `.json` — which is the exact turn-away SH-5 was raised to end. It named an
+ * extension the app's own Share does not produce, and Download JSON still writes a real
+ * `.json`, so the honest line names where the file came from and leaves the shapes to the
+ * picker, exactly as the two sentences beside the file button already do.
+ */
+const HINT_FILE = "Pick a file VIN Relay shared or exported, or paste a link or a VIN instead.";
 const HINT_SAVE_ONE = "Tap Import to try again.";
 const HINT_SAVE_MANY = "What is left is still listed below. Tap Import to try again.";
 
