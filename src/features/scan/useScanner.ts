@@ -19,12 +19,13 @@ import type { Result } from "@zxing/library";
 import { toCameraError } from "../../app/cameraError";
 import { openScannerCamera, type ScannerCamera } from "../../lib/ocr/scannerLive";
 import { isPayloadCarrier } from "../../lib/payload/carrier";
-import { extractVin } from "../../lib/vin/extractVin";
+import { extractVinExplained } from "../../lib/vin/extractVin";
 import { buildScanHints, stripAimIdentifier, toSymbology } from "../../lib/vin/symbologies";
 import { cooldownStore } from "./cooldownStore";
 import { ScanFrameReader } from "./frameReader";
 import { CONFIRM_WINDOW_MS, scanReducer, startingScanMachine } from "./scanMachine";
 import type { ScanAction, ScanMachineState, ScanSighting } from "./scanMachine";
+import type { NoVin } from "../../lib/vin/types";
 
 export interface TorchApi {
   available: boolean;
@@ -40,6 +41,11 @@ export interface FocusApi {
 
 export interface ScannerApi {
   state: ScanMachineState;
+  /**
+   * A refused read two frames agree on (FR-2), or `null`. The screen's to render; the
+   * machine's to decide, on §6.3's own agreement window.
+   */
+  refusal: NoVin | null;
   videoRef: RefObject<HTMLVideoElement | null>;
   torch: TorchApi;
   focus: FocusApi;
@@ -144,10 +150,13 @@ function isNoRead(error: unknown): boolean {
 
 /**
  * What one decoded frame turned out to be: one of the app's own §4.9 carriers, a §4.2
- * sighting, or `null` for a frame this screen does nothing with.
+ * sighting, a §4.2 refusal with the branch that refused it, or `null` for a frame this
+ * screen does nothing with.
  */
 export type ScanRead =
-  { kind: "carrier"; text: string } | { kind: "sighting"; sighting: ScanSighting };
+  | { kind: "carrier"; text: string }
+  | { kind: "sighting"; sighting: ScanSighting }
+  | { kind: "refusal"; refusal: NoVin; atMs: number };
 
 /** The two `Result` accessors this reads, so a test can hand it a frame with no camera. */
 type DecodedFrame = Pick<Result, "getText" | "getBarcodeFormat">;
@@ -182,9 +191,12 @@ export function readScanResult(frame: DecodedFrame, atMs: number): ScanRead | nu
   if (isPayloadCarrier(text)) return { kind: "carrier", text };
   const symbology = toSymbology(format);
   if (symbology === null) return null;
-  const extraction = extractVin(text);
-  if (extraction === null) return null;
-  return { kind: "sighting", sighting: { ...extraction, symbology, atMs } };
+  // FR-2: the same call §4.2 always made, with the branch that refused carried out beside
+  // the answer. `extractVin` is a projection of this, so no accept and no refusal moves —
+  // what changes is that a refusal is now something the screen can say (§6.4, N2).
+  const outcome = extractVinExplained(text);
+  if (!outcome.ok) return { kind: "refusal", refusal: outcome.refusal, atMs };
+  return { kind: "sighting", sighting: { ...outcome.result, symbology, atMs } };
 }
 
 function stopTracks(stream: MediaStream): void {
@@ -318,6 +330,12 @@ export function useScanner(options: {
     if (read === null) return;
     if (read.kind === "carrier") {
       onCarrierRef.current?.(read.text);
+      return;
+    }
+    if (read.kind === "refusal") {
+      // Every frame that decoded something and is not a VIN reports it; §6.3's agreement
+      // window in the reducer is what decides whether it is worth saying (FR-2).
+      dispatch({ type: "refused", refusal: read.refusal, atMs: read.atMs });
       return;
     }
     dispatch({ type: "decoded", sighting: read.sighting });
@@ -529,5 +547,14 @@ export function useScanner(options: {
     dispatch({ type: "accepted", vin, atMs });
   }, []);
 
-  return { state: machine.state, videoRef, torch, focus, retry, rescan, accept };
+  return {
+    state: machine.state,
+    refusal: machine.refusal,
+    videoRef,
+    torch,
+    focus,
+    retry,
+    rescan,
+    accept,
+  };
 }

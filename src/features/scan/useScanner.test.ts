@@ -17,7 +17,7 @@ import { describe, expect, it } from "vitest";
 
 import { TEXT_PREFIX, isPayloadCarrier } from "../../lib/payload/carrier";
 import { encodePayload } from "../../lib/payload/codec";
-import { extractVin } from "../../lib/vin/extractVin";
+import { extractVin, extractVinExplained } from "../../lib/vin/extractVin";
 import { CODE_128_GS1_IDENTIFIER } from "../../lib/vin/symbologies";
 import { readScanResult } from "./useScanner";
 
@@ -115,7 +115,22 @@ describe("readScanResult — the §4.6 strip is on the app's scan path, not only
       BarcodeFormat.DATA_MATRIX,
       BarcodeFormat.QR_CODE,
     ]) {
-      expect(readScanResult(frame(`${CODE_128_GS1_IDENTIFIER}${VIN}`, format), AT_MS)).toBeNull();
+      const read = readScanResult(frame(`${CODE_128_GS1_IDENTIFIER}${VIN}`, format), AT_MS);
+      // Still refused, and refused for the same reason as before §4.6 gained the hint: the
+      // 19-character run holds three windows and R4-A will not say which was printed. What
+      // is new is that the refusal is reported rather than dropped (FR-2) — no VIN comes
+      // back out of it, which is the property this test was written for.
+      expect(read).toEqual({
+        kind: "refusal",
+        refusal: {
+          reason: "not_whole_run",
+          raw: `${CODE_128_GS1_IDENTIFIER}${VIN}`,
+          longestRun: `C1${VIN}`,
+          windowCount: 3,
+          validCount: 1,
+        },
+        atMs: AT_MS,
+      });
     }
   });
 });
@@ -135,8 +150,63 @@ describe("readScanResult — everything else about a frame, unchanged", () => {
     });
   });
 
-  it("says nothing about a frame §4.2 refuses", () => {
-    expect(readScanResult(frame("UNIT B — REAR AXLE", BarcodeFormat.CODE_39), AT_MS)).toBeNull();
+  it("carries out the refusal §4.2 gave, rather than dropping the frame (FR-2)", () => {
+    // It used to return `null` here, which is why a scanned component label could be
+    // refused and said nothing about. The branch and its evidence come out whole, and the
+    // words are the screen's (§6.4).
+    const raw = "UNIT B — REAR AXLE";
+    expect(readScanResult(frame(raw, BarcodeFormat.CODE_39), AT_MS)).toEqual({
+      kind: "refusal",
+      // §4.2 step 1 strips the space before step 2 splits, so the run really is `REARAXLE`
+      // — the number the app quotes is the one it measured, not the one a reader counts.
+      refusal: {
+        reason: "no_run_of_17",
+        raw,
+        longestRun: "REARAXLE",
+        windowCount: 0,
+        validCount: 0,
+      },
+      atMs: AT_MS,
+    });
+
+    // The report's own label, off the Code 128 it was printed on.
+    const part = readScanResult(frame("R25-1251-200622120", BarcodeFormat.CODE_128), AT_MS);
+    expect(part).toMatchObject({ kind: "refusal", refusal: { longestRun: "200622120" } });
+  });
+
+  /**
+   * The proof that the reason channel decided nothing here either (N6). A frame becomes a
+   * sighting exactly when `extractVin` returns one, with the same three fields, and becomes
+   * a refusal exactly when it returns null — over every payload this file reads.
+   */
+  it("becomes a sighting on exactly the frames extractVin accepts", () => {
+    const texts = [
+      VIN,
+      `I${VIN}`,
+      `${CODE_128_GS1_IDENTIFIER}${VIN}`,
+      `${VIN}${GS}1P84203911`,
+      "R25-1251-200622120",
+      "UNIT B — REAR AXLE",
+      "414556",
+      `A${VIN}A`,
+      "",
+    ];
+    for (const text of texts) {
+      const read = readScanResult(frame(text, BarcodeFormat.CODE_128), AT_MS);
+      const stripped = text.startsWith(CODE_128_GS1_IDENTIFIER)
+        ? text.slice(CODE_128_GS1_IDENTIFIER.length)
+        : text;
+      const outcome = extractVinExplained(stripped);
+      expect(read?.kind, text).toBe(outcome.ok ? "sighting" : "refusal");
+      if (read?.kind === "sighting") {
+        expect(extractVin(stripped)).toEqual({
+          vin: read.sighting.vin,
+          raw: read.sighting.raw,
+          checkDigitValid: read.sighting.checkDigitValid,
+        });
+      }
+      if (read?.kind === "refusal") expect(extractVin(stripped)).toBeNull();
+    }
   });
 
   it("drops a format outside §4.6 rather than inventing a symbology for it", () => {

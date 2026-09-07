@@ -47,6 +47,9 @@ describe("scanReducer — startup", () => {
       state: { kind: "idle", lost: false },
       cooldown: {},
       hiddenAtMs: null,
+      // FR-2: a machine that has heard nothing has nothing to say about a refusal either.
+      refusal: null,
+      refusalSeen: null,
     });
   });
 

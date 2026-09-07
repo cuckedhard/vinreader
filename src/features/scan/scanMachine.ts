@@ -7,7 +7,7 @@
  */
 
 import { cooldownStore } from "./cooldownStore";
-import type { ScanError, Symbology } from "../../lib/vin/types";
+import type { NoVin, ScanError, Symbology } from "../../lib/vin/types";
 
 /** §6.3 two-read agreement window. */
 export const CONFIRM_WINDOW_MS = 1500;
@@ -39,13 +39,51 @@ export interface ScanMachine {
   /** VIN → the time it was accepted and persisted. Only "accepted" writes here. */
   cooldown: Record<string, number>;
   hiddenAtMs: number | null;
+  /**
+   * A read §4.2 refused that two frames agree on, and therefore the one thing on this
+   * screen worth saying about a refusal (FR-2). `null` is silence, which is what most
+   * refusals get: §6.4 rules that garbage keeps the scanner going, and the decoder misses
+   * several times a second.
+   *
+   * It is deliberately **not** a `ScanState`. §4.10's six states are the ones that own the
+   * camera and the status line, and a refusal owns neither — the stream keeps running
+   * (N1), the status line keeps pointing at the door-jamb sticker, and nothing is written.
+   * Adding a seventh would be a change to a §4 constant for a banner.
+   */
+  refusal: NoVin | null;
+  /**
+   * The last refusal a frame reported, waiting for a second frame to agree with it.
+   * §6.3's two-read agreement, applied to the refusal rather than to a VIN and on §6.3's
+   * own window — not a second timing rule.
+   */
+  refusalSeen: { refusal: NoVin; atMs: number } | null;
 }
+
+/**
+ * No refusal, agreed or pending. Spread wherever the machine restarts the camera or takes
+ * a VIN in, because a refusal is about the code in the frame and each of those is a fresh
+ * look at the scene (R3-F5: a notice that outlives what it describes is a guess shown as a
+ * fact, N2).
+ *
+ * `rescan` and `accepted` deliberately do NOT spread it, and it is not an omission: both
+ * act on a `confirmed` machine, `decoded` is the only way into `confirmed`, and `decoded`
+ * has already cleared it. Clearing it again would be a statement no test could tell from
+ * its own absence — the same thing §4.2 step 4b's removed `if` was, and the same thing
+ * `bun run mutate` reports.
+ */
+const NO_REFUSAL = { refusal: null, refusalSeen: null } as const;
 
 export type ScanAction =
   | { type: "mount"; secureContext: boolean }
   | { type: "stream_started" }
   | { type: "stream_failed"; error: ScanError }
   | { type: "decoded"; sighting: ScanSighting }
+  /**
+   * A frame that decoded cleanly and is not a VIN, with §4.2's reason (FR-1). Frames that
+   * decode nothing at all never reach here — ZXing's miss is not a read of anything, and
+   * §6.4 rules that garbage keeps the scanner going.
+   */
+  | { type: "refused"; refusal: NoVin; atMs: number }
   /**
    * The §6.3 agreement window running out under a standing candidate. The hook owns the
    * timer and stamps the instant; the reducer only compares it, so P3 holds.
@@ -62,6 +100,7 @@ export const initialScanMachine: ScanMachine = {
   state: { kind: "idle", lost: false },
   cooldown: {},
   hiddenAtMs: null,
+  ...NO_REFUSAL,
 };
 
 /**
@@ -118,7 +157,12 @@ export function scanReducer(machine: ScanMachine, action: ScanAction): ScanMachi
     case "retry":
       // Retry re-runs the mount logic, so an insecure context stays an error.
       // The cooldown map survives: returning to Scan is exactly what it guards.
-      return { ...machine, state: cameraStart(action.secureContext), hiddenAtMs: null };
+      return {
+        ...machine,
+        ...NO_REFUSAL,
+        state: cameraStart(action.secureContext),
+        hiddenAtMs: null,
+      };
 
     case "stream_started":
       return machine.state.kind === "requesting"
@@ -145,7 +189,38 @@ export function scanReducer(machine: ScanMachine, action: ScanAction): ScanMachi
         isWithin(sighting.atMs - machine.state.sighting.atMs, CONFIRM_WINDOW_MS);
       // The confirming sighting is the one kept: its raw bytes are what clinched
       // the read and its timestamp is the moment of confirmation.
-      return { ...machine, state: { kind: confirms ? "confirmed" : "candidate", sighting } };
+      //
+      // A VIN in the frame ends any refusal: the code that was refused is not what the
+      // camera is looking at any more, and the screen has a read to show instead.
+      return {
+        ...machine,
+        ...NO_REFUSAL,
+        state: { kind: confirms ? "confirmed" : "candidate", sighting },
+      };
+    }
+
+    case "refused": {
+      // A late frame from a stopped or hidden stream describes a scene nobody is pointing
+      // at, exactly as it cannot resurrect a candidate.
+      if (!isLive(machine)) return machine;
+      const { refusal, atMs } = action;
+      const seen = machine.refusalSeen;
+      // §6.3's two-read agreement, on §6.3's own window and its own constant. It is what
+      // separates a coherent read that is not a VIN from frame noise: a symbol in front of
+      // the camera decodes to the same bytes every frame, and a misread does not repeat
+      // itself. One sighting says nothing, which is what keeps the loop from strobing.
+      const agrees =
+        seen !== null &&
+        seen.refusal.raw === refusal.raw &&
+        isWithin(atMs - seen.atMs, CONFIRM_WINDOW_MS);
+      // The pending read is always replaced — a different code in the frame starts its own
+      // window — while what is *shown* only ever changes on agreement, so the banner holds
+      // still instead of flickering between two half-read symbols.
+      return {
+        ...machine,
+        refusalSeen: { refusal, atMs },
+        refusal: agrees ? refusal : machine.refusal,
+      };
     }
 
     case "tick": {
@@ -189,7 +264,7 @@ export function scanReducer(machine: ScanMachine, action: ScanAction): ScanMachi
       // idle (a dead track, a saved scan) re-requests down the same path, and an
       // insecure context still becomes an error without a permission prompt.
       if (gap > HIDDEN_LOST_MS || machine.state.kind === "idle") {
-        return { ...next, state: cameraStart(action.secureContext) };
+        return { ...next, ...NO_REFUSAL, state: cameraStart(action.secureContext) };
       }
       return next;
     }

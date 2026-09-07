@@ -1,6 +1,7 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { NOT_A_VIN } from "./refusalText";
 import {
   NOTHING_WRITTEN,
   PAINT_LABEL,
@@ -89,6 +90,14 @@ const ONE_PLACE: readonly OnePlace[] = [
    * else, empties the first one. The Import screen's paint chooser had one.
    */
   { text: '"Keep"', owner: "features/account/strings.ts" },
+  /*
+   * §6.4's line for a typed entry that is not a VIN, now said by the scan screen about a
+   * scanned read that is not one either (FR-2). One state — §4.2 was handed something and
+   * would not read a VIN out of it — reached two ways, so it gets one sentence rather than
+   * a second one written for the camera. It lives beside the four reasons that follow it
+   * rather than here, the way `cameraError.ts` keeps §6.4's camera lines.
+   */
+  { text: NOT_A_VIN, owner: "app/refusalText.ts" },
 ];
 
 /**
@@ -104,7 +113,9 @@ const ONE_PLACE: readonly OnePlace[] = [
  * five separate tests.
  */
 it("writes one apostrophe, the one §6.4 writes", () => {
-  const curly = sources().filter((path) => readFileSync(`${SRC}${path}`, "utf8").includes("\u2019"));
+  const curly = sources().filter((path) =>
+    readFileSync(`${SRC}${path}`, "utf8").includes("\u2019"),
+  );
   expect(curly).toEqual([]);
 });
 

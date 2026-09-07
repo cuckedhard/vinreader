@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
+import { RefusedRead } from "../../app/RefusedRead";
+import { NOT_A_VIN } from "../../app/refusalText";
 import { NOTHING_WRITTEN, WRITE_FAILED_TITLE } from "../../app/strings";
 import { PayloadError, encodePayload, parseCarrier } from "../../lib/payload/codec";
 import { getSettings } from "../../lib/storage/settings";
@@ -14,6 +16,13 @@ import { useScanner } from "./useScanner";
 import { useVinCommit } from "./useVinCommit";
 
 type Mode = "camera" | "manual";
+
+/**
+ * §6.4 gives the carrier rejection this word, and a refused read is answered the same way:
+ * the tap says "I have read this, carry on", and the camera never stopped either way.
+ * Written once so the two banners cannot drift apart (§7 item 5).
+ */
+const KEEP_SCANNING = "Keep scanning";
 
 /**
  * The default screen (§6.2): the camera, with the keyboard one tap away. The two modes are
@@ -74,10 +83,19 @@ export function ScanScreen() {
     },
     [navigate],
   );
-  const { state, videoRef, torch, focus, retry, rescan, accept } = useScanner({
+  const { state, refusal, videoRef, torch, focus, retry, rescan, accept } = useScanner({
     enabled: mode === "camera",
     onCarrier: handleCarrier,
   });
+  /**
+   * The read "Keep scanning" was tapped for, exactly as R3-F5 handles a refused carrier:
+   * the answer is about *that text*, not about the banner, because the realistic case is
+   * the same sticker still under the camera and the very next frame raising it again.
+   * State rather than a ref, because what is shown is the machine's and only a render can
+   * take it off the screen. A different read still reports (P7), and the way back from the
+   * keyboard re-arms this one, because that is a fresh look at the scene.
+   */
+  const [dismissedRefusal, setDismissedRefusal] = useState<string | null>(null);
   // `useAsIs` is renamed on the way out: it is a plain method, and the hooks lint reads any
   // `use…()` call inside a callback as a misplaced hook.
   const { pending, saving, error, request, useAsIs: saveAsIs, dismiss } = useVinCommit();
@@ -141,6 +159,19 @@ export function ScanScreen() {
   const showCarrier =
     carrierError !== null && state.kind !== "candidate" && state.kind !== "confirmed";
 
+  /**
+   * FR-2, and the same rule as the line above it: a refusal is about what is in front of
+   * the camera, so it must not outlive the code it describes (R3-F5, N2).
+   *
+   * It needs no `state.kind` guard, unlike the carrier line above, and that is worth
+   * stating because the asymmetry looks like an omission. The carrier error is this
+   * screen's own `useState` and nothing clears it when a VIN turns up; a refusal is the
+   * machine's, and `decoded` drops it — so by the time the state is `candidate` or
+   * `confirmed`, `refusal` is already null. A guard here would be a condition no test
+   * could tell from its own absence.
+   */
+  const showRefusal = refusal !== null && dismissedRefusal !== refusal.raw;
+
   const forgetCarrier = useCallback(() => {
     shownCarrier.current = null;
     setCarrierError(null);
@@ -174,6 +205,7 @@ export function ScanScreen() {
     dismissedCarrier.current = null;
     shownCarrier.current = null;
     setCarrierError(null);
+    setDismissedRefusal(null);
     setMode("camera");
   }, []);
 
@@ -190,6 +222,16 @@ export function ScanScreen() {
     if (!showCarrier) return;
     carrierRef.current?.scrollIntoView({ block: "nearest" });
   }, [showCarrier]);
+
+  // R3-F1 again, for the same reason and by the same means: the machine stays `streaming`
+  // for a refused read, so this banner opens under a full-height preview and a phone-sized
+  // fold does not reach it. The camera is not stopped, hidden or shrunk — it is still
+  // decoding, because a scan is never blocked (N1/P1).
+  const refusalRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!showRefusal) return;
+    refusalRef.current?.scrollIntoView({ block: "nearest" });
+  }, [showRefusal]);
 
   return (
     // The camera screen lays its preview and its controls side by side in landscape (F11),
@@ -253,11 +295,33 @@ export function ScanScreen() {
                       setCarrierError(null);
                     }}
                   >
-                    Keep scanning
+                    {KEEP_SCANNING}
                   </Button>
                 }
               >
                 {carrierError}
+              </Banner>
+            </div>
+          ) : null}
+
+          {/* FR-2: a read that decoded cleanly and is not a VIN. §6.4 has no line for it,
+              so the title is the one §6.4 already gives the same fact on the typed path,
+              and the body is what was read and why — the string the mechanic in the report
+              had to photograph because the app would not show it. The remedy is not
+              repeated here: the status line above still says where the VIN barcode is, and
+              this banner and "Type VIN instead" are both on screen. */}
+          {refusal !== null && showRefusal ? (
+            <div ref={refusalRef}>
+              <Banner
+                tone="warn"
+                title={NOT_A_VIN}
+                actions={
+                  <Button variant="secondary" onClick={() => setDismissedRefusal(refusal.raw)}>
+                    {KEEP_SCANNING}
+                  </Button>
+                }
+              >
+                <RefusedRead refusal={refusal} />
               </Banner>
             </div>
           ) : null}
