@@ -54,14 +54,19 @@ const FIX_HEADING = "Fix a character";
 const FIX_HINT = "Tap a character to swap it for the one it looks like.";
 const NOTHING_HELP = "Line the box up with the code, get closer, or type it below.";
 const TYPE_LABEL = "Or type the paint code";
-const TYPE_SAVE = "Save what I typed";
+/**
+ * §6.4 writes to the user in the second person — "What you typed is still in the boxes
+ * above", "Your entry is still here" — and this was the one control in the app that spoke
+ * as the user instead of to them. The same words, the right way round.
+ */
+const TYPE_SAVE = "Save what you typed";
 const BACK = "Back to the vehicle";
 /**
  * §6.4's Sheet line — "What you typed is still in the boxes above. Tap Save to try again."
  * — is not true of this screen, and was shipped here anyway. The banner sits above the
  * typed field, so "above" points the wrong way; a candidate save leaves that field empty
  * and the characters inside a button; and no control here is called Save — they read
- * "Save WA8555" and "Save what I typed". What holds on both routes is that the write did
+ * "Save WA8555" and "Save what you typed". What holds on both routes is that the write did
  * not land and that what the user was saving is still in front of them.
  */
 const SAVE_FAILED = "Nothing was saved. The code is still on this screen — try again.";

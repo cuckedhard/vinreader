@@ -454,7 +454,7 @@ test("[§5] the typed escape is on screen before anything is read, and it is emp
   await expect(field).toHaveValue("");
 
   await field.fill("NH-731P");
-  await page.getByRole("button", { name: "Save what I typed" }).click();
+  await page.getByRole("button", { name: "Save what you typed" }).click();
   await expect(page).toHaveURL(new RegExp(`#/v/${VIN}$`));
   expect(await storedPaint(page)).toBe("NH-731P");
   expect(await storedProvenance(page)).toEqual({ source: "typed", confidence: null });
@@ -499,14 +499,14 @@ test("[P7] a failed save says so, and names what is actually on the screen", asy
 
   // And the other route, where the box is the thing that still holds the code.
   await page.getByLabel("Or type the paint code").fill("LC9X");
-  await page.getByRole("button", { name: "Save what I typed" }).click();
+  await page.getByRole("button", { name: "Save what you typed" }).click();
   await expect(body).toBeVisible();
   await expect(page.getByLabel("Or type the paint code")).toHaveValue("LC9X");
   expect(await storedPaint(page)).toBeNull();
 
   // "Try again" has to be a thing that works: the same tap, once storage is back.
   await page.evaluate(() => (window as unknown as { restorePut: () => void }).restorePut());
-  await page.getByRole("button", { name: "Save what I typed" }).click();
+  await page.getByRole("button", { name: "Save what you typed" }).click();
   await expect(page).toHaveURL(new RegExp(`#/v/${VIN}$`));
   expect(await storedPaint(page)).toBe("LC9X");
 });
@@ -541,7 +541,7 @@ test("[§4] a device that cannot run the engine is told, and its camera is left 
   // The route is still open, and it is the primary one here (§6.4).
   const typed = page.getByLabel("Or type the paint code");
   await typed.fill("LC9X");
-  await page.getByRole("button", { name: "Save what I typed" }).click();
+  await page.getByRole("button", { name: "Save what you typed" }).click();
   await expect(page).toHaveURL(new RegExp(`#/v/${VIN}$`));
   expect(await storedPaint(page)).toBe("LC9X");
 });
@@ -567,7 +567,7 @@ test("[§4] the WebAssembly case is told the same thing, and not a setting it ca
 
   // And the route that is left is the one the sentence names.
   await page.getByLabel("Or type the paint code").fill("UG");
-  await page.getByRole("button", { name: "Save what I typed" }).click();
+  await page.getByRole("button", { name: "Save what you typed" }).click();
   await expect(page).toHaveURL(new RegExp(`#/v/${VIN}$`));
   expect(await storedPaint(page)).toBe("UG");
 });
@@ -601,7 +601,7 @@ test("[§6.3] a blocked camera is told how to unblock it, and the screen does no
   // The route out is the typed field, and it carries the primary weight here (§6.4).
   const typed = page.getByLabel("Or type the paint code");
   await typed.fill("1F7");
-  await page.getByRole("button", { name: "Save what I typed" }).click();
+  await page.getByRole("button", { name: "Save what you typed" }).click();
   await expect(page).toHaveURL(new RegExp(`#/v/${VIN}$`));
   expect(await storedPaint(page)).toBe("1F7");
 });
@@ -620,7 +620,7 @@ test("[§6.4] a camera that is not there is not called a blocked one", async ({ 
 
   const typed = page.getByLabel("Or type the paint code");
   await typed.fill("UG");
-  await page.getByRole("button", { name: "Save what I typed" }).click();
+  await page.getByRole("button", { name: "Save what you typed" }).click();
   await expect(page).toHaveURL(new RegExp(`#/v/${VIN}$`));
   expect(await storedPaint(page)).toBe("UG");
 });
