@@ -209,6 +209,32 @@ describe("createOcrEngine", () => {
     expect(h.calls.workers).toBe(2);
   });
 
+  it("races the abort against a recognition already in flight, rather than checking between awaits", async () => {
+    // The test above hides the screen from outside the engine, three microtask ticks in —
+    // and three is an accident of how many awaits this implementation happens to have
+    // between `recognize()` and the worker. Add one and the abort lands *before* the
+    // worker is reached, where a `signal.aborted` check between awaits catches it too, and
+    // the test goes on passing without exercising the race at all.
+    //
+    // Firing the listener from inside `worker.recognize` removes the accident: when it
+    // runs, the recognition has started and the only promise left is one this worker never
+    // settles — which is what §4 says a recognition on a backgrounded page is. A check
+    // between awaits has nothing left to check; it is already waiting, and iOS suspends
+    // the process about seven seconds later. That is the version this file shipped first
+    // and it hung here for five.
+    const h = harness();
+    h.onRecognize = () =>
+      new Promise(() => {
+        // One microtask late, deliberately. Hiding synchronously would abort before
+        // `raceAbort` subscribes, which is its already-aborted branch and not the race.
+        queueMicrotask(() => h.hide());
+      });
+
+    await expect(createOcrEngine(h.deps).recognize("frame")).rejects.toMatchObject({
+      reason: "aborted",
+    });
+  });
+
   it("cancels on the caller's signal too, before and during the run", async () => {
     const h = harness();
     const before = new AbortController();
