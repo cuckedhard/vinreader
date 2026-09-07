@@ -5,6 +5,7 @@
  * patching only the glue would leave WebKit reserving 2 GiB at instantiation — which is
  * the failure §4 names. Both, or the build fails.
  */
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -101,9 +102,24 @@ describe("the core this build ships", () => {
     expect(source).toContain(`Math.min(${OCR_MAX_MEMORY_BYTES},`);
   });
 
-  it("is the SIMD, LSTM-only build and not one of the other three", () => {
-    // The four cores differ only in name once they are base64; the file name is the
-    // record of which one was pinned, and §4 pins this one.
-    expect(OCR_ASSETS.core.file).toBe("tesseract-core-simd-lstm.wasm.js");
+  it("is the SIMD, LSTM-only core §4 pins, read off the bytes and not off the file name", () => {
+    // The name in `assets.generated.ts` is a literal in `build-ocr-assets.ts`, not a record
+    // of which file the build read. Measured: point `SOURCES.core` at
+    // `tesseract-core-relaxedsimd-lstm.wasm.js`, rerun `build:ocr`, and the relaxed-SIMD
+    // core ships under this name with every assertion in this file and in
+    // `wasmMemory.test.ts` still green. So the shipped bytes are anchored to the upstream
+    // file instead — which is what carries the whole of §4's choice: single-threaded, SIMD
+    // rather than relaxed-SIMD, and no legacy engine beside an LSTM-only model.
+    const pinned = fileURLToPath(
+      new URL(
+        "../../../node_modules/tesseract.js-core/tesseract-core-simd-lstm.wasm.js",
+        import.meta.url,
+      ),
+    );
+    const digest = (text: string): string => createHash("sha256").update(text).digest("hex");
+    expect(
+      digest(source),
+      `public/ocr/${OCR_ASSETS.core.file} is not tesseract-core-simd-lstm.wasm.js with §4's cap`,
+    ).toBe(digest(capCoreMaximumMemory(readFileSync(pinned, "utf8"), OCR_MAX_MEMORY_PAGES)));
   });
 });
