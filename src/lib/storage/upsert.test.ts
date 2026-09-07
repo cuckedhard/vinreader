@@ -681,6 +681,30 @@ describe("§5 the paint code's provenance", () => {
     expect(record.paintConfidence).toBeNull();
   });
 
+  it("lets a caller say it does not know, which is not the same as saying typed", async () => {
+    // `undefined` is the Sheet's field and the capture screen: a person on this phone put
+    // the characters there. `null` is a caller that cannot say that — the shape
+    // `upsertVehicle` already writes for a code that arrived from another device. `??`
+    // cannot tell the two apart, and collapsing the second into "typed" writes a sentence
+    // onto the record that is not true; the sheet reads this field to say how the
+    // characters got there, and N2 means nothing downstream will ever contradict it.
+    await upsertVehicle(scan({ at: T1 }));
+    const arrived = await setVehicleMeta(VIN, {
+      paint: PAINT,
+      paintSource: null,
+      paintConfidence: 88,
+    });
+
+    expect(arrived.paint).toBe(PAINT);
+    expect(arrived.paintSource).toBeNull();
+    // And a confidence needs a read of its own behind it, whichever non-`ocr` source it
+    // arrives beside.
+    expect(arrived.paintConfidence).toBeNull();
+
+    const said = await setVehicleMeta(VIN, { paint: OTHER_PAINT });
+    expect(said.paintSource).toBe("typed");
+  });
+
   it("keeps the provenance when a save does not move the paint code", async () => {
     // The Sheet saves unit, notes and paint on one tap, so a unit edit hands this function
     // the paint code that is already stored. Deriving provenance from "the patch carried a

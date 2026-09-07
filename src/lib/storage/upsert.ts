@@ -209,11 +209,17 @@ export async function setVehicleMeta(
     notes?: string | null;
     paint?: string | null;
     /**
-     * S5 layer 2. Only the capture screen ever passes `"ocr"`, and only for a string the
-     * engine returned and a person then tapped with the characters inside the control.
-     * Absent means a person put these characters here — the Sheet's field, a per-character
-     * correction, a lookalike picked off `confusion.ts`'s table, or the incoming value on
-     * the import screen's conflict prompt. All of those are `"typed"`.
+     * S5 layer 2, and three distinct values rather than two.
+     *
+     * `"ocr"` is the capture screen's alone, and only for a string the engine returned and
+     * a person then tapped with the characters inside the control. **Absent** means a
+     * person put these characters here — the Sheet's field, a per-character correction, a
+     * lookalike picked off `confusion.ts`'s table, or the incoming value on the import
+     * screen's conflict prompt. An explicit **`null`** is a caller saying *this device does
+     * not know*, which is what `upsertVehicle` writes for a code that arrived from
+     * somewhere else, and it is not the same statement as "typed": "typed" says a person
+     * on this phone read the glyphs off the sticker, and a caller that cannot say that must
+     * be able to say nothing instead (N2 — nothing downstream can contradict either).
      */
     paintSource?: PaintSource;
     paintConfidence?: number | null;
@@ -234,13 +240,22 @@ export async function setVehicleMeta(
      *
      * A cleared code keeps no provenance, and nothing but an `ocr` source may carry a
      * confidence: a number attached to characters a person typed describes nothing.
+     *
+     * The default is applied to an **absent key only**. `??` cannot tell "the caller said
+     * nothing" from "the caller said it does not know", and collapsing the second into
+     * `"typed"` writes a sentence onto the record that is not true — the sheet reads this
+     * field to say how the characters got there, and nothing downstream can contradict it
+     * (N2). `undefined` is the Sheet and the capture screen, where a person did type or
+     * confirm; `null` is a caller that cannot say that.
      */
     const paintChanged = paint !== (existing.paint ?? null);
     const paintSource: PaintSource = !paintChanged
       ? (existing.paintSource ?? null)
       : paint === null
         ? null
-        : (patch.paintSource ?? "typed");
+        : patch.paintSource === undefined
+          ? "typed"
+          : patch.paintSource;
     const paintConfidence = !paintChanged
       ? (existing.paintConfidence ?? null)
       : paintSource === "ocr"
