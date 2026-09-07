@@ -149,7 +149,9 @@ test("[§5] the copy names the box, never a place on the car", async ({ page }) 
   // S5 addendum §3: "point at the door jamb" is wrong for a meaningful fraction of
   // vehicles — VW and Audi use the trunk or the spare-wheel well, GM legacy the glovebox.
   await expect(page.getByText("Put the box on the paint code.")).toBeVisible();
-  const where = page.getByText(/The sticker is on the door jamb on some vehicles/);
+  // And it says *which* sticker: §6.4's scan prompt puts the VIN barcode on the door-jamb
+  // certification label, which is a different label from the one the paint code is on.
+  const where = page.getByText(/The paint sticker is on the door jamb on some vehicles/);
   await expect(where).toBeVisible();
   await expect(where).toContainText("trunk");
   await expect(where).toContainText("glovebox");

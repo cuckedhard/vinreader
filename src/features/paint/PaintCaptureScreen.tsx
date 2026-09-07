@@ -30,10 +30,17 @@ import { usePaintCapture } from "./usePaintCapture";
  * the code on the vehicle data sticker in the trunk or the spare-wheel well; GM legacy
  * uses the SPID label in the glovebox. So the prompt names the *box*, not a place on the
  * car, and the sentence under it says the location varies rather than guessing one.
+ *
+ * It says *which* sticker, because there are two and only one of them moves. §6.4's scan
+ * prompt — "Point at the barcode on the door-jamb sticker." — is about the certification
+ * label, which is where the VIN barcode is and where §0 says this app reads it; the paint
+ * code is on the manufacturer's own service-parts sticker, which is somewhere else on a
+ * meaningful fraction of vehicles. Unqualified, this sentence read as a refutation of that
+ * one.
  */
 const WHERE =
-  "The sticker is on the door jamb on some vehicles, and in the trunk, the spare-wheel " +
-  "well or the glovebox on others.";
+  "The paint sticker is on the door jamb on some vehicles, and in the trunk, the " +
+  "spare-wheel well or the glovebox on others.";
 /**
  * What the tap costs, and nothing the platform does not underwrite.
  *
