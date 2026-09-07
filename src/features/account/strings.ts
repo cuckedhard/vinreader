@@ -5,7 +5,9 @@
  * anyone auditing this slice against the spec:
  *
  * - **§6.4 copy is verbatim.** Same words, same punctuation, straight apostrophes as the
- *   spec writes them. Where a sentence carries a number it is a format rather than a
+ *   spec writes them — and the supplied strings below now use them too. They shipped with
+ *   curly ones, which made this file the only place in the app with two apostrophes, and
+ *   split §6.4 into two families the moment either was quoted back into it. Where a sentence carries a number it is a format rather than a
  *   constant, and §6.4's own example ("Add the 14 records…") is the shape it is formatted
  *   to. Singular is an inflection of that same sentence, not a second one: "Add the 1
  *   record" is not English, and a field app that cannot count to one loses trust it needs
@@ -54,14 +56,14 @@ export const SCREEN_TITLE = "Account";
 export const CHECKING = "Checking…";
 
 /** `getSupabase()` returned null with no env vars: expected, quiet, and not the user's fault. */
-export const NOT_CONFIGURED_TITLE = "Sign-in isn’t set up in this build";
+export const NOT_CONFIGURED_TITLE = "Sign-in isn't set up in this build";
 export const NOT_CONFIGURED_BODY =
   "Everything else works as usual — scans, details and handoff all stay on this phone.";
 
 /** The loud one (P7): both variables are set and the client still refused them. */
 export const INVALID_CONFIG_TITLE = "Sign-in is misconfigured in this build";
 export const INVALID_CONFIG_BODY =
-  "The account settings this app was built with aren’t valid, so sign-in can’t be offered. Records stay on this phone.";
+  "The account settings this app was built with aren't valid, so sign-in can't be offered. Records stay on this phone.";
 
 export const EMAIL_LABEL = "Email";
 export const EMAIL_PLACEHOLDER = "you@example.com";
@@ -88,7 +90,7 @@ export const LAST_DOWNLOAD_LABEL = "Last download";
 export const NEVER = "Never";
 export const SYNC_NOW = "Sync now";
 export const SYNCING_NOW = "Syncing…";
-export const SYNC_UNAVAILABLE = "Sync isn’t running in this session. Reload the app to start it.";
+export const SYNC_UNAVAILABLE = "Sync isn't running in this session. Reload the app to start it.";
 /** Where §6.4's *"Sync error — tap for details"* lands. The detail is §5.8's `lastError`. */
 export const SYNC_ERROR_TITLE = "Sync error";
 export const SYNC_OFF_TITLE = "Sync is off";
@@ -136,7 +138,7 @@ export const ACCOUNT_DELETED_TITLE = "Account deleted";
 export const ACCOUNT_DELETED_BODY = "The account is gone and this phone has been cleared.";
 
 /** P7: something failed and the screen has to say so without blaming the user. */
-export const ACTION_FAILED_TITLE = "That didn’t work";
+export const ACTION_FAILED_TITLE = "That didn't work";
 
 /**
  * `AuthFailure` → words. §6.4 covers exactly one of these — the wrong code — so the rest are
@@ -146,12 +148,12 @@ export const ACTION_FAILED_TITLE = "That didn’t work";
 export const AUTH_FAILURE_TEXT: Record<AuthFailure, string> = {
   not_configured: NOT_CONFIGURED_TITLE,
   cooldown: "The last code is still on its way. Give it a moment.",
-  invalid_email: "That address doesn’t look like an email.",
+  invalid_email: "That address doesn't look like an email.",
   no_pending_code: "Send a code first, then enter it here.",
   invalid_code: CODE_MISMATCH,
   rate_limited: "Too many attempts. Wait a minute, then try again.",
-  offline: "No signal — that didn’t reach the sign-in service. Try again when you’re back online.",
-  unknown: "Sign-in didn’t go through. Try again.",
+  offline: "No signal — that didn't reach the sign-in service. Try again when you're back online.",
+  unknown: "Sign-in didn't go through. Try again.",
 };
 
 /** P7: total to TypeScript, and still total at runtime if a future member arrives. */

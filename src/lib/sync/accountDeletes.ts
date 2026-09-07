@@ -319,7 +319,7 @@ export async function deleteAccount(
  * user, and both end in something the user can actually do next (P7).
  */
 export const CLOUD_DATA_DELETED_LOCAL_STALE =
-  "Your account is empty. This phone couldn’t finish clearing what was waiting to upload — " +
+  "Your account is empty. This phone couldn't finish clearing what was waiting to upload — " +
   "reload the app, then run Delete my cloud data once more.";
 
 export const ACCOUNT_DELETED_DEVICE_NOT_CLEARED =

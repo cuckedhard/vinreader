@@ -45,9 +45,9 @@ const ACCOUNT_SIGNED_IN_HINT =
  * commands that mean something else, and both are one tap away on the Account screen.
  */
 const CLEAR_ACCOUNT_NOTE =
-  "You’re signed in, so your account keeps its own copy and this phone will download it " +
+  "You're signed in, so your account keeps its own copy and this phone will download it " +
   "again. To empty the account, use Delete my cloud data on the Account screen.";
-const CLEARED_ACCOUNT_NOTE = "What’s in your account will download again.";
+const CLEARED_ACCOUNT_NOTE = "What's in your account will download again.";
 
 /**
  * §4.10 has six sync statuses and only one of them says "no account on this device".
@@ -151,7 +151,7 @@ function ThemeRow({ value, onChange }: ThemeRowProps) {
       <span className="flex flex-col gap-1">
         <span className="text-base font-bold text-fg">Theme</span>
         <span className="text-sm leading-snug text-fg-muted">
-          Dark is easiest at night. System follows the phone’s own setting.
+          Dark is easiest at night. System follows the phone's own setting.
         </span>
       </span>
       <div role="radiogroup" aria-label="Theme" className="flex gap-2">
@@ -346,7 +346,7 @@ export function SettingsScreen() {
       </header>
 
       {error ? (
-        <Banner tone="danger" title="Couldn’t save that">
+        <Banner tone="danger" title="Couldn't save that">
           {error}
         </Banner>
       ) : null}
@@ -398,7 +398,7 @@ export function SettingsScreen() {
         />
         <ToggleRow
           label="Auto-decode"
-          hint="Fetches vehicle details from NHTSA automatically when you’re online."
+          hint="Fetches vehicle details from NHTSA automatically when you're online."
           checked={settings.autoDecode}
           onChange={(next) => save({ autoDecode: next })}
         />
@@ -413,7 +413,7 @@ export function SettingsScreen() {
 
       <Section title="Clear all data">
         <p className="text-base leading-snug text-fg">
-          Removes every vehicle, scan and setting from this phone. It can’t be undone, and nothing
+          Removes every vehicle, scan and setting from this phone. It can't be undone, and nothing
           here is backed up.
         </p>
         {linked ? <p className="text-base leading-snug text-fg">{CLEAR_ACCOUNT_NOTE}</p> : null}

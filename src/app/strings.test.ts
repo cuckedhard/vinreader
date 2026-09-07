@@ -91,6 +91,23 @@ const ONE_PLACE: readonly OnePlace[] = [
   { text: '"Keep"', owner: "features/account/strings.ts" },
 ];
 
+/**
+ * One apostrophe, everywhere.
+ *
+ * §6.4 writes 30 of its 42 quoted sentences with a straight one, and every family that has
+ * more than one member — the Sheet, Import, Delete, Copy, the auth block — is straight
+ * throughout. `account/strings.ts` says so in its own docblock ("straight apostrophes as
+ * the spec writes them") and then supplied twelve strings with curly ones, which is how one
+ * screen's copy stops matching the file the copy is recorded in. It is not a typographic
+ * preference: a sentence quoted back into §6.4 with the wrong apostrophe is a sentence that
+ * no longer matches the app, and `Storage isn't available` is already pinned straight by
+ * five separate tests.
+ */
+it("writes one apostrophe, the one §6.4 writes", () => {
+  const curly = sources().filter((path) => readFileSync(`${SRC}${path}`, "utf8").includes("\u2019"));
+  expect(curly).toEqual([]);
+});
+
 describe("§7 item 5: a sentence the app says is defined once", () => {
   for (const { text, owner } of ONE_PLACE) {
     it(`"${text}" is written only in ${owner}`, () => {
