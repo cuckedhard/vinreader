@@ -1,9 +1,11 @@
 import { useId, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
+import { RefusedRead } from "../../app/RefusedRead";
+import { NOT_A_VIN } from "../../app/refusalText";
 import { NOTHING_WRITTEN, WRITE_FAILED_TITLE } from "../../app/strings";
 import { checkDigitApplies, isCheckDigitValid } from "../../lib/vin/checkDigit";
-import { extractVin } from "../../lib/vin/extractVin";
-import { asciiUpper, isAllowedVinChar, VIN_LENGTH } from "../../lib/vin/grammar";
+import { extractVinExplained, normalizeForExtract } from "../../lib/vin/extractVin";
+import { asciiUpper, VIN_LENGTH } from "../../lib/vin/grammar";
 import { Banner } from "../../ui/Banner";
 import { Button } from "../../ui/Button";
 import { Chip } from "../../ui/Chip";
@@ -11,17 +13,22 @@ import { VinDisplay } from "../../ui/VinDisplay";
 import { useVinCommit } from "./useVinCommit";
 
 /**
+ * Whether there is enough in the field to say anything about it.
+ *
  * D15: the field has no `maxlength`, so the value may be the 18-character `I`-prefixed
- * label form or the 22-character grouped form. §4.2 drops the separators, so the raw
- * length says nothing about whether there is enough typed to hold a VIN — count only
- * the §4.1 characters.
+ * label form or the 22-character grouped form, and its raw length says nothing. What is
+ * counted is what survives §4.2 step 1 — everything the user supplied, minus the
+ * whitespace and `*` §4.2 itself throws away — so a grouped VIN still says nothing until
+ * seventeen characters are in.
+ *
+ * It counted §4.1 characters until FR-2, and that is what kept the report's part number
+ * off the screen: `R25-1251-200622120` is eighteen characters, sixteen of them §4.1, so a
+ * paste of the whole thing was read as a half-typed VIN and answered with silence. Every
+ * value that used to reach this reaches it still — a §4.1 character survives step 1 — and
+ * a hyphen, a slash or a mistyped `O` now counts as the character it is.
  */
-function vinCharCount(value: string): number {
-  let count = 0;
-  for (const c of value) {
-    if (isAllowedVinChar(c)) count += 1;
-  }
-  return count;
+function isEnoughSupplied(value: string): boolean {
+  return normalizeForExtract(value).length >= VIN_LENGTH;
 }
 
 /**
@@ -36,11 +43,15 @@ export function ManualEntry() {
   // `use…()` call inside a callback as a misplaced hook.
   const { pending, saving, error, request, useAsIs: saveAsIs, dismiss } = useVinCommit();
 
-  const candidate = useMemo(() => extractVin(value), [value]);
+  // §4.2, with the branch that refused carried out with it (FR-1): the answer is the same
+  // answer `extractVin` gave, and the refusal is what this screen could not say before.
+  const outcome = useMemo(() => extractVinExplained(value), [value]);
+  const candidate = outcome.ok ? outcome.result : null;
+  const refusal = outcome.ok ? null : outcome.refusal;
   // N1: everything the user is shown comes from the extracted candidate, never the raw text.
   const checkValid = candidate !== null && isCheckDigitValid(candidate.vin);
   const checkApplies = candidate !== null && checkDigitApplies(candidate.vin);
-  const enoughTyped = vinCharCount(value) >= VIN_LENGTH;
+  const enoughTyped = isEnoughSupplied(value);
 
   function handleChange(next: string) {
     // Uppercase at the source, so the stored `raw` is what the user was shown (§5.2).
@@ -112,10 +123,17 @@ export function ManualEntry() {
               )}
             </div>
           </div>
-        ) : enoughTyped ? (
+        ) : enoughTyped && refusal !== null ? (
           <div className="rounded-[var(--radius)] border border-border bg-bg-elev p-4">
-            <p className="text-lg leading-tight font-bold text-fg">Not a VIN yet</p>
-            <p className="mt-1 text-base leading-snug text-fg-muted">
+            <p className="text-lg leading-tight font-bold text-fg">{NOT_A_VIN}</p>
+            {/* FR-2: what was read and why §4.2 refused it, above §6.4's rule and remedy —
+                pasting the report's part number in here used to leave this panel empty and
+                the field user with nothing to go on. The two say different things: the
+                sentence below is what a VIN is, the lines above are what this text was. */}
+            <div className="mt-2">
+              <RefusedRead refusal={refusal} />
+            </div>
+            <p className="mt-2 text-base leading-snug text-fg-muted">
               A VIN is 17 characters and never uses I, O or Q. Keep typing, or check for a mistyped
               character.
             </p>

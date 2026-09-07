@@ -22,8 +22,9 @@ import { db } from "../../lib/storage/db";
 import { kickDecodeQueue } from "../../lib/storage/decodeQueue";
 import { setVehicleMeta, upsertVehicle } from "../../lib/storage/upsert";
 import { checkDigitApplies, isCheckDigitValid } from "../../lib/vin/checkDigit";
-import { extractVin } from "../../lib/vin/extractVin";
-import type { VehicleRecord } from "../../lib/vin/types";
+import { extractVinExplained } from "../../lib/vin/extractVin";
+import type { NoVin, VehicleRecord } from "../../lib/vin/types";
+import { RefusedRead } from "../../app/RefusedRead";
 import { PAINT_LABEL } from "../../app/strings";
 import { Banner } from "../../ui/Banner";
 import { Button } from "../../ui/Button";
@@ -128,6 +129,12 @@ interface Preview {
 interface Failure {
   title: string;
   hint: string;
+  /**
+   * FR-2: the §4.2 refusal behind this failure, where there is one. Only the pasted-text
+   * path has one — a `?d=` payload and a file are rejected by the codec or the schema
+   * long before §4.2 sees anything, and §6.4 answers those in their own words.
+   */
+  refusal?: NoVin;
 }
 
 function text(value: string | null | undefined): string | null {
@@ -505,8 +512,8 @@ export default function ImportScreen() {
     setOverride({ at: encoded, outcome });
   }
 
-  function fail(title: string, hint: string): void {
-    replace({ preview: null, failure: { title, hint } });
+  function fail(title: string, hint: string, refusal?: NoVin): void {
+    replace({ preview: null, failure: { title, hint, refusal } });
   }
 
   function accept(next: Preview): void {
@@ -544,12 +551,19 @@ export default function ImportScreen() {
 
     // Neither: §4.2 still finds a bare VIN typed here, or one copied with whatever
     // text came along with it.
-    const extracted = extractVin(raw);
-    if (extracted === null) {
-      fail(ERR_NOT_A_CARRIER, HINT_PASTE);
+    const outcome = extractVinExplained(raw);
+    if (!outcome.ok) {
+      // FR-2. The title is the one this screen already had, and it is the accurate one
+      // here: what was pasted is none of the three shapes this box takes. §6.4's *"That
+      // payload's VIN isn't 17 valid characters, so there is nothing to save."* is a
+      // different state and stays where it is — it describes a payload, and text that is
+      // not a carrier never produced one, so borrowing it would name something that does
+      // not exist (N2). What is added underneath is the read itself and §4.2's reason,
+      // which is what the user could not see.
+      fail(ERR_NOT_A_CARRIER, HINT_PASTE, outcome.refusal);
       return;
     }
-    accept({ source: "Pasted VIN", items: [itemFromVin(extracted.vin, extracted.raw)] });
+    accept({ source: "Pasted VIN", items: [itemFromVin(outcome.result.vin, outcome.result.raw)] });
   }
 
   async function readFile(file: File): Promise<void> {
@@ -682,7 +696,16 @@ export default function ImportScreen() {
 
       {failure !== null ? (
         <Banner tone="danger" title={failure.title}>
-          <p>{failure.hint}</p>
+          {/* FR-2: what was read, and why §4.2 would not read a VIN out of it. Above the
+              hint, which is about the shapes this box takes rather than about this text. */}
+          {failure.refusal === undefined ? (
+            <p>{failure.hint}</p>
+          ) : (
+            <>
+              <RefusedRead refusal={failure.refusal} />
+              <p className="mt-2">{failure.hint}</p>
+            </>
+          )}
         </Banner>
       ) : null}
 

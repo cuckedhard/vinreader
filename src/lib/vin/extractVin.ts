@@ -10,6 +10,22 @@ import type { ExtractOutcome, ExtractResult, NoVin, NoVinReason } from "./types"
 const STRIP_RE = /[\s*]+/g;
 
 /**
+ * §4.2 step 1 on its own: ASCII-only uppercase, whitespace and `*` gone.
+ *
+ * Exported because a caller has to be able to ask *how much has been supplied* without
+ * retyping the strip (§7 item 5) — the typed screen decides whether there is enough in the
+ * field to say anything about, and counting §4.1 characters answered that wrong: the
+ * report's `R25-1251-200622120` is eighteen characters of which sixteen are §4.1, so the
+ * screen read it as half-typed and stayed silent. Step 1 is what §4.2 itself measures.
+ *
+ * `extractVinExplained` calls this and nothing else does the same work, so §4.2's first
+ * step has one implementation.
+ */
+export function normalizeForExtract(raw: string): string {
+  return asciiUpper(raw).replace(STRIP_RE, "");
+}
+
+/**
  * Returns null for NO_VIN. `raw` is echoed back unmodified so a record can keep
  * the exact bytes the decoder produced (§5.2).
  *
@@ -30,7 +46,7 @@ export function extractVin(raw: string): ExtractResult | null {
  * every adversary payload in this directory.
  */
 export function extractVinExplained(raw: string): ExtractOutcome {
-  const cleaned = asciiUpper(raw).replace(STRIP_RE, "");
+  const cleaned = normalizeForExtract(raw);
 
   // §4.2 steps 2 and 3. Windows stay grouped by the run they came from: a window can only
   // straddle the boundary between two fields printed inside the SAME run, so a run is the

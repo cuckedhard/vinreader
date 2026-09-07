@@ -2,7 +2,7 @@ import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 
 import { expectedCheckDigit, isCheckDigitValid } from "./checkDigit";
-import { extractVin } from "./extractVin";
+import { extractVin, normalizeForExtract } from "./extractVin";
 import { VIN_LENGTH } from "./grammar";
 
 const VALID = "1HGCM82633A004352";
@@ -168,5 +168,36 @@ describe("extractVin property", () => {
       // that goes red at random, which is a gate people stop reading (ledger F6).
       { seed: 0x4a2_0001, numRuns: 100 },
     );
+  });
+});
+
+/**
+ * §4.2 step 1, exported so the screens can measure what has been supplied without
+ * retyping the strip (§7 item 5). It is the same call `extractVinExplained` makes, so
+ * these assertions pin what every extraction starts from.
+ */
+describe("normalizeForExtract — §4.2 step 1", () => {
+  it("uppercases ASCII and strips whitespace and the Code 39 start/stop", () => {
+    expect(normalizeForExtract(` *${VALID.toLowerCase()}* `)).toBe(VALID);
+    expect(normalizeForExtract("1HG CM826 3 3 A 004352")).toBe(VALID);
+    expect(normalizeForExtract("1HGCM826\t33A\n004352")).toBe(VALID);
+  });
+
+  it("leaves every other code point untouched, ASCII-only (G1)", () => {
+    // Never `toUpperCase`: fifteen code points outside §4.1 uppercase *into* the alphabet
+    // and six of them grow, which is how a 16-character run becomes a 17-character
+    // window. `ß` stays one character and stays out of the alphabet.
+    expect(normalizeForExtract("ß1hgcm82633a00435")).toBe("ß1HGCM82633A00435");
+    expect(normalizeForExtract("R25-1251-200622120")).toBe("R25-1251-200622120");
+    expect(normalizeForExtract("")).toBe("");
+  });
+
+  it("is what §4.2 itself measures, so it counts what a screen has been given", () => {
+    // The typed screen decides whether there is enough in the field to say anything
+    // about; counting §4.1 characters answered that wrong, because the report's part
+    // number is eighteen characters of which sixteen are §4.1 (FR-2).
+    expect(normalizeForExtract("R25-1251-200622120")).toHaveLength(18);
+    expect(normalizeForExtract("1HG CM826 3 3 A 0")).toHaveLength(12);
+    expect(extractVin("R25-1251-200622120")).toBeNull();
   });
 });
