@@ -105,7 +105,7 @@ async function storedProvenance(page: Page) {
 }
 
 const HINT_TYPED =
-  "Typed in from the paint sticker. The VIN doesn't carry it and NHTSA doesn't publish it.";
+  "Entered by hand on this phone. The VIN doesn't carry it and NHTSA doesn't publish it.";
 const HINT_OCR =
   "Read off the sticker by the camera on this phone. The VIN doesn't carry it and NHTSA doesn't publish it.";
 

@@ -603,9 +603,15 @@ export default function ImportScreen() {
         // the chooser above, so it goes through the edit path — the same one the Sheet's
         // own field uses — which is the only path allowed to overwrite a paint code and
         // the one that moves §4.12's LWW clock so the choice survives a sync.
+        //
+        // `paintSource: null` is "this device does not know", and it is the whole truth
+        // here: the tap said *use the sender's code*, not *I read these characters off a
+        // sticker*. §4.9's payload carries no provenance, so accepting one and letting
+        // `setVehicleMeta`'s default call it "typed" would write a sentence onto the
+        // record that nothing downstream can contradict (N2, `upsert.ts`).
         const stored = paintConflict(item, storedPaint);
         if (stored !== null && item.paint !== null && chosenPaint[item.vin] === item.paint) {
-          await setVehicleMeta(item.vin, { paint: item.paint });
+          await setVehicleMeta(item.vin, { paint: item.paint, paintSource: null });
         }
         saved += 1;
       }

@@ -17,6 +17,7 @@ import { VinDisplay } from "../../ui/VinDisplay";
 import { Actions } from "./Actions";
 import { DecodeGroups } from "./DecodeGroups";
 import { DeleteVehicle, DeletedNotice } from "./DeleteVehicle";
+import { paintHint } from "./paintHint";
 import { StructuralBlock } from "./StructuralBlock";
 
 const LABEL = "text-sm font-bold tracking-wide text-fg-muted uppercase";
@@ -33,30 +34,12 @@ const DECODE_UNSUPPORTED =
 const DECODE_FAILED = "Couldn't reach NHTSA after several tries. Tap Refresh details to retry.";
 
 /**
- * §6.4 supplies no line for the paint code, so these two are written in its voice and
- * logged under §0 rule 4 for Zach to sign off. The hint is the whole provenance in one
- * sentence: nothing decoded this, and nothing can check it — which is why the sheet keeps
- * it out of "From the VIN" and out of "Vehicle details" (N2).
+ * §6.4 supplies no line for the paint code, so this one is written in its voice and logged
+ * under §0 rule 4 for Zach to sign off: nothing decoded this, and nothing can check it —
+ * which is why the sheet keeps it out of "From the VIN" and out of "Vehicle details" (N2).
+ * Which sentence a given record earns is `paintHint`'s, and it is a rule with a test.
  */
 const PAINT_LABEL = "Paint code";
-/** The half of the hint that is true however the characters got there (§7 item 5). */
-const PAINT_NOT_DECODED = "The VIN doesn't carry it and NHTSA doesn't publish it.";
-const PAINT_HINT = `Typed in from the paint sticker. ${PAINT_NOT_DECODED}`;
-/**
- * S5 layer 2, and §5's "persist `source: \"ocr\"` … so nothing downstream mistakes it for
- * a decoded fact". This *is* downstream: three weeks later the sheet is where someone
- * reads the code out at a paint counter, and the two ways it could have got there are not
- * equally checked. A person typing has read the sticker character by character; a person
- * confirming a camera read has looked at six characters at once, on a control they may
- * have tapped without reading (§5's stated risk).
- *
- * What is deliberately not here is the number. `paintConfidence` is stored and never
- * rendered: §13.7 records that there is no corpus of real door-jamb stickers, so a
- * percentage would be uncalibrated for this task, and rule 6 forbids showing a guess as a
- * fact. A record whose provenance this device does not know (imported, pulled, or written
- * before layer 2) shows the plain hint rather than a claim about either.
- */
-const PAINT_HINT_OCR = `Read off the sticker by the camera on this phone. ${PAINT_NOT_DECODED}`;
 /**
  * Layer 2's way in. It names the camera and not a place on the car: S5 addendum §3 records
  * that "point at the door jamb" is wrong for a meaningful fraction of vehicles — VW and
@@ -238,7 +221,7 @@ function MetaEditor({ record }: { record: VehicleRecord }) {
           aria-describedby="sheet-paint-hint"
         />
         <p id="sheet-paint-hint" className="text-base leading-snug text-fg-muted">
-          {record.paintSource === "ocr" ? PAINT_HINT_OCR : PAINT_HINT}
+          {paintHint(record.paint, record.paintSource)}
         </p>
         {/*
          * Layer 2 pre-fills this field and replaces nothing: the capture screen ends at a

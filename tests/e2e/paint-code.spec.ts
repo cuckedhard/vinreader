@@ -15,6 +15,14 @@ const PAINT = "NH-731P";
 
 const OTHER_PAINT = "WA8555";
 
+/**
+ * §6.4's paint line, in its two truthful shapes. Written out rather than imported: a test
+ * that reads the string the screen renders cannot notice the screen rendering the wrong
+ * one.
+ */
+const NOT_DECODED = "The VIN doesn't carry it and NHTSA doesn't publish it.";
+const HINT_TYPED = `Entered by hand on this phone. ${NOT_DECODED}`;
+
 /** Built with the real §4.9 codec, so the tests cannot drift from the implementation. */
 const PLAIN = encodePayload({ v: 1, vin: VIN, y: "2003", mk: "HONDA", md: "Accord" });
 const WITH_PAINT = encodePayload({
@@ -74,15 +82,19 @@ test("a paint code typed on the sheet is still there after a reload", async ({ p
   await expect(page.getByLabel("Paint code")).toHaveValue(PAINT);
 });
 
-test("the sheet says who typed the paint code, and does not file it under the VIN", async ({
-  page,
-}) => {
+test("the sheet says how the code got here, and never more than it knows", async ({ page }) => {
   await seed(page, PLAIN);
 
-  // §6.4's third provenance: not derived from the 17 characters, not fetched from NHTSA.
-  await expect(
-    page.getByText(/Typed in from the paint sticker\..*NHTSA doesn't publish it\./),
-  ).toBeVisible();
+  // No code stored: the paragraph is the field's own explanation, and there is nothing for
+  // it to claim a provenance about. It used to say a person typed this off a paint sticker
+  // on a vehicle that has no paint code at all (N2).
+  const hint = page.locator("#sheet-paint-hint");
+  await expect(hint).toHaveText(NOT_DECODED);
+
+  // Typed here, watched by the app: this is the one state it can name.
+  await page.getByLabel("Paint code").fill(PAINT);
+  await page.getByRole("button", { name: /^save$/i }).click();
+  await expect(hint).toHaveText(HINT_TYPED);
 
   // The structural block is "From the VIN", and a paint code is not in the VIN (N2).
   const structural = page.locator("section", { has: page.getByText("From the VIN") }).first();
@@ -119,6 +131,11 @@ test("§4.9: an imported paint code lands on the record", async ({ page }) => {
   await page.getByRole("button", { name: /^import$/i }).click();
   await expect(page).toHaveURL(new RegExp(`#/v/${VIN}`));
   await expect(page.getByLabel("Paint code")).toHaveValue(PAINT);
+
+  // §4.9 has no slot for provenance, so "another device had this string" is the whole of
+  // what this phone knows about these characters. Nobody here typed them and no camera
+  // here read them, and the sheet says neither (N2).
+  await expect(page.locator("#sheet-paint-hint")).toHaveText(NOT_DECODED);
 });
 
 test("§5.3: a second code asks before it replaces the one on this phone", async ({ page }) => {
@@ -155,6 +172,11 @@ test("§5.3: the replacement happens when the user picks it", async ({ page }) =
   // And it is the record that changed, not the box on screen.
   await page.reload();
   await expect(page.getByLabel("Paint code")).toHaveValue(OTHER_PAINT);
+
+  // The tap said *use the sender's code*, not *I read these characters off a sticker*.
+  // The edit path's default is "typed", which would have made the sheet say a person on
+  // this phone entered a string that arrived in a payload (N2).
+  await expect(page.locator("#sheet-paint-hint")).toHaveText(NOT_DECODED);
 });
 
 test("§6.1: both codes are ≥ 48 px targets on a phone, and neither is hidden behind one", async ({
