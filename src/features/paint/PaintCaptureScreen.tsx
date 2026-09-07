@@ -13,7 +13,7 @@ import { Banner } from "../../ui/Banner";
 import { Button, TAP_LG_TARGET } from "../../ui/Button";
 import { VIN_TEXT_SIZES, VinDisplay } from "../../ui/VinDisplay";
 import { failureText } from "./failureText";
-import { nextEdit, proposalView } from "./proposalView";
+import { LOW_HELP, nextEdit, proposalView } from "./proposalView";
 import { usePaintCapture } from "./usePaintCapture";
 
 /**
@@ -40,8 +40,6 @@ const CROP_CAPTION = "The last frame it read:";
 const MARKED = "Check the marked characters.";
 const FIX_HEADING = "Fix a character";
 const FIX_HINT = "Tap a character to swap it for the one it looks like.";
-const LOW =
-  "Low confidence. Hold the phone square to the label and fill the box — a tilt is what this gets wrong.";
 const NOTHING = "Nothing readable in the box.";
 const NOTHING_HELP = "Line the box up with the code, get closer, or type it below.";
 const TYPE_LABEL = "Or type the paint code";
@@ -257,7 +255,7 @@ function Proposal({
 
       {view.showMarkedNote ? <p className="text-base leading-snug text-warn">{MARKED}</p> : null}
       {isLowConfidence(proposal) ? (
-        <p className="text-base leading-snug text-fg-muted">{LOW}</p>
+        <p className="text-base leading-snug text-fg-muted">{LOW_HELP}</p>
       ) : null}
 
       {/* The row edits the winner — the string in the control the user is likeliest to

@@ -47,6 +47,28 @@ export const PICK_ONE = "It read these. Pick the one on the sticker.";
  */
 export const PICK_UNSURE = "It wasn't sure of the marked characters. Pick the one on the sticker.";
 
+/**
+ * The line under a read the screen is not sure of, shown wherever `isLowConfidence`
+ * (`vote.ts`) is true.
+ *
+ * It does not open "Low confidence.", which is what shipped. That predicate is an **or**:
+ * it fires on any read carrying a doubted character, whatever the mean, so a 95-confidence
+ * read with one doubtful glyph was told to the user as a low-confidence read — a fact the
+ * screen does not hold (N2). The number behind it would not support the claim either:
+ * §13.7 records that there is no corpus of real door-jamb stickers, which is exactly why
+ * the Sheet renders `paintConfidence` nowhere.
+ *
+ * Nor does it end "a tilt is what this gets wrong", which diagnosed *this* read from the
+ * 7°-rotation figure §13.7 marks synthetic and transferred from licence plates.
+ *
+ * What is left is the offer, and it is conditional: whether the characters match the
+ * sticker is the user's to say, and §5 gives them that job. Rotation is still the measured
+ * weak axis and §6.1 bans the gestures that would let the box be turned instead, so a
+ * second read held square is the thing that actually helps.
+ */
+export const LOW_HELP =
+  "If it doesn't match the sticker, hold the phone square to the label, fill the box and read again.";
+
 /** One thing the screen offers to save, and what the record would say about it. */
 export interface PaintControl {
   text: string;

@@ -12,10 +12,10 @@
  * what the record is told about where the characters came from.
  */
 import { describe, expect, it } from "vitest";
-import { OCR_MARK_BELOW } from "../../lib/ocr/constants";
+import { OCR_LOW_CONFIDENCE, OCR_MARK_BELOW } from "../../lib/ocr/constants";
 import type { OcrChar, OcrLine, OcrToken } from "../../lib/ocr/types";
-import { voteOnLines, type PaintProposal } from "../../lib/ocr/vote";
-import { CHECK_IT, PICK_ONE, PICK_UNSURE, nextEdit, proposalView } from "./proposalView";
+import { isLowConfidence, voteOnLines, type PaintProposal } from "../../lib/ocr/vote";
+import { CHECK_IT, LOW_HELP, PICK_ONE, PICK_UNSURE, nextEdit, proposalView } from "./proposalView";
 
 const DOUBTED = OCR_MARK_BELOW - 30;
 const SURE = 95;
@@ -217,5 +217,35 @@ describe("the correction the user builds", () => {
     const restored = proposalView(DOUBTFUL, nextEdit("WA8555", "WA8555"));
     expect(restored.controls).toEqual(proposalView(DOUBTFUL, null).controls);
     expect(restored.controls[0].source).toBe("ocr");
+  });
+});
+
+describe("the line under a read the screen is not sure of", () => {
+  /** Well above the line, and carrying one doubted character: both halves of the `or`. */
+  const SURE_BUT_MARKED = vote(read("WA8555", SURE, [SURE, SURE, DOUBTED, SURE, SURE, SURE]));
+
+  it("never states a confidence, because the trigger fires above the threshold (N2)", () => {
+    // `isLowConfidence` is `confidence < OCR_LOW_CONFIDENCE || marked.length > 0`. This
+    // read is 25 points clear of the threshold and still shows the sentence, so a sentence
+    // opening "Low confidence." was telling the user a fact about it that was not true.
+    expect(SURE_BUT_MARKED.confidence).toBeGreaterThan(OCR_LOW_CONFIDENCE);
+    expect(SURE_BUT_MARKED.marked.length).toBeGreaterThan(0);
+    expect(isLowConfidence(SURE_BUT_MARKED)).toBe(true);
+    expect(LOW_HELP.toLowerCase()).not.toContain("confidence");
+  });
+
+  it("offers another read rather than diagnosing the one that just happened", () => {
+    // §13.7 marks the 7° rotation figure synthetic and transferred from licence plates, so
+    // "a tilt is what this gets wrong" was a claim about *this* read that nothing measured.
+    // What is left has to stay conditional, and it has to stay actionable.
+    expect(LOW_HELP.startsWith("If ")).toBe(true);
+    expect(LOW_HELP).toContain("read again");
+  });
+
+  it("says nothing the Sheet refuses to say about the same number", () => {
+    // The Sheet stores `paintConfidence` and renders it nowhere, for the reason §13.7
+    // gives: there is no corpus of real stickers, so the percentage is uncalibrated. Two
+    // screens may not rule opposite ways on one number.
+    expect(LOW_HELP).not.toMatch(/\d/);
   });
 });
