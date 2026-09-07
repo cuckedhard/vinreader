@@ -97,12 +97,17 @@ export interface RemoteVehicle {
   vin: string;
   unit: string | null;
   notes: string | null;
-  /**
-   * §4.9 `pc` on the server (migration 0002). Null both when nobody has typed one and when
-   * the account has not been migrated yet — the same answer either way, and the honest one:
-   * this device has not been told of a paint code.
-   */
+  /** §4.9 `pc` on the server (migration 0002). Null when nobody has typed one. */
   paint: string | null;
+  /**
+   * Whether the pulled row was answering about `paint` at all — the pull-side half of
+   * `p_paint_known` (migration 0003). A row from an account whose schema predates the
+   * column has no `paint` key in it, and reading that absence as "cleared" would run the
+   * S5-1 eraser in this direction: one pull whose `meta_updated_at` happens to be newer
+   * and the code typed on this phone is gone. `false` means the account said nothing, and
+   * nothing is not a value.
+   */
+  paintKnown: boolean;
   metaUpdatedAt: string;
   /**
    * The server's `structural` jsonb, or null when it holds `'{}'`. It is deliberately not

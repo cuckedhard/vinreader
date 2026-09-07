@@ -60,6 +60,9 @@ function remote(overrides: Partial<RemoteVehicle> = {}): RemoteVehicle {
     unit: null,
     notes: null,
     paint: null,
+    // The account is on the S5 schema, so every pulled row answers about the column —
+    // `paintKnown` false is the pre-0002 account, which has its own cases below.
+    paintKnown: true,
     metaUpdatedAt: T.mid,
     structural: null,
     decode: null,
@@ -159,7 +162,7 @@ describe("unit and notes — last writer wins by meta_updated_at (§4.12)", () =
   });
 });
 
-describe("the paint code — the same LWW as unit and notes (§4.12, migration 0002)", () => {
+describe("the paint code — the same LWW as unit and notes (§4.12, migrations 0002 and 0003)", () => {
   it("takes the account's code when its clock is newer", () => {
     const merged = mergeVehicle(
       local({ paint: "NH-731P" }),
@@ -249,9 +252,9 @@ describe("the paint code — the same LWW as unit and notes (§4.12, migration 0
   });
 
   it("gives a record born of a pull the code the account holds", () => {
-    expect(mergeVehicle(undefined, remote({ paint: "WA8555" }), { currentYear: YEAR })).toMatchObject(
-      { paint: "WA8555", origin: "cloud" },
-    );
+    expect(
+      mergeVehicle(undefined, remote({ paint: "WA8555" }), { currentYear: YEAR }),
+    ).toMatchObject({ paint: "WA8555", origin: "cloud" });
   });
 
   it("cannot be moved by a scan, which never touches the meta clock", () => {
@@ -264,6 +267,33 @@ describe("the paint code — the same LWW as unit and notes (§4.12, migration 0
       { currentYear: YEAR },
     );
     expect(merged?.paint).toBe("NH-731P");
+  });
+
+  // S5-1, in the pull direction. `paint = case when v_paint_known and … then excluded.paint
+  // else vehicles.paint end` (migration 0003): the clock decides which answer wins, and the
+  // flag decides whether there is an answer at all. A row from an account whose schema
+  // predates the column is silent about it, and silence is not a clear.
+  it("keeps the local code when the pulled row does not answer about the column", () => {
+    const merged = mergeVehicle(
+      local({ paint: "NH-731P", metaUpdatedAt: T.early }),
+      remote({ paint: null, paintKnown: false, unit: "TRK-9", metaUpdatedAt: T.late }),
+      { currentYear: YEAR },
+    );
+    expect(merged?.paint).toBe("NH-731P");
+    // Everything the row *does* answer about still lands on the newer clock: the guard is
+    // about one column, not about distrusting the pull.
+    expect(merged?.unit).toBe("TRK-9");
+    expect(merged?.metaUpdatedAt).toBe(T.late);
+  });
+
+  it("keeps the provenance of a code a silent row could not replace", () => {
+    const merged = mergeVehicle(
+      local({ paint: "NH-731P", paintSource: "ocr", paintConfidence: 92, metaUpdatedAt: T.early }),
+      remote({ paint: null, paintKnown: false, metaUpdatedAt: T.late }),
+      { currentYear: YEAR },
+    );
+    expect(merged?.paintSource).toBe("ocr");
+    expect(merged?.paintConfidence).toBe(92);
   });
 });
 

@@ -44,6 +44,7 @@ function remote(over: Partial<RemoteVehicle> = {}): RemoteVehicle {
     unit: "SERVER-UNIT",
     notes: "server notes",
     paint: null,
+    paintKnown: true,
     metaUpdatedAt: T2,
     structural: null,
     decode: null,

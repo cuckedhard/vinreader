@@ -112,6 +112,12 @@ export function vehicleMetaRow(record: VehicleRecord): OutboxRow {
       p_unit: record.unit,
       p_notes: record.notes,
       p_paint: record.paint,
+      // Migration 0003: the flag, not the value, is what tells the server this call is
+      // answering about `paint` at all. Sent on every row because every row this build
+      // queues carries the column — a null `p_paint` here is a code the user cleared, and
+      // without the flag the server has to treat it as a build that has never heard of it
+      // and leave the account's code alone (S5-1).
+      p_paint_known: true,
       p_meta_updated_at: record.metaUpdatedAt,
       p_structural: record.structural,
       p_decode: record.decode,

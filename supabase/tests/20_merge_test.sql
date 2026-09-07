@@ -416,17 +416,20 @@ begin
 end $$;
 
 -- ---------------------------------------------------------------------------------------------
--- paint: the same last-writer-wins as unit and notes (S5, migration 0002)
+-- paint: the same last-writer-wins as unit and notes (S5, migrations 0002 and 0003)
 -- ---------------------------------------------------------------------------------------------
 
--- NOT RUN where it was written. The environment that produced migration 0002 has no Docker
--- daemon and no reachable Postgres, so this section has never executed; it is the server half of
--- the client cases in src/lib/sync/merge.test.ts, and running it is how the pair gets checked.
+-- The server half of the client cases in src/lib/sync/merge.test.ts. It was written blind — the
+-- environment that produced migration 0002 had no Docker daemon and no reachable Postgres — and
+-- first executed against PostgreSQL 16.13 while fixing S5-1, which is where the last block below
+-- turned from a comment describing an erasure into an assertion refusing it.
 --
--- A VIN of its own (§4.11's Volvo), so nothing above depends on the state left here.
+-- A VIN of its own (§4.11's Volvo), so nothing above depends on the state left here. Eight
+-- arguments, because this is the shape the current client pushes: `p_paint_known` true says the
+-- caller is answering about that column, and `p_paint` is its answer (§4.12, migration 0003).
 
 select public.upsert_vehicle_meta('4V4NC9TJ98N412345', 'UNIT-PAINT', null,
-       '2026-09-07T12:00:00-07:00', null, null, 'NH-731P');
+       '2026-09-07T12:00:00-07:00', null, null, 'NH-731P', true);
 
 do $$
 declare v public.vehicles%rowtype;
@@ -437,7 +440,7 @@ end $$;
 
 -- An older edit loses, exactly as it does for unit and notes — carrying a code changes nothing.
 select public.upsert_vehicle_meta('4V4NC9TJ98N412345', 'UNIT-PAINT', null,
-       '2026-09-06T18:00:00-07:00', null, null, 'WA8555');
+       '2026-09-06T18:00:00-07:00', null, null, 'WA8555', true);
 
 do $$
 begin
@@ -448,7 +451,7 @@ end $$;
 
 -- A newer edit wins: someone stood at the sticker and read it again.
 select public.upsert_vehicle_meta('4V4NC9TJ98N412345', 'UNIT-PAINT', null,
-       '2026-09-08T12:00:00-07:00', null, null, 'WA8555');
+       '2026-09-08T12:00:00-07:00', null, null, 'WA8555', true);
 
 do $$
 begin
@@ -471,10 +474,20 @@ begin
     'a scan moved the meta clock the paint code is resolved by');
 end $$;
 
--- And the six-argument call an app build from before S5 makes still resolves, because `p_paint`
--- carries a default. It lands with the column null, which is the hazard §4.12 already accepts
--- for unit and notes: a device pushes the record as *it* knows it, and its clock can carry a
--- value the account had newer information about.
+-- ---------------------------------------------------------------------------------------------
+-- S5-1: a caller that has never heard of the column cannot empty it (migration 0003)
+-- ---------------------------------------------------------------------------------------------
+
+-- The six-argument call an app build from before S5 makes still has to resolve, because `p_paint`
+-- carries a default — that is what the default is for, and a build that cannot push is a build
+-- whose queued scans are lost. The statement below is that half of the test: if the defaults ever
+-- go, this file stops on "function does not exist" rather than on an assertion.
+--
+-- What it must NOT do is take the paint code with it. Its null is not an answer about a column it
+-- has never heard of, and before 0003 it was read as one: this call erased 'WA8555' account-wide,
+-- and the next pull spread the erasure to every device. Everything else it carries lands exactly
+-- as it did before — the unit, and the meta clock the unit moves — which the unit/notes section
+-- above already pins, six-argument call by six-argument call.
 select public.upsert_vehicle_meta('4V4NC9TJ98N412345', 'UNIT-OLD-BUILD', null,
        '2026-09-10T12:00:00-07:00', null, null);
 
@@ -482,8 +495,83 @@ do $$
 declare v public.vehicles%rowtype;
 begin
   select * into v from public.vehicles where vin = '4V4NC9TJ98N412345';
-  perform public.t_assert(v.unit = 'UNIT-OLD-BUILD', 'a six-argument call did not resolve');
-  perform public.t_assert(v.paint is null, 'the default for p_paint is not null');
+  perform public.t_assert(v.paint = 'WA8555',
+    'a build that has never heard of the column erased the paint code: ' || coalesce(v.paint, '<null>'));
+end $$;
+
+-- S5 as first shipped: seven arguments, a code, no flag. The code is the answer — there is no
+-- other way for that key to be in the call — so it still propagates.
+select public.upsert_vehicle_meta('4V4NC9TJ98N412345', 'UNIT-S5-BUILD', null,
+       '2026-09-11T12:00:00-07:00', null, null, 'UG');
+
+do $$
+begin
+  perform public.t_assert(
+    (select paint from public.vehicles where vin = '4V4NC9TJ98N412345') = 'UG',
+    'a seven-argument call from the shipped S5 build lost the code it holds');
+end $$;
+
+-- And clearing stays possible, which is the whole reason `paint` is LWW and not first-non-empty:
+-- nothing downstream can detect a wrong paint code, so the human who deleted one is the only
+-- thing that knows it was wrong, and a merge that could not carry the clear would resurrect it
+-- and state it as a fact again (N2). `p_paint_known` true with a null code is that clear.
+select public.upsert_vehicle_meta('4V4NC9TJ98N412345', 'UNIT-CLEARED', null,
+       '2026-09-12T12:00:00-07:00', null, null, null, true);
+
+do $$
+declare v public.vehicles%rowtype;
+begin
+  select * into v from public.vehicles where vin = '4V4NC9TJ98N412345';
+  perform public.t_assert(v.paint is null,
+    'an explicit clear did not clear the paint code: ' || coalesce(v.paint, '<null>'));
+end $$;
+
+-- The clear is a value like any other: an older call carrying a code does not undo it, and a
+-- newer one is a human standing at the sticker again.
+select public.upsert_vehicle_meta('4V4NC9TJ98N412345', 'UNIT-CLEARED', null,
+       '2026-09-11T18:00:00-07:00', null, null, 'WA8555', true);
+
+do $$
+begin
+  perform public.t_assert(
+    (select paint from public.vehicles where vin = '4V4NC9TJ98N412345') is null,
+    'an older edit resurrected a cleared paint code');
+end $$;
+
+-- An explicit false is honoured as itself: a caller that says it is not answering about this
+-- column is not answering about it, whatever it put in `p_paint`.
+select public.upsert_vehicle_meta('4V4NC9TJ98N412345', 'UNIT-NOT-ANSWERING', null,
+       '2026-09-13T12:00:00-07:00', null, null, 'NH-731P', false);
+
+do $$
+begin
+  perform public.t_assert(
+    (select paint from public.vehicles where vin = '4V4NC9TJ98N412345') is null,
+    'p_paint_known false was ignored and the code was written anyway');
+end $$;
+
+-- The same question on the insert half, where the answer is the `values` list rather than the
+-- conflict body: the flag reaches it, so a first write can carry a code …
+select public.upsert_vehicle_meta('1HGCM82633A004353', 'UNIT-FIRST-PAINT', null,
+       '2026-09-14T12:00:00-07:00', null, null, '1F7', true);
+
+do $$
+begin
+  perform public.t_assert(
+    (select paint from public.vehicles where vin = '1HGCM82633A004353') = '1F7',
+    'the first write for a VIN did not land its paint code');
+end $$;
+
+-- … and a caller that is not answering about the column supplies nothing for it on a new row
+-- either, rather than seeding one nobody has confirmed (N2).
+select public.upsert_vehicle_meta('11111111111111111', 'UNIT-NOT-ANSWERING-INSERT', null,
+       '2026-09-14T12:00:00-07:00', null, null, 'NH-731P', false);
+
+do $$
+begin
+  perform public.t_assert(
+    (select paint from public.vehicles where vin = '11111111111111111') is null,
+    'a new row took a code from a caller that said it was not answering');
 end $$;
 
 -- ---------------------------------------------------------------------------------------------

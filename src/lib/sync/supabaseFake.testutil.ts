@@ -272,9 +272,12 @@ export class FakeServer {
     const decode = (args.p_decode as Record<string, unknown> | null) ?? {};
     const unit = (args.p_unit as string | null) ?? null;
     const notes = (args.p_notes as string | null) ?? null;
-    // Migration 0002 gives `p_paint` a default, so a caller from before S5 omits it and the
-    // column stays null — which is what that build knows.
     const paint = (args.p_paint as string | null) ?? null;
+    // `coalesce(p_paint_known, p_paint is not null)`, from migration 0003. The two defaulted
+    // arguments let a build from before S5 push its queued rows, and this is what stops that
+    // build's silence about `paint` from being read as an answer and erasing the account's
+    // code (S5-1). `??` and not `||`: an explicit false must stay false.
+    const paintKnown = (args.p_paint_known as boolean | null | undefined) ?? paint !== null;
 
     const existing = this.vehicles.get(this.key(userId, vin));
     if (existing === undefined) {
@@ -284,7 +287,8 @@ export class FakeServer {
           vin,
           unit,
           notes,
-          paint,
+          // `case when v_paint_known then p_paint end` in the `values` list.
+          paint: paintKnown ? paint : null,
           meta_updated_at: incomingMeta,
           structural,
           decode,
@@ -302,7 +306,7 @@ export class FakeServer {
     const wins = newer(incomingMeta, existing.meta_updated_at);
     existing.unit = wins ? unit : existing.unit;
     existing.notes = wins ? notes : existing.notes;
-    existing.paint = wins ? paint : existing.paint;
+    existing.paint = paintKnown && wins ? paint : existing.paint;
     existing.meta_updated_at = greatest(existing.meta_updated_at, incomingMeta) ?? incomingMeta;
     existing.structural =
       Object.keys(existing.structural).length === 0 ? structural : existing.structural;

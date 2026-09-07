@@ -62,6 +62,19 @@ describe("parseRemoteVehicle", () => {
     expect(parseRemoteVehicle(vehicleRow({ paint: 7 }))?.paint).toBeNull();
   });
 
+  it("says whether the row answered about the paint column at all (S5-1)", () => {
+    // The pull is `select("*")`, so the two nulls above are not the same fact: a row with
+    // `paint: null` is an account saying "no code", and a row with no key is an account
+    // whose schema has never heard of the column. `mergeVehicle` may take the first as a
+    // clear and must not take the second as one, so the difference has to survive parsing.
+    expect(parseRemoteVehicle(vehicleRow({ paint: "NH-731P" }))?.paintKnown).toBe(true);
+    expect(parseRemoteVehicle(vehicleRow({ paint: null }))?.paintKnown).toBe(true);
+    // Unreadable is still an answer — the column is there, and `paint` above already reads
+    // it as null; the row is not from a schema that lacks it.
+    expect(parseRemoteVehicle(vehicleRow({ paint: 7 }))?.paintKnown).toBe(true);
+    expect(parseRemoteVehicle(vehicleRow())?.paintKnown).toBe(false);
+  });
+
   it("reads a row §4.12 wrote", () => {
     expect(parseRemoteVehicle(vehicleRow())).toMatchObject({
       vin: VIN,

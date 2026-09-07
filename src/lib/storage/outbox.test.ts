@@ -120,6 +120,9 @@ describe("§4.12 payloads — an outbox row is the push call's argument, already
       // S5: `upsert_vehicle_meta` gained `p_paint` in migration 0002. It rides the meta
       // path rather than a new one — a paint code is typed, like a unit and a note.
       p_paint: "NH-731P",
+      // And `p_paint_known` in 0003: the flag that says this build is answering about the
+      // column, which a build from before S5 cannot send (S5-1).
+      p_paint_known: true,
       p_meta_updated_at: record.metaUpdatedAt,
       p_structural: record.structural,
       p_decode: record.decode,
@@ -129,6 +132,17 @@ describe("§4.12 payloads — an outbox row is the push call's argument, already
     for (const derived of ["scan_count", "first_scanned_at", "last_scanned_at", "scanCount"]) {
       expect(row.payload).not.toHaveProperty(derived);
     }
+  });
+
+  it("[S5-1] says it is answering about the paint column even with no code to send", async () => {
+    // The flag is not "there is a code here" — it is "this build knows the column exists".
+    // A null `p_paint` from a build that had one is a code the user cleared and must
+    // propagate; a null from a build that never had one must leave the account's code
+    // alone. `upsert_vehicle_meta` cannot tell those two calls apart without this
+    // (migration 0003), and the record below is the first of them.
+    const record = await upsertVehicle(scan({ at: T1 }));
+    expect(record.paint).toBeNull();
+    expect(vehicleMetaRow(record).payload).toMatchObject({ p_paint: null, p_paint_known: true });
   });
 
   it("carries nothing but the VIN for a delete", () => {

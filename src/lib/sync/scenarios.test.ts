@@ -262,6 +262,7 @@ describe("a paint code typed on one device (§4.12, migration 0002)", () => {
       p_unit: null,
       p_notes: null,
       p_paint: "WA8555",
+      p_paint_known: true,
       p_meta_updated_at: later,
       p_structural: {},
       p_decode: {},
@@ -274,6 +275,92 @@ describe("a paint code typed on one device (§4.12, migration 0002)", () => {
     // And the correction settles: a second cycle does not hand the old code back.
     await engine.sync();
     expect((await db.vehicles.get(VIN))?.paint).toBe("WA8555");
+  });
+
+  it("[S5-1] survives a push from a phone whose build has never heard of the column", async () => {
+    const engine = createSyncEngine(deps(), { currentYear: YEAR });
+    await scan(VIN);
+    await setVehicleMeta(VIN, { paint: "NH-731P" });
+    await engine.sync();
+    expect(vehicle(VIN)?.paint).toBe("NH-731P");
+
+    // The second phone is still on a build from before S5. It comes back on signal and
+    // drains a `vehicle_meta` queued there: six arguments, no `p_paint` key at all, and a
+    // clock an hour newer than the edit above. Its null is not an answer about a column it
+    // has never heard of, and before migration 0003 the LWW arm read it as one — the code
+    // was gone from the account and the next pull took it off every device.
+    const typed = Date.parse((await db.vehicles.get(VIN))!.metaUpdatedAt);
+    const later = new Date(typed + 60 * 60 * 1000).toISOString();
+    const oldPhone = createFakeClient(server, () => USER);
+    await oldPhone.rpc("upsert_vehicle_meta", {
+      p_vin: VIN,
+      p_unit: "TRK-118",
+      p_notes: null,
+      p_meta_updated_at: later,
+      p_structural: {},
+      p_decode: {},
+    });
+
+    // The account keeps the code, and the old build's own edit lands exactly as it did:
+    // this is a rule about one column, not a refusal to take that build's writes.
+    expect(vehicle(VIN)?.paint).toBe("NH-731P");
+    expect(vehicle(VIN)?.unit).toBe("TRK-118");
+
+    // And the pull that follows carries no erasure back to the phone that typed it.
+    await engine.sync();
+    expect((await db.vehicles.get(VIN))?.paint).toBe("NH-731P");
+  });
+
+  it("[S5-1] still takes a code from the S5 build that shipped without the flag", async () => {
+    // The middle caller: a phone on S5 as first released sends `p_paint` and no
+    // `p_paint_known`, and `coalesce(p_paint_known, p_paint is not null)` reads the value as
+    // the answer, because there is no other way for that key to be in the call. Defaulting
+    // the flag to false instead would drop every code that build types — the same class of
+    // loss as S5-1, aimed at the other half of the same user's fleet.
+    const engine = createSyncEngine(deps(), { currentYear: YEAR });
+    await scan(VIN);
+    await engine.sync();
+
+    // An hour past whatever clock the row already carries, so this edit wins the LWW
+    // comparison on its own merits and the assertion below is about the flag alone.
+    const later = new Date(
+      Date.parse(vehicle(VIN)!.meta_updated_at) + 60 * 60 * 1000,
+    ).toISOString();
+    const shipped = createFakeClient(server, () => USER);
+    await shipped.rpc("upsert_vehicle_meta", {
+      p_vin: VIN,
+      p_unit: null,
+      p_notes: null,
+      p_paint: "WA8555",
+      p_meta_updated_at: later,
+      p_structural: {},
+      p_decode: {},
+    });
+
+    expect(vehicle(VIN)?.paint).toBe("WA8555");
+  });
+
+  it("[S5-1] still clears everywhere when a human deletes a wrong code", async () => {
+    // The other half of the same rule, and the reason the flag exists rather than "a null
+    // never wins": a paint code has no check digit and no grammar, so the human who deleted
+    // one is the only thing that knows it was wrong. A clear that could not propagate would
+    // leave the account stating it as a fact on every other device (N2).
+    const engine = createSyncEngine(deps(), { currentYear: YEAR });
+    await scan(VIN);
+    await setVehicleMeta(VIN, { paint: "NH-731P" });
+    await engine.sync();
+    expect(vehicle(VIN)?.paint).toBe("NH-731P");
+
+    await setVehicleMeta(VIN, { paint: null });
+    await engine.sync();
+    expect(vehicle(VIN)?.paint).toBeNull();
+
+    // A second device, holding the wrong code, pulls the clear.
+    await db.outbox.clear();
+    await db.syncState.clear();
+    await db.vehicles.update(VIN, { paint: "NH-731P", metaUpdatedAt: "2026-01-01T00:00:00.000Z" });
+    await pullOnce({ client, currentYear: YEAR });
+    expect((await db.vehicles.get(VIN))?.paint).toBeNull();
   });
 });
 

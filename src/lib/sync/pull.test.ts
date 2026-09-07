@@ -321,6 +321,7 @@ describe("applyPulled — the one apply path", () => {
       unit: null,
       notes: null,
       paint: null,
+      paintKnown: true,
       metaUpdatedAt: "2026-09-04T06:00:00.000-06:00",
       structural: null,
       decode: null,

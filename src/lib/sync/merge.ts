@@ -213,6 +213,12 @@ export function mergeVehicle(
   }
 
   const takeRemoteMeta = remoteMetaWins(local, remote, pending);
+  // `paint = case when v_paint_known and excluded.meta_updated_at > vehicles.meta_updated_at
+  //  then excluded.paint else vehicles.paint end` (migration 0003). The clock decides which
+  //  answer wins; `paintKnown` decides whether there is an answer to weigh at all. A row
+  //  from a schema that predates the column carries no answer, and taking its silence for a
+  //  clear is the S5-1 eraser pointed the other way.
+  const takeRemotePaint = takeRemoteMeta && remote.paintKnown;
   return {
     ...local,
     structural,
@@ -222,16 +228,14 @@ export function mergeVehicle(
     //  else vehicles.unit end`, and the same for `notes`.
     unit: takeRemoteMeta ? remote.unit : local.unit,
     notes: takeRemoteMeta ? remote.notes : local.notes,
-    // `paint = case when excluded.meta_updated_at > vehicles.meta_updated_at then
-    //  excluded.paint else vehicles.paint end` (migration 0002) — the same clock and the
-    //  same comparison, so a clear propagates and a tie keeps this device's value.
-    paint: takeRemoteMeta ? remote.paint : local.paint,
+    // The same clock and the same comparison `unit` and `notes` use, so a clear propagates
+    // and a tie keeps this device's value.
+    paint: takeRemotePaint ? remote.paint : local.paint,
     // Provenance travels with the value: this device's own knowledge of how a code was
     // captured survives exactly as long as the code it was about. A remote value winning
     // the clock replaces the string, and nothing came with it to say where it came from.
-    paintSource: takeRemoteMeta && remote.paint !== local.paint ? null : local.paintSource,
-    paintConfidence:
-      takeRemoteMeta && remote.paint !== local.paint ? null : local.paintConfidence,
+    paintSource: takeRemotePaint && remote.paint !== local.paint ? null : local.paintSource,
+    paintConfidence: takeRemotePaint && remote.paint !== local.paint ? null : local.paintConfidence,
     // `meta_updated_at = greatest(vehicles.meta_updated_at, excluded.meta_updated_at)`.
     metaUpdatedAt: latest(local.metaUpdatedAt, remote.metaUpdatedAt) ?? local.metaUpdatedAt,
     // §4.12: first = min, last = max.

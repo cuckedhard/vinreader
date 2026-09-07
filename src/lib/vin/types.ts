@@ -190,15 +190,24 @@ export type ScanEventPayload = {
 
 /**
  * §4.12 `upsert_vehicle_meta(p_vin, p_unit, p_notes, p_meta_updated_at, p_structural, p_decode)`,
- * plus `p_paint` from `supabase/migrations/0002_paint_code.sql` (S5). The RPC's seventh
- * argument carries a default, so a build older than S5 still lands its queued rows — PostgREST
- * resolves these by name.
+ * plus `p_paint` and `p_paint_known` from `supabase/migrations/0002_paint_code.sql` and
+ * `0003_paint_known.sql` (S5). The last two arguments carry defaults, so a build older than S5
+ * still lands its queued rows — PostgREST resolves these by name.
  */
 export type VehicleMetaPayload = {
   p_vin: string;
   p_unit: string | null;
   p_notes: string | null;
   p_paint: string | null;
+  /**
+   * "This caller knows the column exists, so `p_paint` is its answer for it — null included,
+   * which means clear it." Always true from this build, and typed `true` so it cannot be
+   * queued any other way: a null `p_paint` from a build that had never heard of the column
+   * used to reach the server's last-writer-wins arm as an answer and erase the account's
+   * paint code (S5-1). The flag is what makes those two nulls different, and it is the one
+   * thing an older build cannot send.
+   */
+  p_paint_known: true;
   p_meta_updated_at: string;
   p_structural: VinStructural;
   p_decode: VehicleDecode;

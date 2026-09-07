@@ -110,6 +110,12 @@ export function parseRemoteVehicle(row: Record<string, unknown>): RemoteVehicle 
     unit: text(row.unit),
     notes: text(row.notes),
     paint: text(row.paint),
+    // The pull is `select("*")`, so a row from an account still on a pre-0002 schema comes
+    // back without the key at all — which is not the same as a code the user cleared, and
+    // `mergeVehicle` may not treat it as one (S5-1, migration 0003). `hasOwnProperty` and
+    // not `row.paint !== undefined`: PostgREST sends `null`, and the question here is
+    // whether the column was in the answer.
+    paintKnown: Object.prototype.hasOwnProperty.call(row, "paint"),
     metaUpdatedAt,
     // Emptiness is the only thing §4.12 merges `structural` by; see `RemoteVehicle`.
     structural: (() => {
