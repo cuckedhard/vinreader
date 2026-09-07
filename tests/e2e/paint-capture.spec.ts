@@ -396,11 +396,16 @@ test("[§12] the pixels the engine read are memory only, and go when the screen 
     "alive",
   );
 
-  await page.getByRole("button", { name: "Back to the vehicle" }).click();
+  // Out through the **save**, not through Back: leaving without writing proves nothing
+  // about what a write carries, and "§12 forbids attaching the photo to the record" is a
+  // claim about the row this tap produces. The save is also the moment someone would be
+  // tempted to keep the pixels — "so the sheet can show what it read" is a plausible
+  // feature and the thing §12 forbids.
+  await page.getByRole("button", { name: `Save ${CODE}` }).click();
   await expect(page).toHaveURL(new RegExp(`#/v/${VIN}$`));
   // The hash changes before React swaps the screen, and the revoke is the capture screen's
   // unmount. Waiting for the sheet's own field is waiting for that unmount to have run.
-  await expect(page.getByLabel("Paint code")).toBeVisible();
+  await expect(page.getByLabel("Paint code")).toHaveValue(CODE);
 
   // Revoked on the way out, not left for the tab to collect: a frame of a door jamb held
   // alive by a URL nobody can see is still a photo this app is keeping.
@@ -409,7 +414,8 @@ test("[§12] the pixels the engine read are memory only, and go when the screen 
       timeout: 5_000,
     })
     .toBe("gone");
-  // And nothing about it reached the record.
+  // And the row that tap wrote carries the characters and nothing of the frame they came
+  // from — no object URL, no inlined image.
   const row = await page.evaluate(async (vin) => {
     const open = indexedDB.open("vinrelay");
     const handle: IDBDatabase = await new Promise((res, rej) => {
@@ -423,6 +429,7 @@ test("[§12] the pixels the engine read are memory only, and go when the screen 
     });
     return JSON.stringify(found ?? {});
   }, VIN);
+  expect(row).toContain(CODE);
   expect(row).not.toContain("blob:");
   expect(row).not.toContain("data:image");
 });
