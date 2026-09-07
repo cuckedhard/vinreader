@@ -4,7 +4,7 @@
 
 import { isCheckDigitValid } from "./checkDigit";
 import { asciiUpper, isVinGrammarValid, splitRuns, VIN_LENGTH } from "./grammar";
-import type { ExtractResult } from "./types";
+import type { ExtractOutcome, ExtractResult, NoVin, NoVinReason } from "./types";
 
 /** §4.2 step 1. `*` is the Code 39 start/stop pair, which some decoders pass through. */
 const STRIP_RE = /[\s*]+/g;
@@ -12,14 +12,31 @@ const STRIP_RE = /[\s*]+/g;
 /**
  * Returns null for NO_VIN. `raw` is echoed back unmodified so a record can keep
  * the exact bytes the decoder produced (§5.2).
+ *
+ * A projection of `extractVinExplained` and nothing else, so §4.2 has exactly one
+ * implementation and the reason channel cannot decide anything the VIN channel does not
+ * (§7 item 5). Every caller that only needs the answer keeps this signature.
  */
 export function extractVin(raw: string): ExtractResult | null {
+  const outcome = extractVinExplained(raw);
+  return outcome.ok ? outcome.result : null;
+}
+
+/**
+ * §4.2, with the branch that refused carried out as data (`NoVin`). The decision is the
+ * one below and the only one: this function *is* §4.2, and `extractVin` above reads its
+ * answer. Adding the reason moved no accept and no refusal — pinned by
+ * `extractVin.reason.test.ts`, which asserts the two channels agree on every fixture and
+ * every adversary payload in this directory.
+ */
+export function extractVinExplained(raw: string): ExtractOutcome {
   const cleaned = asciiUpper(raw).replace(STRIP_RE, "");
 
   // §4.2 steps 2 and 3. Windows stay grouped by the run they came from: a window can only
   // straddle the boundary between two fields printed inside the SAME run, so a run is the
   // unit the check digit has to be trusted or distrusted over (step 4a below).
-  const perRun = splitRuns(cleaned).map((run) => {
+  const runs = splitRuns(cleaned);
+  const perRun = runs.map((run) => {
     const windows: string[] = [];
     for (let offset = 0; offset + VIN_LENGTH <= run.length; offset += 1) {
       windows.push(run.slice(offset, offset + VIN_LENGTH));
@@ -74,7 +91,7 @@ export function extractVin(raw: string): ExtractResult | null {
   const wholeRun = perRun.filter((windows) => windows.length === 1).flat();
 
   if (valid.length === 1 && wholeRun.includes(valid[0]!)) {
-    return { vin: valid[0]!, raw, checkDigitValid: true };
+    return { ok: true, result: { vin: valid[0]!, raw, checkDigitValid: true } };
   }
 
   /**
@@ -95,8 +112,54 @@ export function extractVin(raw: string): ExtractResult | null {
    * *exactly one* window, ambiguity has nowhere else to go.
    */
   if (candidates.length === 1) {
-    return { vin: candidates[0]!, raw, checkDigitValid: false };
+    return { ok: true, result: { vin: candidates[0]!, raw, checkDigitValid: false } };
   }
 
-  return null;
+  /**
+   * NO_VIN, and which of step 4's branches said so. The evidence is gathered here rather
+   * than alongside the algorithm above so that nothing on the accepting path depends on
+   * it: the reason is read off the same three quantities the decision was taken on, after
+   * the decision was taken.
+   */
+  return {
+    ok: false,
+    refusal: {
+      reason: refusalReason(candidates.length, valid.length),
+      raw,
+      longestRun: longestRunOf(runs),
+      windowCount: candidates.length,
+      validCount: valid.length,
+    } satisfies NoVin,
+  };
+}
+
+/**
+ * §4.2 step 2's longest run, which is the fact behind `no_run_of_17`: on a label carrying
+ * no VIN the app knows what it did read and how long the longest unbroken piece of it
+ * was. `""` when the text held no §4.1 character. Ties go to the earliest run — `>` and
+ * not `>=` — so a caller quoting it quotes the first thing on the label, not the last.
+ */
+function longestRunOf(runs: readonly string[]): string {
+  let longest = "";
+  for (const run of runs) if (run.length > longest.length) longest = run;
+  return longest;
+}
+
+/**
+ * Which branch of step 4 refused, from the two counts the branch was taken on. Exclusive
+ * and exhaustive in this order, and reachable only after both accepting returns above:
+ *
+ * - no window at all — nothing reached 17 §4.1 characters (`I`, `O`, `Q`, punctuation and
+ *   whitespace are separators, so they shorten a run rather than failing a window);
+ * - more than one distinct VIN passes §4.3 — the run is ambiguous and §4.2 refuses to
+ *   rank (its "Why uniqueness and not precedence" paragraph);
+ * - exactly one passes and step 4(a) still declined — so that window was not an entire
+ *   run (R4-A);
+ * - none passes, and more than one window exists — so step 4(b) cannot fire either.
+ */
+function refusalReason(windowCount: number, validCount: number): NoVinReason {
+  if (windowCount === 0) return "no_run_of_17";
+  if (validCount > 1) return "ambiguous";
+  if (validCount === 1) return "not_whole_run";
+  return "no_valid_window";
 }

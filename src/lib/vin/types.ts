@@ -246,5 +246,61 @@ export interface ExtractResult {
   checkDigitValid: boolean;
 }
 
+/**
+ * Which branch of §4.2 step 4 refused a read. **Data, never words**: these are the four
+ * facts the algorithm has when it returns NO_VIN, and the sentence a user reads is the
+ * feature layer's (§6.4). Naming a cause the bytes do not carry — "a part number", "the
+ * wrong sticker" — is a guess, and N2 forbids showing one as a fact.
+ *
+ * - `no_run_of_17` — step 3 found no run of 17 §4.1 characters, so no window exists.
+ *   Every character outside the alphabet is a separator (step 2), so `I`, `O`, `Q`, a
+ *   hyphen and a space all split a run rather than disqualifying a window: `longestRun`
+ *   is what the longest surviving piece actually was. This is the field-report case — a
+ *   DYNACRAFT component label whose part number splits into runs of 3, 4 and 9.
+ * - `ambiguous` — more than one **distinct** check-digit-valid VIN was found, so step
+ *   4(a)'s uniqueness rule refuses rather than ranking them (§4.2, "Why uniqueness and
+ *   not precedence"). `validCount` is how many.
+ * - `not_whole_run` — exactly one window passes §4.3, and it is not an entire run
+ *   (R4-A). The run holds more than one window and the bytes cannot say which of them
+ *   was printed.
+ * - `no_valid_window` — more than one window exists and none passes §4.3, so step 4(b)'s
+ *   "exactly one grammar-valid window" cannot fire either.
+ *
+ * The four are exclusive and exhaustive over NO_VIN, in that order.
+ */
+export type NoVinReason = "no_run_of_17" | "ambiguous" | "not_whole_run" | "no_valid_window";
+
+/**
+ * A NO_VIN with its reason and the evidence behind it — everything §4.2 held when it
+ * refused, and nothing it did not.
+ *
+ * This channel is **additive**: it reports the decision §4.2 already made and changes no
+ * part of it. `extractVin` is a projection of `extractVinExplained`, so there is one
+ * implementation of §4.2 and it cannot drift from its own explanation (§7 item 5).
+ */
+export interface NoVin {
+  reason: NoVinReason;
+  /** The exact input, unmodified, exactly as `ExtractResult.raw` echoes it back. */
+  raw: string;
+  /**
+   * The longest run §4.2 step 2 produced, after step 1's uppercase and strip; `""` when
+   * the text held no §4.1 character at all. First of its length wins a tie, so it is the
+   * earliest longest run. Its length is `longestRun.length` and is deliberately not
+   * carried a second time (§7 item 5). Unbounded: a pasted payload is unbounded, so a
+   * caller that renders this truncates it.
+   */
+  longestRun: string;
+  /** How many grammar-valid 17-character windows step 3 collected, over all runs. */
+  windowCount: number;
+  /** How many **distinct** VINs among them pass §4.3 (§4.2 step 4(a) counts by VIN). */
+  validCount: number;
+}
+
+/**
+ * §4.2's whole answer: the VIN, or the refusal with its reason. `ok: false` is exactly
+ * the `null` that `extractVin` returns — same inputs, same outcomes.
+ */
+export type ExtractOutcome = { ok: true; result: ExtractResult } | { ok: false; refusal: NoVin };
+
 /** The epoch sentinel for a record whose unit and notes have never been edited (D11). */
 export const META_NEVER_EDITED = "1970-01-01T00:00:00.000Z";
