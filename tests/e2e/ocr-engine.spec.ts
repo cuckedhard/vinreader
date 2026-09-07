@@ -2,8 +2,17 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import { expect, test } from "@playwright/test";
 import { OCR_ASSETS, OCR_ASSET_LIST } from "../../src/lib/ocr/assets.generated";
-import { OCR_ASSET_ROUTE, OCR_CACHE_NAME } from "../../src/lib/ocr/constants";
-import { tesseractOptions, tesseractPaths } from "../../src/lib/ocr/runtime";
+import {
+  OCR_ASSET_ROUTE,
+  OCR_CACHE_NAME,
+  OCR_CHAR_WHITELIST,
+  OCR_INIT_CONFIG,
+  OCR_LANG,
+  OCR_OEM,
+  OCR_PARAMS,
+} from "../../src/lib/ocr/constants";
+import { toOcrLine, tesseractOptions, tesseractPaths } from "../../src/lib/ocr/runtime";
+import type { TesseractPage } from "../../src/lib/ocr/runtime";
 
 /**
  * The self-hosted OCR engine, against the build the suite actually serves.
@@ -25,6 +34,10 @@ const ORIGIN = "https://localhost:4173";
 
 /** Workbox's default `maximumFileSizeToCacheInBytes`, and the size of the silence. */
 const WORKBOX_DEFAULT_MAX_BYTES = 2 * 1024 * 1024;
+
+/** A GM paint code, and the token §5's crop box catches beside it on the same label line. */
+const CODE = "WA8555";
+const LABEL_LINE = `PNT ${CODE}`;
 
 /** The shell's glob, from both Vite configs. */
 const SHELL_EXTENSIONS = [".js", ".css", ".html", ".svg", ".png", ".woff2"];
@@ -93,10 +106,10 @@ test("the service worker serves the engine from Cache Storage instead", () => {
   expect(sw).toContain(route);
 });
 
-/** A crisp single line of a real paint code, drawn at the size a crop box would give. */
+/** A crisp single line, drawn at the size a crop box would give. */
 function drawPaintCode(code: string): string {
   const canvas = document.createElement("canvas");
-  canvas.width = 600;
+  canvas.width = 700;
   canvas.height = 120;
   const ctx = canvas.getContext("2d")!;
   ctx.fillStyle = "#fff";
@@ -113,7 +126,7 @@ interface TesseractWorkerHandle {
     image: string,
     options: Record<string, unknown>,
     output: Record<string, boolean>,
-  ) => Promise<{ data: { text: string; confidence: number } }>;
+  ) => Promise<{ data: TesseractPage }>;
   terminate: () => Promise<void>;
 }
 
@@ -126,13 +139,22 @@ interface TesseractModule {
   ) => Promise<TesseractWorkerHandle>;
 }
 
-/** Loads the shipped runtime and reads one rendered paint code, in the page. */
-async function readPaintCode(
+/**
+ * Loads the shipped runtime and reads one rendered line, in the page.
+ *
+ * Every setting comes from `src/lib/ocr/constants.ts` rather than being retyped here (§7
+ * item 5). It was retyped, and the copy went stale the moment `OCR_WHITELIST_PARAM` gave
+ * the engine a space: this file went on certifying that the engine reads a paint code
+ * under a configuration the app had stopped shipping.
+ */
+async function readLine(
   page: import("@playwright/test").Page,
   options: Record<string, unknown>,
-): Promise<{ text: string; confidence: number }> {
+  text: string,
+  params: Record<string, string>,
+): Promise<TesseractPage> {
   return page.evaluate(
-    async ({ options: workerOptions, runtimeUrl, source }) => {
+    async ({ options: workerOptions, runtimeUrl, source, text: line, params: setParams, init }) => {
       const draw = new Function(`return (${source})`)() as (code: string) => string;
       const imported = (await import(/* @vite-ignore */ runtimeUrl)) as {
         default?: TesseractModule;
@@ -143,22 +165,36 @@ async function readPaintCode(
           ? (imported as TesseractModule)
           : imported.default!;
 
-      const worker = await tesseract.createWorker("eng", 1, workerOptions, {
-        load_system_dawg: "false",
-        load_freq_dawg: "false",
-      });
-      await worker.setParameters({
-        tessedit_char_whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-",
-        tessedit_pageseg_mode: "7",
-      });
-      const { data } = await worker.recognize(draw("WA8555"), {}, { text: true, blocks: true });
+      const worker = await tesseract.createWorker(init.lang, init.oem, workerOptions, init.config);
+      await worker.setParameters(setParams);
+      const { data } = await worker.recognize(draw(line), {}, { text: true, blocks: true });
       await worker.terminate();
-      return { text: data.text.trim(), confidence: data.confidence };
+      // Projected to exactly `TesseractPage`, because the engine's own tree carries handles
+      // that do not cross the bridge — and because this is the shape `toOcrLine` reads.
+      return {
+        text: data.text,
+        confidence: data.confidence,
+        blocks: (data.blocks ?? []).map((block) => ({
+          paragraphs: (block.paragraphs ?? []).map((paragraph) => ({
+            lines: (paragraph.lines ?? []).map((each) => ({
+              words: (each.words ?? []).map((word) => ({
+                symbols: (word.symbols ?? []).map((symbol) => ({
+                  text: symbol.text,
+                  confidence: symbol.confidence,
+                })),
+              })),
+            })),
+          })),
+        })),
+      } satisfies TesseractPage;
     },
     {
       options,
       runtimeUrl: `${ORIGIN}/ocr/${OCR_ASSETS.runtime.file}`,
       source: drawPaintCode.toString(),
+      text,
+      params,
+      init: { lang: OCR_LANG, oem: OCR_OEM, config: { ...OCR_INIT_CONFIG } },
     },
   );
 }
@@ -188,9 +224,54 @@ test("reads a paint code with the pinned assets, and asks no CDN for anything", 
 
   await page.goto("/#/scan");
 
-  const result = await readPaintCode(page, PINNED_OPTIONS());
+  const result = await readLine(page, PINNED_OPTIONS(), "WA8555", { ...OCR_PARAMS });
 
   expect(offOrigin, "the engine asked a third party for something").toEqual([]);
-  expect(result.text).toBe("WA8555");
+  expect(result.text.trim()).toBe("WA8555");
   expect(result.confidence).toBeGreaterThan(50);
+});
+
+/**
+ * The measurement `OCR_WHITELIST_PARAM` stands on, made rather than quoted.
+ *
+ * `constants.ts` carries a figure taken by hand in Chromium — one word at page confidence
+ * 0 without the space, two words at 91 with it — and until now the gate reproduced none of
+ * it. `constants.test.ts` and `runtime.test.ts` pin only that the space *is* in the
+ * parameter and that `toOcrLine` splits a page that already has two words in it; both stay
+ * green with the space put back, on a fabricated page, so the reason for the space was a
+ * sentence in a docblock and nothing else. This is the only test in the suite that can
+ * make it, because only a browser can run the engine (§13.7 keeps the accuracy question
+ * itself human: this says the whitelist changes the segmentation, never that a real
+ * sticker reads).
+ *
+ * `PNT WA8555` is the shape §5's crop box actually produces — a box a gloved hand can aim
+ * with catches the token beside the code — and the word boundary between them is the whole
+ * of §5's "pattern step". Read through `toOcrLine`, the repo's own function, on the real
+ * engine's real output.
+ */
+test("the space in the whitelist is what buys §5's word boundaries", async ({ page }) => {
+  test.setTimeout(180_000);
+  await page.goto("/#/scan");
+  const options = PINNED_OPTIONS();
+
+  const shipped = toOcrLine(await readLine(page, options, LABEL_LINE, { ...OCR_PARAMS }));
+  expect(shipped.tokens.map((token) => token.text)).toEqual(["PNT", CODE]);
+  expect(shipped.text).toBe(`PNT ${CODE}`);
+  expect(shipped.confidence).toBeGreaterThan(50);
+  // The separator the engine was given never reaches a proposal. `chars` is built from the
+  // tokens and not from `text`, which is the one place the gap survives — building it from
+  // the text instead is the refactor that puts a space in the middle of a paint code.
+  expect(shipped.chars.map((char) => char.char).join("")).toBe(`PNT${CODE}`);
+
+  // The same line, the same engine, the same everything except the separator the engine is
+  // allowed to see. Telling it the gap it can see cannot exist costs the boundary the vote
+  // is taken over — and both tokens are then one candidate no person can pick between.
+  const withheld = toOcrLine(
+    await readLine(page, options, LABEL_LINE, {
+      ...OCR_PARAMS,
+      tessedit_char_whitelist: OCR_CHAR_WHITELIST,
+    }),
+  );
+  expect(withheld.tokens).toHaveLength(1);
+  expect(withheld.confidence).toBeLessThan(shipped.confidence);
 });
