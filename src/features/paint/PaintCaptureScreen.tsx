@@ -2,28 +2,18 @@ import { useState } from "react";
 import type { CSSProperties } from "react";
 import { useNavigate, useParams } from "react-router";
 import { OCR_TOTAL_BYTES } from "../../lib/ocr/assets.generated";
-import {
-  confusionSet,
-  hasAlternatives,
-  offeredCandidates,
-  replaceAt,
-  type OfferedCandidate,
-} from "../../lib/ocr/confusion";
+import { confusionSet, hasAlternatives, replaceAt } from "../../lib/ocr/confusion";
 import { PAINT_CROP_BOX } from "../../lib/ocr/cropBox";
 import type { PaintCaptureState } from "../../lib/ocr/session";
 import type { OcrFailure } from "../../lib/ocr/types";
-import {
-  differingPositions,
-  highlightedPositions,
-  isLowConfidence,
-  type PaintProposal,
-} from "../../lib/ocr/vote";
+import { isLowConfidence, type PaintProposal } from "../../lib/ocr/vote";
 import { setVehicleMeta } from "../../lib/storage/upsert";
 import type { PaintSource } from "../../lib/vin/types";
 import { asciiUpper } from "../../lib/vin/grammar";
 import { Banner } from "../../ui/Banner";
 import { Button, TAP_LG_TARGET } from "../../ui/Button";
 import { VIN_TEXT_SIZES, VinDisplay } from "../../ui/VinDisplay";
+import { nextEdit, proposalView } from "./proposalView";
 import { usePaintCapture } from "./usePaintCapture";
 
 /**
@@ -46,25 +36,8 @@ const READ = "Read the code";
 const READ_AGAIN = "Read again";
 const STARTING_CAMERA = "Starting camera…";
 
-/**
- * §5, and the only sentence on this screen doing real work. The engine is right about 96
- * of 100 synthetic crops and there is no corpus of real stickers (§13.7), so roughly 4 in
- * 100 are wrong — undetectably, because a paint code has no check digit, no grammar and no
- * downstream lookup (N2). The heading says whose job that makes it.
- */
-const CHECK_IT = "Check this against the sticker before you save it.";
 const CROP_CAPTION = "The last frame it read:";
 const MARKED = "Check the marked characters.";
-const PICK_ONE = "It read these. Pick the one on the sticker.";
-/**
- * §5's other candidate row, and the reason it is worded differently from `PICK_ONE`.
- *
- * `PICK_ONE` is true when every control carries a string some frame returned. When one of
- * them was synthesised from the confusion table (`confusion.ts`) the engine never read it,
- * and a heading that said "It read these" would be the screen asserting something false
- * about the very control it is asking the user to trust (N2).
- */
-const PICK_UNSURE = "It wasn't sure of the marked characters. Pick the one on the sticker.";
 const FIX_HEADING = "Fix a character";
 const FIX_HINT = "Tap a character to swap it for the one it looks like.";
 const LOW =
@@ -240,15 +213,11 @@ function CorrectionRow({
  * when the vote is split, styling one of them as the answer is a guess wearing the clothes
  * of a decision, and N2 says nothing downstream can catch that.
  *
- * Where the alternatives come from is `confusion.ts`, and it is the half of §5 this screen
- * could not have without it: tesseract.js returns no candidate list, so a read the engine
- * doubted at one position is offered beside the lookalikes of that position, at the same
- * weight, with nothing preselected. A read it doubted nowhere is offered alone.
- *
- * `edited` is what the user built with the correction row. It collapses the offer to one
- * control on purpose: the alternatives were all about the position they just resolved, and
- * a row that kept offering them beside the answer would be asking a question that has been
- * answered. Picking the original character back restores the whole offer.
+ * Which strings those are, what the heading may truthfully say about them, what is marked
+ * and what each one would store as provenance are all `proposalView.ts` — pure, and unit
+ * tested, because a rule inside a React file is only reachable from Playwright in this repo
+ * and a browser test measures whatever it happens to have rendered. This function renders
+ * that decision and holds the one piece of state behind it.
  */
 function Proposal({
   proposal,
@@ -262,25 +231,12 @@ function Proposal({
   onSave: (code: string, provenance: { source: PaintSource; confidence: number | null }) => void;
 }) {
   const [edited, setEdited] = useState<string | null>(null);
-  const offered = offeredCandidates(proposal);
-  const controls: OfferedCandidate[] =
-    edited === null ? offered : [{ text: edited, origin: "confusion", confidence: null }];
-  const several = controls.length > 1;
-  const synthesised = controls.some((candidate) => candidate.origin === "confusion");
-  // What the user changed, when they have changed something: the marks then say "this is
-  // not what it read" rather than "this is what it was unsure of".
-  const changed = edited === null ? [] : differingPositions([proposal.text, edited]);
-  const working = edited ?? proposal.text;
-  const marks = several
-    ? highlightedPositions(controls.map((candidate) => candidate.text))
-    : edited === null
-      ? proposal.marked
-      : changed;
+  const view = proposalView(proposal, edited);
 
   return (
     <section className="flex flex-col gap-4" aria-labelledby="proposal-heading">
       <h2 id="proposal-heading" className="text-lg leading-snug font-bold text-fg">
-        {!several ? CHECK_IT : synthesised ? PICK_UNSURE : PICK_ONE}
+        {view.heading}
       </h2>
 
       {/* §5: the cropped pixels the engine read, above the characters it read them as.
@@ -299,33 +255,26 @@ function Proposal({
       )}
 
       <div className="flex flex-col gap-3">
-        {controls.map((candidate) => (
+        {view.controls.map((control) => (
           <Button
-            key={candidate.text}
+            key={control.text}
             data-testid="paint-candidate"
             // Equal weight, on purpose: `secondary` for every one of them when there are
             // several, so none of them is dressed as the answer.
-            variant={several ? "secondary" : "primary"}
+            variant={view.several ? "secondary" : "primary"}
             full
             style={TAP_LG_TARGET}
             disabled={saving}
             onClick={() =>
-              onSave(
-                candidate.text,
-                candidate.origin === "read"
-                  ? { source: "ocr", confidence: candidate.confidence }
-                  : { source: "typed", confidence: null },
-              )
+              onSave(control.text, { source: control.source, confidence: control.confidence })
             }
           >
-            Save <CodeInControl text={candidate.text} marked={marks} />
+            Save <CodeInControl text={control.text} marked={view.marks} />
           </Button>
         ))}
       </div>
 
-      {!several && edited === null && proposal.marked.length > 0 ? (
-        <p className="text-base leading-snug text-warn">{MARKED}</p>
-      ) : null}
+      {view.showMarkedNote ? <p className="text-base leading-snug text-warn">{MARKED}</p> : null}
       {isLowConfidence(proposal) ? (
         <p className="text-base leading-snug text-fg-muted">{LOW}</p>
       ) : null}
@@ -336,9 +285,9 @@ function Proposal({
           the same line differ everywhere, and a row with every character underlined marks
           nothing (§5). */}
       <CorrectionRow
-        text={working}
-        marked={edited === null ? proposal.marked : changed}
-        onPick={(next) => setEdited(next === proposal.text ? null : next)}
+        text={view.working}
+        marked={view.workingMarks}
+        onPick={(picked) => setEdited(nextEdit(proposal.text, picked))}
       />
     </section>
   );
