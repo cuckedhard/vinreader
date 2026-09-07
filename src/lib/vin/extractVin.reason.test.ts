@@ -31,6 +31,12 @@ const VIN = "1HGCM82633A004352";
 const BAD_CHECK = "1HGCM82633A004353";
 /** An off-highway machine PIN: position 9 is a letter, so §4.3 never tests it (§4.7). */
 const PIN = "JCB4CX00CJ2345678";
+/**
+ * A VIN whose check digit passes, used doubled: printing it twice with nothing between
+ * puts **one** VIN at two window offsets, which is the only shape that separates §4.2 step
+ * 4(a)'s distinct count from a window count.
+ */
+const REPEATED = "WKU9ZU57X9GG9BNAC";
 const ALPHABET = "ABCDEFGHJKLMNPRSTUVWXYZ0123456789";
 
 /** The refusal, or a failure that names what came back instead. */
@@ -152,6 +158,24 @@ describe("[FR-1] the three branches that refuse a run long enough to hold a VIN"
     expect(refusalOf(`PIN ${PIN}`).reason).toBe("not_whole_run");
     // `P` and `IN` split off: `I` is a separator, so the run under test starts at `N`.
     expect(refusalOf(`PIN ${PIN}`).longestRun).toBe(`N${PIN}`);
+  });
+
+  it("counts distinct VINs and not windows, so one VIN printed twice is one answer", () => {
+    // §4.2 step 4(a)'s own sentence — "Uniqueness in (a) is by VIN, not by window" — which
+    // is the one property of this refusal that 100% branch coverage cannot see, because
+    // `new Set(...)` is not a branch. `REPEATED` passes §4.3 and is printed twice with
+    // nothing between it, so the run is 34 characters and holds eighteen windows, two of
+    // which validate — and they are the same VIN, so exactly one distinct VIN validates
+    // and R4-A refuses it for not being a run of its own.
+    expect(isCheckDigitValid(REPEATED)).toBe(true);
+    const refusal = refusalOf(`${REPEATED}${REPEATED}`);
+    expect(refusal.reason).toBe("not_whole_run");
+    expect(refusal.windowCount).toBe(18);
+    // Counting the windows instead would say 2, which turns this refusal into `ambiguous`
+    // and makes §6.4's sentence — `refusalText.ts` renders this integer verbatim — tell
+    // the user that two different strings here could each be a VIN. There is one. A count
+    // the bytes do not hold is the N2 failure the whole reason channel exists to avoid.
+    expect(refusal.validCount).toBe(1);
   });
 
   it("`no_valid_window` — several windows and no check digit settles them", () => {
