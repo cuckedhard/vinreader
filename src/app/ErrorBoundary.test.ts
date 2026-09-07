@@ -73,11 +73,20 @@ describe("what the notice says", () => {
   it("does not blame storage for a fault that was not storage (N2)", () => {
     const markup = render(new TypeError("record.decode is undefined"));
     expect(markup).toContain("This screen didn&#x27;t load");
-    expect(markup).toContain(
-      "Something on it failed while it was being drawn. Reload to try again.",
-    );
+    expect(markup).toContain("Nothing that was saved has been lost. Reload to try again.");
     expect(markup).not.toContain("Storage");
     expect(markup).toContain("TypeError: record.decode is undefined");
+  });
+
+  it("tells the user what it cost them, not which phase of React threw", () => {
+    // The reader of this sentence is standing at a door jamb. "Something on it failed
+    // while it was being drawn" describes the render phase, which is a fact about the
+    // framework and not about their truck or their records; the error itself is still
+    // printed underneath for the person who needs it (P7).
+    const markup = render(new TypeError("record.decode is undefined"));
+    expect(markup).not.toMatch(/drawn|render|component|React/i);
+    // What it does say is checkable: a render that threw never reached storage.
+    expect(markup).toContain("Nothing that was saved has been lost");
   });
 
   it("names storage when the caller knows it was storage, whatever the error type (F1-b)", () => {

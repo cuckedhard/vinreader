@@ -72,9 +72,16 @@ const STORAGE_COPY = {
     "still scan or type a VIN, but nothing can be saved until storage is back.",
 } as const;
 
+/**
+ * The body used to read "Something on it failed while it was being drawn." — React's
+ * render phase, described to a mechanic in a door jamb. §6.4's comparable line names the
+ * thing that failed and then what it cost: "Couldn't save this VIN" · "Nothing was
+ * written." The title here is that first half already, so the body is the second: a render
+ * that threw never reached storage, so a reload costs nothing that was saved.
+ */
 const RENDER_COPY = {
   title: "This screen didn't load",
-  body: "Something on it failed while it was being drawn. Reload to try again.",
+  body: "Nothing that was saved has been lost. Reload to try again.",
 } as const;
 
 interface FailureNoticeProps {
