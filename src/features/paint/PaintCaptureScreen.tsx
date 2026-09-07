@@ -2,7 +2,7 @@ import { useState } from "react";
 import type { CSSProperties } from "react";
 import { useNavigate, useParams } from "react-router";
 import { cameraErrorText } from "../../app/cameraError";
-import { PAINT_LABEL, SAVE_FAILED_TITLE } from "../../app/strings";
+import { NOTHING_WRITTEN, PAINT_LABEL, SAVE_FAILED_TITLE } from "../../app/strings";
 import { OCR_TOTAL_BYTES } from "../../lib/ocr/assets.generated";
 import { confusionSet, hasAlternatives, replaceAt } from "../../lib/ocr/confusion";
 import { PAINT_CROP_BOX } from "../../lib/ocr/cropBox";
@@ -80,7 +80,7 @@ const BACK = "Back to the vehicle";
  * "Save WA8555" and "Save what you typed". What holds on both routes is that the write did
  * not land and that what the user was saving is still in front of them.
  */
-const SAVE_FAILED = "Nothing was saved. The code is still on this screen — try again.";
+const SAVE_FAILED = `${NOTHING_WRITTEN} The code is still on this screen — try again.`;
 /**
  * §6.4's four camera sentences, finished for this screen: the keyboard route here takes a
  * paint code, not a VIN.

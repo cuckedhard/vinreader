@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
+import { NOTHING_WRITTEN, WRITE_FAILED_TITLE } from "../../app/strings";
 import { PayloadError, encodePayload, parseCarrier } from "../../lib/payload/codec";
 import { getSettings } from "../../lib/storage/settings";
 import type { ExtractResult } from "../../lib/vin/types";
@@ -216,14 +217,14 @@ export function ScanScreen() {
           {error !== null ? (
             <Banner
               tone="danger"
-              title="Couldn't save this VIN"
+              title={WRITE_FAILED_TITLE}
               actions={
                 <Button variant="primary" onClick={handleScanAgain}>
                   Scan again
                 </Button>
               }
             >
-              <p>Nothing was written. Read the label again, or type it.</p>
+              <p>{`${NOTHING_WRITTEN} Read the label again, or type it.`}</p>
               <p className="mt-2 font-vin text-sm break-words text-fg-muted">{error}</p>
             </Banner>
           ) : null}

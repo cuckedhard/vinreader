@@ -33,3 +33,22 @@ export const SAVE_FAILED_TITLE = "Could not save";
  * way, so it says the same thing.
  */
 export const STARTING_CAMERA = "Starting camera…";
+
+/**
+ * §6.4, the write that did not land: banner **"Couldn't save this VIN"**, with the
+ * underlying error printed beneath it in monospace. Both scan paths raise it.
+ */
+export const WRITE_FAILED_TITLE = "Couldn't save this VIN";
+
+/**
+ * §6.4 records two wordings of *"Nothing was written"* — the camera path's and the typed
+ * path's — because the remedy differs and the opening does not. The capture screen added a
+ * third opening, *"Nothing was saved."*, for the same fact, which is how one family
+ * becomes four sentences.
+ *
+ * The clause is the same words in all three; what follows it is what the user can do next,
+ * and that is genuinely per-screen: read the label again, the entry is still in the field,
+ * the code is still in the control that was tapped. So the shared half is shared and the
+ * remedies stay where they are.
+ */
+export const NOTHING_WRITTEN = "Nothing was written.";

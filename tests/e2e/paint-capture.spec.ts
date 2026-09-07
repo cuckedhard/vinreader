@@ -485,7 +485,7 @@ test("[P7] a failed save says so, and names what is actually on the screen", asy
 
   await candidate.click();
   await expect(page.getByText("Could not save")).toBeVisible();
-  const body = page.getByText("Nothing was saved. The code is still on this screen — try again.");
+  const body = page.getByText("Nothing was written. The code is still on this screen — try again.");
   await expect(body).toBeVisible();
   await expect(page).toHaveURL(new RegExp(`#/v/${VIN}/paint$`));
   expect(await storedPaint(page)).toBeNull();

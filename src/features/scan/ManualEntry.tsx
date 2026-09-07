@@ -1,5 +1,6 @@
 import { useId, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
+import { NOTHING_WRITTEN, WRITE_FAILED_TITLE } from "../../app/strings";
 import { checkDigitApplies, isCheckDigitValid } from "../../lib/vin/checkDigit";
 import { extractVin } from "../../lib/vin/extractVin";
 import { asciiUpper, isAllowedVinChar, VIN_LENGTH } from "../../lib/vin/grammar";
@@ -123,8 +124,8 @@ export function ManualEntry() {
       </div>
 
       {error !== null ? (
-        <Banner tone="danger" title="Couldn't save this VIN">
-          <p>Nothing was written. Your entry is still here — try again.</p>
+        <Banner tone="danger" title={WRITE_FAILED_TITLE}>
+          <p>{`${NOTHING_WRITTEN} Your entry is still here — try again.`}</p>
           <p className="mt-2 font-vin text-sm break-words text-fg-muted">{error}</p>
         </Banner>
       ) : null}

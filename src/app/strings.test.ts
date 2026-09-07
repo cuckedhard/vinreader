@@ -1,7 +1,13 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { PAINT_LABEL, SAVE_FAILED_TITLE, STARTING_CAMERA } from "./strings";
+import {
+  NOTHING_WRITTEN,
+  PAINT_LABEL,
+  SAVE_FAILED_TITLE,
+  STARTING_CAMERA,
+  WRITE_FAILED_TITLE,
+} from "./strings";
 
 /**
  * §7 item 5, for the strings: **one sentence, one place it is written.**
@@ -70,6 +76,10 @@ const ONE_PLACE: readonly OnePlace[] = [
    * under `environment: "node"`; if `CameraView` rewords it, this row goes red and is
    * meant to.
    */
+  // §6.4's write-failure banner: both scan paths raise it.
+  { text: WRITE_FAILED_TITLE, owner: "app/strings.ts" },
+  // The clause §6.4's two write-failure wordings share, and the capture screen's third.
+  { text: NOTHING_WRITTEN, owner: "app/strings.ts" },
   { text: "Reading… hold steady", owner: "features/scan/CameraView.tsx" },
   /*
    * Also spent, and a button word rather than a sentence, so it is matched with its quotes:
