@@ -52,6 +52,24 @@ test("imports a payload URL after showing what it will import", async ({ page })
   await expect(page.getByRole("textbox", { name: "Notes" })).toHaveValue("Rear light out");
 });
 
+/**
+ * §6.4: *"What the preview says it read, under **From**: Shared link · Pasted link · Pasted
+ * summary · Pasted VIN. It is a claim about the input, so it names what was actually parsed
+ * rather than what was hoped for (N2)."*
+ *
+ * The label shipped attached to the wrong value: the provenance rendered bare and **From**
+ * labelled the sender's device name two rows below it.
+ */
+test("says where the preview came from, under the word §6.4 gives it", async ({ page }) => {
+  const sent = encodePayload({ v: 1, vin: VIN, y: "2003", mk: "HONDA", by: "Bay 3 iPad" });
+  await page.goto(`/#/i?d=${sent}`);
+
+  await expect(page.getByText(/from\s+shared link/i)).toBeVisible();
+  // And the device that sent it is labelled as the device that sent it.
+  await expect(page.getByText("Sent by", { exact: true })).toBeVisible();
+  await expect(page.getByText("Bay 3 iPad")).toBeVisible();
+});
+
 test("rejects a corrupt payload without stranding the user", async ({ page }) => {
   await page.goto("/#/i?d=not-a-real-payload");
   await expect(page.getByRole("button", { name: /^import$/i })).toHaveCount(0);

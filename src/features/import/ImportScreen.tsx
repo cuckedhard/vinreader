@@ -31,6 +31,18 @@ import { Chip } from "../../ui/Chip";
 import { VinDisplay } from "../../ui/VinDisplay";
 
 const PANEL = "rounded-[var(--radius)] border border-border bg-bg-elev";
+
+/**
+ * §6.4: *"What the preview says it read, under **From**: Shared link · Pasted link · Pasted
+ * summary · Pasted VIN."*
+ *
+ * The label shipped attached to the wrong value. The provenance was rendered bare, with no
+ * label at all, and **From** was spent on the *sender's device label* two rows below — so
+ * the one row §6.4 names was unlabelled and the word it names it with described something
+ * else. The sender's row keeps its value and takes a label that says what it is.
+ */
+const SOURCE_LABEL = "From";
+const SENDER_LABEL = "Sent by";
 const LABEL = "text-sm font-bold tracking-wide text-fg-muted uppercase";
 
 /**
@@ -261,7 +273,7 @@ function Details({ item }: { item: ImportItem }) {
   if (item.paint !== null) rows.push({ label: PAINT_LABEL, value: item.paint });
   const at = item.at === null ? null : formatAt(item.at);
   if (at !== null) rows.push({ label: "Scanned", value: at });
-  if (item.by !== null) rows.push({ label: "From", value: item.by });
+  if (item.by !== null) rows.push({ label: SENDER_LABEL, value: item.by });
   if (item.notes !== null) rows.push({ label: "Notes", value: item.notes });
   if (rows.length === 0) return null;
   return (
@@ -376,7 +388,9 @@ function PreviewCard({
 
   return (
     <section className={`flex flex-col gap-4 p-5 ${PANEL}`} aria-labelledby="import-preview">
-      <p className={LABEL}>{preview.source}</p>
+      <p className={LABEL}>
+        {SOURCE_LABEL} {preview.source}
+      </p>
 
       {single !== null ? (
         <>
