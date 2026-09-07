@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useNavigate, useParams } from "react-router";
 import { FailureNotice } from "../../app/ErrorBoundary";
+import { PAINT_LABEL, SAVE_FAILED_TITLE } from "../../app/strings";
 import { useStorageFailure } from "../../app/useStorageFailure";
 import { currentYear, db } from "../../lib/storage/db";
 import { normalizeVehicle } from "../../lib/storage/normalize";
@@ -33,13 +34,6 @@ const DECODE_UNSUPPORTED =
   "This looks like an off-highway machine PIN. NHTSA can't decode it — showing what the number itself tells us.";
 const DECODE_FAILED = "Couldn't reach NHTSA after several tries. Tap Refresh details to retry.";
 
-/**
- * §6.4 supplies no line for the paint code, so this one is written in its voice and logged
- * under §0 rule 4 for Zach to sign off: nothing decoded this, and nothing can check it —
- * which is why the sheet keeps it out of "From the VIN" and out of "Vehicle details" (N2).
- * Which sentence a given record earns is `paintHint`'s, and it is a rule with a test.
- */
-const PAINT_LABEL = "Paint code";
 /**
  * Layer 2's way in. It names the camera and not a place on the car: S5 addendum §3 records
  * that "point at the door jamb" is wrong for a meaningful fraction of vehicles — VW and
@@ -260,7 +254,7 @@ function MetaEditor({ record }: { record: VehicleRecord }) {
       </div>
 
       {status === "error" ? (
-        <Banner tone="danger" title="Could not save">
+        <Banner tone="danger" title={SAVE_FAILED_TITLE}>
           What you typed is still in the boxes above. Tap Save to try again.
         </Banner>
       ) : null}

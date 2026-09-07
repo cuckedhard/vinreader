@@ -24,6 +24,7 @@ import { setVehicleMeta, upsertVehicle } from "../../lib/storage/upsert";
 import { checkDigitApplies, isCheckDigitValid } from "../../lib/vin/checkDigit";
 import { extractVin } from "../../lib/vin/extractVin";
 import type { VehicleRecord } from "../../lib/vin/types";
+import { PAINT_LABEL } from "../../app/strings";
 import { Banner } from "../../ui/Banner";
 import { Button } from "../../ui/Button";
 import { Chip } from "../../ui/Chip";
@@ -56,7 +57,6 @@ const ERR_FILE_UNREADABLE = "That file couldn't be read.";
  * the control the user taps, which is the S5 addendum §5 rule: the reading target and the
  * tap target are the same pixels, so a code cannot be accepted without being read.
  */
-const PAINT_LABEL = "Paint code";
 const PAINT_CONFLICT_TITLE = "This phone already has a paint code";
 const PAINT_CONFLICT_BODY =
   "Nothing can check a paint code, so the import keeps the one already here. Tap the other to use it instead.";

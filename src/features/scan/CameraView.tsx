@@ -1,4 +1,5 @@
 import type { JSX, RefObject } from "react";
+import { STARTING_CAMERA } from "../../app/strings";
 import { checkDigitApplies } from "../../lib/vin/checkDigit";
 import type { ScanError } from "../../lib/vin/types";
 import { Banner } from "../../ui/Banner";
@@ -37,9 +38,6 @@ export interface CameraViewProps {
  * defensive `stream_lost` branch), so this one is supplied here.
  */
 const CAMERA_STOPPED = "Camera stopped. It starts again when this screen is active.";
-
-/** §6.4 has no line for the 1–3 s black frame while iOS opens the camera. Supplied here. */
-const STARTING = "Starting camera…";
 
 /**
  * §6.4 has no line for a confirmed read the D03 gate is holding. Supplied here, neutral and
@@ -184,7 +182,7 @@ function noticeFor(state: ScanMachineState): Notice | null {
 function statusFor(state: ScanMachineState, unsaved: boolean): string {
   switch (state.kind) {
     case "requesting":
-      return STARTING;
+      return STARTING_CAMERA;
     case "streaming":
       return "Point at the barcode on the door-jamb sticker.";
     case "candidate":

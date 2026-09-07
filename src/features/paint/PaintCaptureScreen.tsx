@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { CSSProperties } from "react";
 import { useNavigate, useParams } from "react-router";
+import { PAINT_LABEL, SAVE_FAILED_TITLE, STARTING_CAMERA } from "../../app/strings";
 import { OCR_TOTAL_BYTES } from "../../lib/ocr/assets.generated";
 import { confusionSet, hasAlternatives, replaceAt } from "../../lib/ocr/confusion";
 import { PAINT_CROP_BOX } from "../../lib/ocr/cropBox";
@@ -46,7 +47,6 @@ const firstUse = (): string =>
   `The first read downloads a ${megabytes(OCR_TOTAL_BYTES)} MB reader. It's kept on this phone for later reads.`;
 const READ = "Read the code";
 const READ_AGAIN = "Read again";
-const STARTING_CAMERA = "Starting camera…";
 
 const CROP_CAPTION = "The last frame it read:";
 const MARKED = "Check the marked characters.";
@@ -57,7 +57,6 @@ const NOTHING_HELP = "Line the box up with the code, get closer, or type it belo
 const TYPE_LABEL = "Or type the paint code";
 const TYPE_SAVE = "Save what I typed";
 const BACK = "Back to the vehicle";
-const SAVE_FAILED_TITLE = "Could not save";
 /**
  * §6.4's Sheet line — "What you typed is still in the boxes above. Tap Save to try again."
  * — is not true of this screen, and was shipped here anyway. The banner sits above the
@@ -367,7 +366,7 @@ export default function PaintCaptureScreen() {
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 p-4 pb-10">
       <div className="flex flex-col gap-2">
-        <h1 className="text-2xl font-bold text-fg">Paint code</h1>
+        <h1 className="text-2xl font-bold text-fg">{PAINT_LABEL}</h1>
         <VinDisplay vin={vin} size="md" className="break-all" />
       </div>
 
