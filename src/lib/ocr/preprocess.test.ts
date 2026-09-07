@@ -9,6 +9,7 @@
 import { describe, expect, it } from "vitest";
 import {
   OCR_INK_MIN_CONTRAST,
+  OCR_INK_ROW_SHARE,
   OCR_MAX_CROP_PIXELS,
   OCR_MAX_UPSCALE,
   OCR_TARGET_GLYPH_PX,
@@ -87,6 +88,30 @@ describe("measureInkBand", () => {
     expect(measureInkBand(inverted, 100, 60)).toEqual({ top: 30, height: 8, measured: true });
   });
 
+  it("keeps the rows the ascenders reach and stops at the one below the share", () => {
+    // Every other fixture here paints the band as a solid rectangle, where every row of the
+    // line carries exactly as much ink as the busiest one — so `OCR_INK_ROW_SHARE` is never
+    // asked a question and the band comes out the same whatever the share is set to. A real
+    // line is not a rectangle: its x-height rows are dense and the rows its ascenders and
+    // descenders reach into are sparse, and the share is what says those thinner rows are
+    // still the same line rather than the next thing on the sticker.
+    const peak = 100; // the busiest row of the line: the full crop width
+    const share = Math.round(peak * OCR_INK_ROW_SHARE); // exactly enough to still belong
+    const image = solid(100, 60, [220, 220, 220]);
+    const inkRow = (y: number, count: number) =>
+      fill(image, { left: 0, top: y, width: count, height: 1 }, [20, 20, 20]);
+    inkRow(19, share - 1); // one pixel short of the share: not this line
+    for (let y = 20; y < 24; y += 1) inkRow(y, share); // ascenders, exactly on the share
+    for (let y = 24; y < 28; y += 1) inkRow(y, peak); // the x-height core
+    for (let y = 28; y < 32; y += 1) inkRow(y, share); // descenders
+    inkRow(32, share - 1); // and the row under the line
+    expect(measureInkBand(grayOf(image), 100, 60)).toEqual({
+      top: 20,
+      height: 12,
+      measured: true,
+    });
+  });
+
   it("refuses a crop with no contrast rather than measuring noise", () => {
     const flat = band(100, 60, 20, 12, 220 - (OCR_INK_MIN_CONTRAST - 2));
     expect(measureInkBand(flat, 100, 60)).toEqual({ top: 0, height: 60, measured: false });
@@ -157,7 +182,15 @@ describe("capScale", () => {
   it("leaves a scale that already fits alone, and never returns less than 1", () => {
     expect(capScale(2, 100, 50)).toBe(2);
     expect(capScale(4, 4000, 4000)).toBe(1);
-    expect(capScale(1, 0, 0)).toBe(1);
+  });
+
+  it("does not pass a scale through on a ratio it divided by nothing to get", () => {
+    // A crop with no area makes `sqrt(MAX / 0)` infinite, so without the guard the cap is
+    // no cap: any scale goes straight through for a crop that has no pixels to resample.
+    // Asked at scale 1 — which is what this used to be — the guarded and unguarded answers
+    // are both 1 and the assertion cannot fail for the property it names.
+    expect(capScale(OCR_MAX_UPSCALE, 0, 0)).toBe(1);
+    expect(capScale(OCR_MAX_UPSCALE, 100, 0)).toBe(1);
   });
 });
 

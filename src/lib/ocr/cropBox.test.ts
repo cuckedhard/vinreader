@@ -64,6 +64,25 @@ describe("displayedToSourceRect", () => {
     expect(full!.left + full!.width / 2).toBeCloseTo(FRAME.width / 2, 0);
   });
 
+  it("accounts for the frame object-cover hides off the top and bottom", () => {
+    // The other axis, and the one every case above leaves at zero: a 4:3 frame in a 16:9
+    // element. Cover scales by the width (1600/640 = 2.5), the frame is then 1200 px tall
+    // inside a 900 px element, and 150 px is hidden above and below. The element's own top
+    // edge is therefore 60 rows *down* the frame, not row 0 — and with the vertical offset
+    // dropped, ignored or mis-signed the crop starts at row 0 and reads a line the user
+    // never aimed at, which is the failure this function exists to not have (N2).
+    const displayed = { width: 1600, height: 900 };
+    const source = { width: 640, height: 480 };
+    const full = displayedToSourceRect(
+      { left: 0, top: 0, width: 1600, height: 900 },
+      displayed,
+      source,
+    )!;
+    expect(full).toEqual({ left: 0, top: 60, width: 640, height: 360 });
+    // Centred: what is dropped off the top is dropped off the bottom.
+    expect(full.top + full.height / 2).toBeCloseTo(source.height / 2, 0);
+  });
+
   it("is not a plain ratio: ignoring the cover offset lands on different pixels", () => {
     const displayed = { width: 600, height: 800 };
     const box = { left: 36, top: 380, width: 528, height: 48 };
@@ -96,15 +115,23 @@ describe("displayedToSourceRect", () => {
   });
 
   it("still returns at least one pixel when the box is entirely off the frame", () => {
-    const rect = displayedToSourceRect(
-      { left: 5000, top: 5000, width: 10, height: 10 },
-      { width: 960, height: 540 },
-      FRAME,
-    )!;
-    expect(rect.width).toBeGreaterThanOrEqual(1);
-    expect(rect.height).toBeGreaterThanOrEqual(1);
-    expect(rect.left + rect.width).toBeLessThanOrEqual(FRAME.width);
-    expect(rect.top + rect.height).toBeLessThanOrEqual(FRAME.height);
+    const displayed = { width: 960, height: 540 };
+    const past = displayedToSourceRect({ left: 5000, top: 5000, width: 10, height: 10 }, displayed, FRAME)!;
+    // Off the *near* side as well as the far one. Only this direction reaches the low
+    // bounds on `right` and `bottom`: past the far edge both edges clamp to the frame's
+    // size and come out an honest pixel apart whether the bounds are there or not, so the
+    // far case alone cannot fail for the property this test is named after. Before the
+    // near edge, both edges clamp to zero and the crop comes out with a *negative* width,
+    // which `drawImage` reads as a flipped source rectangle rather than as an error.
+    const before = displayedToSourceRect({ left: -5000, top: -5000, width: 10, height: 10 }, displayed, FRAME)!;
+    for (const rect of [past, before]) {
+      expect(rect.width).toBeGreaterThanOrEqual(1);
+      expect(rect.height).toBeGreaterThanOrEqual(1);
+      expect(rect.left).toBeGreaterThanOrEqual(0);
+      expect(rect.top).toBeGreaterThanOrEqual(0);
+      expect(rect.left + rect.width).toBeLessThanOrEqual(FRAME.width);
+      expect(rect.top + rect.height).toBeLessThanOrEqual(FRAME.height);
+    }
   });
 
   it("refuses a frame that has no size yet, which is a <video> for its first moments", () => {
