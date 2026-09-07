@@ -34,18 +34,28 @@ import type { PaintSource } from "../../lib/vin/types";
  */
 export const CHECK_IT = "Check this against the sticker before you save it.";
 
-/** Several strings, every one of which some frame returned. */
-export const PICK_ONE = "It read these. Pick the one on the sticker.";
+/**
+ * Several strings, every one of which some frame returned.
+ *
+ * It names the reader rather than saying "it". This screen had four names for one
+ * subsystem — "it" here, "a reader" under the Read button, "the reader" in the download
+ * line and five refusals, "the camera" in the banner above — and a user cannot tell
+ * whether four things or one thing is being described. §6.4 names its actors ("NHTSA
+ * returned partial data", "The sender may have accepted a misread"). Here there are two
+ * and they do different jobs: **the camera** hands over frames, **the reader** reads them.
+ */
+export const PICK_ONE = "The reader read these. Pick the one on the sticker.";
 
 /**
  * §5's other candidate row, and the reason it is worded differently from `PICK_ONE`.
  *
  * `PICK_ONE` is true when every control carries a string some frame returned. When one of
  * them was synthesised from the confusion table (`confusion.ts`) the engine never read it,
- * and a heading that said "It read these" would be the screen asserting something false
+ * and a heading that said the reader read them would be the screen asserting something false
  * about the very control it is asking the user to trust (N2).
  */
-export const PICK_UNSURE = "It wasn't sure of the marked characters. Pick the one on the sticker.";
+export const PICK_UNSURE =
+  "The reader wasn't sure of the marked characters. Pick the one on the sticker.";
 
 /**
  * The line under a read the screen is not sure of, shown wherever `isLowConfidence`

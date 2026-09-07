@@ -74,7 +74,7 @@ describe("what is offered, and what the heading may say about it", () => {
     expect(view.showMarkedNote).toBe(false);
   });
 
-  it("says `It read these` only when every string on offer is one a frame returned", () => {
+  it("says the reader read these only when every string on offer is one a frame returned", () => {
     const view = proposalView(TWO_TOKENS, null);
 
     expect(view.controls.map((control) => control.text)).toEqual(["PNT", "WA8555"]);
@@ -87,7 +87,7 @@ describe("what is offered, and what the heading may say about it", () => {
 
     // The read, plus the lookalikes of the position it doubted (`confusion.ts`).
     expect(view.controls.map((control) => control.text)).toEqual(["WA8555", "WAB555"]);
-    // "It read these" would be false about `WAB555`, which the engine never returned. A
+    // "The reader read these" would be false about `WAB555`, which it never returned. A
     // heading that asserts something untrue about the control it is asking the user to
     // trust is the whole failure mode N2 has no downstream check for.
     expect(view.heading).toBe(PICK_UNSURE);

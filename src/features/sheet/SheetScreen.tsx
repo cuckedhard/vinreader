@@ -40,7 +40,7 @@ const DECODE_FAILED = "Couldn't reach NHTSA after several tries. Tap Refresh det
  * Audi use the trunk or the spare-wheel well, GM legacy the glovebox — and the capture
  * screen says so itself.
  */
-const PAINT_CAPTURE = "Read it with the camera";
+const PAINT_CAPTURE = "Read the code with the camera";
 
 /** §4.4: with a vPIC `ModelYear` on screen, the structural year row is dropped, not rewritten. */
 const NO_STRUCTURAL_YEAR: ModelYear = { candidates: [], resolved: null };

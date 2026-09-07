@@ -56,7 +56,7 @@ async function openCapture(page: Page) {
   await page.goto(`/#/i?d=${PAYLOAD}`);
   await page.getByRole("button", { name: /^import$/i }).click();
   await expect(page).toHaveURL(new RegExp(`#/v/${VIN}`));
-  await page.getByRole("button", { name: "Read it with the camera" }).click();
+  await page.getByRole("button", { name: "Read the code with the camera" }).click();
   await expect(page).toHaveURL(new RegExp(`#/v/${VIN}/paint`));
 }
 
@@ -208,7 +208,7 @@ test("[N2] it reads the label, offers what it read, and stores nothing until a p
   const wanted = page.getByRole("button", { name: `Save ${CODE}` });
   await expect(wanted).toBeVisible();
   await expect(page.getByRole("button", { name: `Save ${NEIGHBOUR}` })).toBeVisible();
-  await expect(page.getByText("It read these. Pick the one on the sticker.")).toBeVisible();
+  await expect(page.getByText("The reader read these. Pick the one on the sticker.")).toBeVisible();
 
   // §6.1: every one of them is a 56 px target, measured as laid out.
   for (const name of [`Save ${CODE}`, `Save ${NEIGHBOUR}`]) {

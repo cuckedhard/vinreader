@@ -55,7 +55,11 @@ const firstUse = (): string =>
 const READ = "Read the code";
 const READ_AGAIN = "Read again";
 
-const CROP_CAPTION = "The last frame it read:";
+/**
+ * The crop the engine actually read, captioned by the actor that read it — and without the
+ * trailing colon, which made it the one label in the app's copy written as a form field.
+ */
+const CROP_CAPTION = "The last frame the reader read";
 const MARKED = "Check the marked characters.";
 const FIX_HEADING = "Fix a character";
 const FIX_HINT = "Tap a character to swap it for the one it looks like.";
