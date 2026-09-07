@@ -158,7 +158,15 @@ test("[§5] the copy names the box, never a place on the car", async ({ page }) 
   // 4.5 MB as a data plan counts them and 4.3 as a disk does, and the literal is written
   // out here rather than derived from the manifest: a test that computes the same number
   // the screen computes cannot notice either of them being wrong.
-  await expect(page.getByText(/The first read downloads a .* reader/)).toContainText("4.5 MB");
+  const offer = page.getByText(/The first read downloads a .* reader/);
+  await expect(offer).toContainText("4.5 MB");
+
+  // And nothing the platform does not underwrite (N2). The model lives in Cache Storage,
+  // which browsers evict, and an iOS tab that was never installed loses it: this screen
+  // cannot promise the reader is still there, nor that a later read works with no signal.
+  await expect(offer).toContainText("kept on this phone");
+  await expect(offer).not.toContainText("no signal");
+  await expect(offer).not.toContainText("stays on this phone");
 });
 
 test("[N2] it reads the label, offers what it read, and stores nothing until a person taps", async ({

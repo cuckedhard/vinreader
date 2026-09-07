@@ -30,8 +30,17 @@ const AIM = "Put the box on the paint code.";
 const WHERE =
   "The sticker is on the door jamb on some vehicles, and in the trunk, the spare-wheel " +
   "well or the glovebox on others.";
+/**
+ * What the tap costs, and nothing the platform does not underwrite.
+ *
+ * It used to end "It stays on this phone and works with no signal after that." The model
+ * lives in Cache Storage, which every browser is free to evict, and on iOS a site that has
+ * not been installed loses it — so neither half was the app's to promise (N2). What is left
+ * is the size, which is the decision the user is actually making on a metered connection,
+ * and what this app does with the bytes: it keeps them, so the cost is not paid per read.
+ */
 const firstUse = (): string =>
-  `The first read downloads a ${megabytes(OCR_TOTAL_BYTES)} MB reader. It stays on this phone and works with no signal after that.`;
+  `The first read downloads a ${megabytes(OCR_TOTAL_BYTES)} MB reader. It's kept on this phone for later reads.`;
 const READ = "Read the code";
 const READ_AGAIN = "Read again";
 const STARTING_CAMERA = "Starting camera…";
