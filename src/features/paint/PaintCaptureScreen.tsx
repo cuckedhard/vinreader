@@ -1,11 +1,10 @@
 import { useState } from "react";
 import type { CSSProperties } from "react";
 import { useNavigate, useParams } from "react-router";
-import { PAINT_LABEL, SAVE_FAILED_TITLE, STARTING_CAMERA } from "../../app/strings";
+import { PAINT_LABEL, SAVE_FAILED_TITLE } from "../../app/strings";
 import { OCR_TOTAL_BYTES } from "../../lib/ocr/assets.generated";
 import { confusionSet, hasAlternatives, replaceAt } from "../../lib/ocr/confusion";
 import { PAINT_CROP_BOX } from "../../lib/ocr/cropBox";
-import type { PaintCaptureState } from "../../lib/ocr/session";
 import { isLowConfidence, type PaintProposal } from "../../lib/ocr/vote";
 import { setVehicleMeta } from "../../lib/storage/upsert";
 import type { PaintSource } from "../../lib/vin/types";
@@ -14,15 +13,16 @@ import { Banner } from "../../ui/Banner";
 import { Button, TAP_LG_TARGET } from "../../ui/Button";
 import { VIN_TEXT_SIZES, VinDisplay } from "../../ui/VinDisplay";
 import { failureText } from "./failureText";
+import { megabytes, statusLine } from "./statusLine";
 import { LOW_HELP, nextEdit, proposalView } from "./proposalView";
 import { usePaintCapture } from "./usePaintCapture";
 
 /**
  * §6.4 has no line for any of this — layer 2 is new — so every sentence below is supplied
- * here and logged under §0 rule 4 for Zach to sign off. Two sets of them are not below:
- * the refusals are `failureText.ts` and the proposal's own sentences are `proposalView.ts`,
- * because which sentence those pick is a rule, and a rule inside a React file has no unit
- * test in this repo.
+ * here and logged under §0 rule 4 for Zach to sign off. Three sets of them are not below:
+ * the refusals are `failureText.ts`, the proposal's own sentences are `proposalView.ts`,
+ * and what the screen says while it is working is `statusLine.ts`, because which sentence
+ * those pick is a rule, and a rule inside a React file has no unit test in this repo.
  *
  * The one that is a finding rather than a phrasing choice is `WHERE`. S5 addendum §3:
  * "Point at the door jamb" is wrong for a meaningful fraction of vehicles. VW and Audi put
@@ -30,7 +30,6 @@ import { usePaintCapture } from "./usePaintCapture";
  * uses the SPID label in the glovebox. So the prompt names the *box*, not a place on the
  * car, and the sentence under it says the location varies rather than guessing one.
  */
-const AIM = "Put the box on the paint code.";
 const WHERE =
   "The sticker is on the door jamb on some vehicles, and in the trunk, the spare-wheel " +
   "well or the glovebox on others.";
@@ -52,7 +51,6 @@ const CROP_CAPTION = "The last frame it read:";
 const MARKED = "Check the marked characters.";
 const FIX_HEADING = "Fix a character";
 const FIX_HINT = "Tap a character to swap it for the one it looks like.";
-const NOTHING = "Nothing readable in the box.";
 const NOTHING_HELP = "Line the box up with the code, get closer, or type it below.";
 const TYPE_LABEL = "Or type the paint code";
 const TYPE_SAVE = "Save what I typed";
@@ -67,18 +65,6 @@ const BACK = "Back to the vehicle";
  */
 const SAVE_FAILED = "Nothing was saved. The code is still on this screen — try again.";
 const CAMERA_FAILED = "The camera didn't start here. You can still type the code.";
-
-/**
- * Megabytes as a data plan counts them, not as a disk does. The number under this button is
- * the one the user is deciding about, and 4.5 against 4.3 for the same bytes is the kind of
- * difference that reads as a lie on a metered connection. Both the offer and the progress
- * line go through here, so they cannot disagree (§7 item 5).
- */
-const MEGABYTE = 1_000_000;
-
-function megabytes(bytes: number): string {
-  return (bytes / MEGABYTE).toFixed(1);
-}
 
 /**
  * §5: "The value lives inside the primary control — `Save  NH-731P`, in `--vin-font` at
@@ -283,24 +269,6 @@ function Proposal({
   );
 }
 
-/** What the screen says while it is working. Never a claim about the answer. */
-function statusOf(state: PaintCaptureState, cameraReady: boolean): string | null {
-  switch (state.kind) {
-    case "offer":
-      return cameraReady ? AIM : STARTING_CAMERA;
-    case "downloading":
-      return `Downloading the reader… ${megabytes(state.loadedBytes)} of ${megabytes(state.totalBytes)} MB`;
-    case "reading":
-      return `Reading… hold steady (${state.lines.length + 1} of ${state.total})`;
-    case "nothing":
-      return NOTHING;
-    case "proposal":
-    case "unsupported":
-    case "failed":
-      return null;
-  }
-}
-
 /**
  * §6.2 (S5 layer 2): the capture mode at `/#/v/:vin/paint`, entered from the Sheet.
  *
@@ -328,7 +296,7 @@ export default function PaintCaptureScreen() {
   // §6.3's rule, applied to this screen: the status line never says something the banner
   // below it contradicts. "Starting camera…" over "The camera didn't start here" is the
   // screen arguing with itself, and the one the user acts on is the one they read first.
-  const status = blocked ? null : statusOf(state, cameraReady);
+  const status = blocked ? null : statusLine(state, cameraReady);
   // The preview is dropped once there is something to decide, so the decision is above the
   // fold on a 320-wide phone rather than under 470 px of dead video (F7, F11).
   const aiming = !blocked && state.kind !== "proposal";

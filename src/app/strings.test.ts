@@ -62,6 +62,15 @@ const ONE_PLACE: readonly OnePlace[] = [
   { text: SAVE_FAILED_TITLE, owner: "app/strings.ts" },
   // §6.4's Scan `requesting`, and the capture screen waits for the same camera.
   { text: STARTING_CAMERA, owner: "app/strings.ts" },
+  /*
+   * Not shared — spent. §6.4 gives this to the Scan `candidate` state, where it means a
+   * first VIN has been seen and a second read is wanted, and the capture screen borrowed
+   * it for frames going into a vote. Two facts, one sentence. It is typed out here rather
+   * than imported because it lives inside `statusFor`, and a `.tsx` cannot be imported
+   * under `environment: "node"`; if `CameraView` rewords it, this row goes red and is
+   * meant to.
+   */
+  { text: "Reading… hold steady", owner: "features/scan/CameraView.tsx" },
 ];
 
 describe("§7 item 5: a sentence the app says is defined once", () => {
