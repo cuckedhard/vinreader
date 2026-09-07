@@ -71,6 +71,14 @@ const ONE_PLACE: readonly OnePlace[] = [
    * meant to.
    */
   { text: "Reading… hold steady", owner: "features/scan/CameraView.tsx" },
+  /*
+   * Also spent, and a button word rather than a sentence, so it is matched with its quotes:
+   * `"Keep scanning"` is a different label and does not contain `"Keep"`. §6.4 gives **Keep**
+   * to the sign-out choice and spells the consequence out there precisely because "the words
+   * alone do not say what goes" — so a second ≥48 px button reading Keep, about something
+   * else, empties the first one. The Import screen's paint chooser had one.
+   */
+  { text: '"Keep"', owner: "features/account/strings.ts" },
 ];
 
 describe("§7 item 5: a sentence the app says is defined once", () => {

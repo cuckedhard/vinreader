@@ -142,8 +142,8 @@ test("§5.3: a second code asks before it replaces the one on this phone", async
   await seed(page, WITH_PAINT);
 
   await page.goto(`/#/i?d=${WITH_OTHER_PAINT}`);
-  const keep = page.getByRole("button", { name: `Keep ${PAINT}` });
-  const use = page.getByRole("button", { name: `Use ${OTHER_PAINT}` });
+  const keep = page.getByRole("button", { name: `On this phone ${PAINT}` });
+  const use = page.getByRole("button", { name: `From the sender ${OTHER_PAINT}` });
 
   // Both codes are on screen, and the one that will survive a plain Import is pressed:
   // the screen states the outcome rather than leaving it to be discovered (N2).
@@ -159,8 +159,8 @@ test("§5.3: the replacement happens when the user picks it", async ({ page }) =
   await seed(page, WITH_PAINT);
 
   await page.goto(`/#/i?d=${WITH_OTHER_PAINT}`);
-  await page.getByRole("button", { name: `Use ${OTHER_PAINT}` }).click();
-  await expect(page.getByRole("button", { name: `Use ${OTHER_PAINT}` })).toHaveAttribute(
+  await page.getByRole("button", { name: `From the sender ${OTHER_PAINT}` }).click();
+  await expect(page.getByRole("button", { name: `From the sender ${OTHER_PAINT}` })).toHaveAttribute(
     "aria-pressed",
     "true",
   );
@@ -189,7 +189,7 @@ test("§6.1: both codes are ≥ 48 px targets on a phone, and neither is hidden 
   const tap = await page.evaluate(() =>
     parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--tap")),
   );
-  for (const name of [`Keep ${PAINT}`, `Use ${OTHER_PAINT}`]) {
+  for (const name of [`On this phone ${PAINT}`, `From the sender ${OTHER_PAINT}`]) {
     const box = await page.getByRole("button", { name }).boundingBox();
     expect(box?.height ?? 0).toBeGreaterThanOrEqual(tap);
     // No long-press, no swipe: both are visible buttons with the code in the label (N5).

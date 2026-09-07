@@ -69,8 +69,21 @@ const ERR_FILE_UNREADABLE = "That file couldn't be read.";
 const PAINT_CONFLICT_TITLE = "This phone already has a paint code";
 const PAINT_CONFLICT_BODY =
   "Nothing can check a paint code, so the import keeps the one already here. Tap the other to use it instead.";
-const PAINT_KEEP = "Keep";
-const PAINT_USE = "Use";
+/**
+ * The two codes, named by where each came from.
+ *
+ * They read **Keep** and **Use**, and **Keep** is §6.4's — it answers "Keep the records on
+ * this phone?" at sign-out, where §6.4 spells the consequence out precisely because "the
+ * words alone do not say what goes". One button word cannot mean two things in one app, and
+ * the sign-out one is the spec's.
+ *
+ * Naming the source rather than the act is also the truer label for what these are: they
+ * are `aria-pressed` toggles over one value, not two commands — nothing is written until
+ * Import is tapped — and "whose code is this" is the question the user is actually
+ * answering, which the verbs only implied.
+ */
+const PAINT_ON_PHONE = "On this phone";
+const PAINT_FROM_SENDER = "From the sender";
 
 /** §4.3 / D17: shown, never enforced — the record is already someone else's decision. */
 const CHECK_DIGIT_ONE =
@@ -297,14 +310,14 @@ function PaintChoice({
           aria-pressed={chosen === stored}
           onClick={() => onChoose(stored)}
         >
-          {PAINT_KEEP} <span className="font-vin">{stored}</span>
+          {PAINT_ON_PHONE} <span className="font-vin">{stored}</span>
         </Button>
         <Button
           variant={chosen === incoming ? "primary" : "secondary"}
           aria-pressed={chosen === incoming}
           onClick={() => onChoose(incoming)}
         >
-          {PAINT_USE} <span className="font-vin">{incoming}</span>
+          {PAINT_FROM_SENDER} <span className="font-vin">{incoming}</span>
         </Button>
       </div>
     </div>
