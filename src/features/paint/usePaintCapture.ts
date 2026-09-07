@@ -24,6 +24,7 @@ import {
 } from "react";
 import type { RefObject } from "react";
 import { appBaseUrl } from "../../app/appBase";
+import { missingMediaDevicesError, toCameraError } from "../../app/cameraError";
 import { browserCropReader, browserOcrEngine } from "../../lib/ocr/browser";
 import { OCR_VOTE_FRAMES } from "../../lib/ocr/constants";
 import { displayedToSourceRect } from "../../lib/ocr/cropBox";
@@ -33,6 +34,7 @@ import {
   type PaintCaptureState,
 } from "../../lib/ocr/session";
 import { OcrError, type OcrFailure } from "../../lib/ocr/types";
+import type { ScanError } from "../../lib/vin/types";
 import { isDeadEnd } from "./failureText";
 
 /**
@@ -52,8 +54,14 @@ const PAINT_VIDEO_CONSTRAINTS: MediaStreamConstraints = {
 
 export interface PaintCaptureApi {
   state: PaintCaptureState;
-  /** True once the camera failed to start. The typed escape is the route, never a dead end. */
-  cameraFailed: boolean;
+  /**
+   * Why the camera did not start, as §4.10 names it, or null while it still might.
+   *
+   * Classified rather than collapsed to a flag: `permission_denied` is the one camera
+   * fault in the app with a remedy the user can act on, and a screen that cannot tell it
+   * from a missing camera cannot offer that remedy (§6.4).
+   */
+  cameraError: ScanError | null;
   /**
    * Nothing left to aim at: unsupported, or a refusal a second tap cannot change — a
    * capability this device does not have, or a dictionary in the model this build shipped.
@@ -91,7 +99,7 @@ export function usePaintCapture(): PaintCaptureApi {
     engine.support(),
     initialPaintCaptureState,
   );
-  const [cameraFailed, setCameraFailed] = useState(false);
+  const [cameraError, setCameraError] = useState<ScanError | null>(null);
   const [cameraReady, setCameraReady] = useState(false);
   const [cropUrl, setCropUrl] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -130,15 +138,15 @@ export function usePaintCapture(): PaintCaptureApi {
 
     async function start() {
       if (navigator.mediaDevices === undefined) {
-        setCameraFailed(true);
+        setCameraError(missingMediaDevicesError(window.isSecureContext));
         return;
       }
       try {
         stream = await navigator.mediaDevices.getUserMedia(PAINT_VIDEO_CONSTRAINTS);
-      } catch {
-        // Every reason lands in the same place, because the remedy is the same one: the
-        // typed field below, which is on screen in every state (P7).
-        if (!cancelled) setCameraFailed(true);
+      } catch (cause) {
+        // Which reason it was decides which sentence the screen shows, and one of them —
+        // a blocked permission — is the only camera fault the user can undo (§6.4).
+        if (!cancelled) setCameraError(toCameraError(cause));
         return;
       }
       if (cancelled) {
@@ -262,7 +270,7 @@ export function usePaintCapture(): PaintCaptureApi {
 
   return {
     state,
-    cameraFailed,
+    cameraError,
     deadEnd,
     cameraReady,
     videoRef,

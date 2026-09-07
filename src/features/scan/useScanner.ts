@@ -16,11 +16,11 @@ import type { RefObject } from "react";
 import type { IScannerControls } from "@zxing/browser";
 import { ChecksumException, FormatException, NotFoundException } from "@zxing/library";
 import type { Result } from "@zxing/library";
+import { toCameraError } from "../../app/cameraError";
 import { openScannerCamera, type ScannerCamera } from "../../lib/ocr/scannerLive";
 import { isPayloadCarrier } from "../../lib/payload/carrier";
 import { extractVin } from "../../lib/vin/extractVin";
 import { buildScanHints, stripAimIdentifier, toSymbology } from "../../lib/vin/symbologies";
-import type { ScanError } from "../../lib/vin/types";
 import { cooldownStore } from "./cooldownStore";
 import { ScanFrameReader } from "./frameReader";
 import { CONFIRM_WINDOW_MS, scanReducer, startingScanMachine } from "./scanMachine";
@@ -112,23 +112,6 @@ const VIDEO_CONSTRAINTS: MediaStreamConstraints = {
  * the slice; it is not a §4 constant.
  */
 const SCAN_DELAY_MS = 100;
-
-function toScanError(error: unknown): ScanError {
-  const name = error instanceof DOMException || error instanceof Error ? error.name : "";
-  switch (name) {
-    case "NotAllowedError":
-    case "SecurityError":
-      return "permission_denied";
-    case "NotFoundError":
-    case "OverconstrainedError":
-      return "no_camera";
-    default:
-      // NotReadableError (camera held by another app), AbortError and anything unknown land
-      // here: §4.10 has no member for a camera that exists but will not open, and from where
-      // the user stands it is unavailable either way.
-      return "no_camera";
-  }
-}
 
 /** ZXing's own names for "this frame carries no symbol I can read". */
 const NO_READ_KINDS: ReadonlySet<string> = new Set([
@@ -390,7 +373,7 @@ export function useScanner(options: {
         // §6.3: an insecure context never reaches here, so no permission prompt can appear.
         opened = await openScannerCamera(navigator.mediaDevices, VIDEO_CONSTRAINTS);
       } catch (error) {
-        if (!cancelled) dispatch({ type: "stream_failed", error: toScanError(error) });
+        if (!cancelled) dispatch({ type: "stream_failed", error: toCameraError(error) });
         return;
       }
       if (cancelled) {
@@ -441,7 +424,7 @@ export function useScanner(options: {
       } catch (error) {
         opened.close();
         camera = null;
-        if (!cancelled) dispatch({ type: "stream_failed", error: toScanError(error) });
+        if (!cancelled) dispatch({ type: "stream_failed", error: toCameraError(error) });
       }
     }
 

@@ -1,4 +1,5 @@
 import type { JSX, RefObject } from "react";
+import { CAMERA_STOPPED, cameraErrorText } from "../../app/cameraError";
 import { STARTING_CAMERA } from "../../app/strings";
 import { checkDigitApplies } from "../../lib/vin/checkDigit";
 import type { ScanError } from "../../lib/vin/types";
@@ -32,12 +33,6 @@ export interface CameraViewProps {
    */
   unsaved?: boolean;
 }
-
-/**
- * §6.4 has no line for a stream the machine gave up on (`idle.lost`, and the
- * defensive `stream_lost` branch), so this one is supplied here.
- */
-const CAMERA_STOPPED = "Camera stopped. It starts again when this screen is active.";
 
 /**
  * §6.4 has no line for a confirmed read the D03 gate is holding. Supplied here, neutral and
@@ -146,25 +141,22 @@ interface Notice {
   retry: boolean;
 }
 
+/** §6.4's remedy for this screen: the keyboard route here takes a VIN. */
+const TYPE_INSTEAD = "or type the VIN.";
+
 function errorNotice(error: ScanError): Notice {
+  const message = cameraErrorText(error, TYPE_INSTEAD);
   switch (error) {
     case "permission_denied":
-      return {
-        tone: "warn",
-        message:
-          "Camera is blocked. Allow camera for this site in your browser settings, " +
-          "or type the VIN.",
-        retry: true,
-      };
+      return { tone: "warn", message, retry: true };
     case "insecure_context":
-      return { tone: "danger", message: "Camera needs a secure (https) connection.", retry: false };
+      return { tone: "danger", message, retry: false };
     case "no_camera":
-      // §6.4 has no line. Supplied here, and it blames the device, not the user.
-      return { tone: "warn", message: "No camera is available on this device.", retry: true };
+      return { tone: "warn", message, retry: true };
     case "stream_lost":
       // §6.3 routes a dropped track to idle.lost, so this is unreachable; it
       // reuses the idle.lost copy rather than inventing more.
-      return { tone: "warn", message: CAMERA_STOPPED, retry: true };
+      return { tone: "warn", message, retry: true };
   }
 }
 

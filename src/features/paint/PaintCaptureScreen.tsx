@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { CSSProperties } from "react";
 import { useNavigate, useParams } from "react-router";
+import { cameraErrorText } from "../../app/cameraError";
 import { PAINT_LABEL, SAVE_FAILED_TITLE } from "../../app/strings";
 import { OCR_TOTAL_BYTES } from "../../lib/ocr/assets.generated";
 import { confusionSet, hasAlternatives, replaceAt } from "../../lib/ocr/confusion";
@@ -64,7 +65,17 @@ const BACK = "Back to the vehicle";
  * not land and that what the user was saving is still in front of them.
  */
 const SAVE_FAILED = "Nothing was saved. The code is still on this screen — try again.";
-const CAMERA_FAILED = "The camera didn't start here. You can still type the code.";
+/**
+ * §6.4's four camera sentences, finished for this screen: the keyboard route here takes a
+ * paint code, not a VIN.
+ *
+ * This screen used to answer every `getUserMedia` rejection with one line of its own —
+ * "The camera didn't start here. You can still type the code." — which said neither what
+ * happened nor how to undo it, and "here" was never explained. `permission_denied` is the
+ * only camera fault in the app the user can actually reverse, and the scan screen has told
+ * them how since S1; a second screen that swallows it is a remedy thrown away.
+ */
+const TYPE_INSTEAD = "or type the code.";
 
 /**
  * §5: "The value lives inside the primary control — `Save  NH-731P`, in `--vin-font` at
@@ -286,13 +297,13 @@ export default function PaintCaptureScreen() {
   const [saving, setSaving] = useState(false);
   const [saveFailed, setSaveFailed] = useState(false);
 
-  const { state, cameraFailed, cameraReady, cropUrl, deadEnd, videoRef, previewRef, boxRef, read } =
+  const { state, cameraError, cameraReady, cropUrl, deadEnd, videoRef, previewRef, boxRef, read } =
     capture;
   // A refusal no second tap can change is this screen's other dead end, and it gets the
   // same shape as the one the support test finds before the camera is ever asked for: no
   // preview to aim with, no Read again to press, and the typed field takes the primary
   // weight because it is the only route left (§6.4).
-  const blocked = deadEnd || cameraFailed;
+  const blocked = deadEnd || cameraError !== null;
   // §6.3's rule, applied to this screen: the status line never says something the banner
   // below it contradicts. "Starting camera…" over "The camera didn't start here" is the
   // screen arguing with itself, and the one the user acts on is the one they read first.
@@ -341,8 +352,8 @@ export default function PaintCaptureScreen() {
       {state.kind === "unsupported" ? (
         <Banner tone="warn" title={failureText(state.reason)} />
       ) : null}
-      {cameraFailed && state.kind !== "unsupported" ? (
-        <Banner tone="warn" title={CAMERA_FAILED} />
+      {cameraError !== null && state.kind !== "unsupported" ? (
+        <Banner tone="warn" title={cameraErrorText(cameraError, TYPE_INSTEAD)} />
       ) : null}
       {state.kind === "failed" ? <Banner tone="warn" title={failureText(state.reason)} /> : null}
 

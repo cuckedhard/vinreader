@@ -572,7 +572,13 @@ test("[§4] the WebAssembly case is told the same thing, and not a setting it ca
   expect(await storedPaint(page)).toBe("UG");
 });
 
-test("[§6.3] a camera that will not start says so, and the screen does not argue with it", async ({
+/**
+ * §6.4 gives a blocked camera the only remedy in the app for a camera fault — where the
+ * switch is. This screen used to answer every rejection with one line of its own, "The
+ * camera didn't start here. You can still type the code.", and a user who had denied the
+ * permission was told to give up and type instead of being told how to undo it.
+ */
+test("[§6.3] a blocked camera is told how to unblock it, and the screen does not argue with it", async ({
   page,
 }) => {
   await page.addInitScript(() => {
@@ -581,7 +587,11 @@ test("[§6.3] a camera that will not start says so, and the screen does not argu
   });
   await openCapture(page);
 
-  await expect(page.getByText("The camera didn't start here. You can still type the code.")).toBeVisible();
+  await expect(
+    page.getByText(
+      "Camera is blocked. Allow camera for this site in your browser settings, or type the code.",
+    ),
+  ).toBeVisible();
   // §6.3's rule: the status line never says something the banner below it contradicts.
   // "Starting camera…" over "The camera didn't start" is the screen arguing with itself,
   // and the sentence the user acts on is whichever they read first.
@@ -594,6 +604,25 @@ test("[§6.3] a camera that will not start says so, and the screen does not argu
   await page.getByRole("button", { name: "Save what I typed" }).click();
   await expect(page).toHaveURL(new RegExp(`#/v/${VIN}$`));
   expect(await storedPaint(page)).toBe("1F7");
+});
+
+test("[§6.4] a camera that is not there is not called a blocked one", async ({ page }) => {
+  await page.addInitScript(() => {
+    navigator.mediaDevices.getUserMedia = () =>
+      Promise.reject(new DOMException("none", "NotFoundError"));
+  });
+  await openCapture(page);
+
+  // Which rejection it was decides the sentence: one of these has a remedy and the other
+  // does not, and the screen used to say the same thing to both.
+  await expect(page.getByText("No camera is available on this device.")).toBeVisible();
+  await expect(page.getByText(/browser settings/)).toHaveCount(0);
+
+  const typed = page.getByLabel("Or type the paint code");
+  await typed.fill("UG");
+  await page.getByRole("button", { name: "Save what I typed" }).click();
+  await expect(page).toHaveURL(new RegExp(`#/v/${VIN}$`));
+  expect(await storedPaint(page)).toBe("UG");
 });
 
 test("[§4] backgrounding puts the camera down, and coming back picks it up", async ({ page }) => {
