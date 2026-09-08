@@ -31,7 +31,6 @@ const KEEP_SCANNING = "Keep scanning";
  */
 export function ScanScreen() {
   const [mode, setMode] = useState<Mode>("camera");
-  const [carrierError, setCarrierError] = useState<string | null>(null);
   /**
    * The code "Keep scanning" was tapped for, as the decoder read it (R3-F5).
    *
@@ -41,26 +40,24 @@ export function ScanScreen() {
    * The dismissal is therefore about *that code* rather than about the banner. A different
    * code still reports (nothing is suppressed that the user has not already answered, P7),
    * and the way back from the keyboard re-arms it, because that is a fresh look at the scene.
+   *
+   * FR-6 turned this from two refs into one state, and that is the whole of the change here:
+   * the rejection itself is the machine's now, so the only thing left for the screen to
+   * remember is which code the user has already answered — the same shape, in the same words,
+   * as the refusal's `dismissedRefusal` below. State rather than a ref for its reason too:
+   * what is shown is derived, and only a render can take a banner off the screen.
    */
-  const dismissedCarrier = useRef<string | null>(null);
-  /** The code the banner on screen is about, so the tap knows what it is dismissing. */
-  const shownCarrier = useRef<string | null>(null);
+  const [dismissedCarrier, setDismissedCarrier] = useState<string | null>(null);
   const navigate = useNavigate();
   // §9-S3 phone-to-phone: the receiving phone shows the import preview rather than
   // confirming a VIN. Both carriers are re-encoded into the single `d` the route reads,
   // and an unreadable one just leaves the camera running.
   const handleCarrier = useCallback(
-    (raw: string) => {
+    (raw: string): string | null => {
       let payload;
       try {
         payload = parseCarrier(raw);
       } catch (cause) {
-        // Answered already, for this exact code (R3-F5).
-        if (dismissedCarrier.current === raw) return;
-        shownCarrier.current = raw;
-        // The same code decodes several times a second, and `setState` with an identical
-        // string is a no-op in React — so a code held in front of the camera renders once
-        // and does not re-run the effect below it.
         // P6: an unknown version gets a clear rejection, never a crash — and never
         // silence. The carrier check is what stops extractVin fabricating a VIN out of
         // the base64url body (D14), so this code is the scanner's to report: dropping it
@@ -68,25 +65,30 @@ export function ScanScreen() {
         // P6 wants a clear rejection. `kind === "version"` covers any v other than 1,
         // older included, so the message comes from the error rather than assuming which
         // direction it went — the same text the Import route shows for the same payload.
-        setCarrierError(
-          cause instanceof PayloadError && cause.kind === "version"
-            ? cause.message
-            : "That VIN Relay code could not be read. Ask for it again, or type the VIN.",
-        );
-        return;
+        //
+        // FR-6: answered rather than stored. §6.4's words are still this screen's — it is what
+        // parses the payload — but the notice they belong to is the machine's, because the
+        // machine is the only thing that sees every frame and can therefore end it when the
+        // frame moves on. Nothing here consults the dismissal either: a code the user has
+        // answered is still a code in the frame, and hiding it is a render's decision.
+        return cause instanceof PayloadError && cause.kind === "version"
+          ? cause.message
+          : "That VIN Relay code could not be read. Ask for it again, or type the VIN.";
       }
-      if (payload === null) return;
-      setCarrierError(null);
-      shownCarrier.current = null;
-      dismissedCarrier.current = null;
+      if (payload === null) return null;
+      // A readable code leaves for Import, and a dismissal cannot outlive the screen it was
+      // made on. `null` tells the machine there is nothing to say about this frame.
+      setDismissedCarrier(null);
       void navigate(`/i?d=${encodePayload(payload)}`);
+      return null;
     },
     [navigate],
   );
-  const { state, refusal, videoRef, torch, focus, retry, rescan, accept } = useScanner({
-    enabled: mode === "camera",
-    onCarrier: handleCarrier,
-  });
+  const { state, refusal, carrierError, videoRef, torch, focus, retry, rescan, accept } =
+    useScanner({
+      enabled: mode === "camera",
+      onCarrier: handleCarrier,
+    });
   /**
    * The read "Keep scanning" was tapped for, exactly as R3-F5 handles a refused carrier:
    * the answer is about *that text*, not about the banner, because the realistic case is
@@ -149,95 +151,91 @@ export function ScanScreen() {
   }, [pending, saveAsIs, accept, rescan]);
 
   /**
-   * R3-F5: a rejection is about a code in the frame, and once the decoder has a VIN in hand
-   * that code is gone — a notice describing it is describing something that is not there
-   * (N2), and on the one path that keeps this screen up (a read held by §4.3) it competes
-   * with the banner that is actually asking the user something. So it is derived rather than
-   * stored: no sighting, no stale rejection. The two ways back to `streaming` clear the
-   * message itself, so a rescan starts from silence and re-reports only what is still there.
+   * R3-F5: a rejection is about a code in the frame, and once the decoder has read something
+   * else that code is gone — a notice describing it is describing something that is not there
+   * (N2), and on the paths that keep this screen up it competes with the banner that is
+   * actually asking the user something (P7).
    *
-   * FR-4 adds the other sighting that ends this code's turn in the frame: a refusal §6.3 has
-   * agreed on. The state guard above covers only `candidate`/`confirmed`, and a refusal leaves
-   * the machine `streaming` (N1) — so a phone shown a code this app cannot read and then a
-   * sticker §4.2 refuses carried both banners at once, each with its own "Keep scanning", the
-   * first about a code that had left the frame (N2) beside the one actually asking the user
-   * something (P7). FR-3's mirror image, and it survived FR-3 because the two banners are held
-   * in different places: the refusal is the machine's, this is the screen's.
+   * **FR-6: which is why there is no `state.kind` term here any more.** R3-F5 and FR-4 both
+   * spent that rule on this derivation, over a `carrierError` the screen alone ever wrote —
+   * `state.kind !== "candidate" && state.kind !== "confirmed"` — and a state guard *suppresses*
+   * a notice rather than ending it. Every route back to `streaming` from a state that had merely
+   * hidden the banner therefore re-raised it: one frame of a VIN label moved the machine to
+   * `candidate`, no second frame agreed, §6.3's `tick` came back 1.5 s later, and the rejection
+   * was on screen again about a code two codes ago with nothing in front of the camera. `visible`
+   * after a hide past §6.3's window did the same. So the notice moved to the machine, beside the
+   * refusal, where `decoded` and every restart of the camera already end exactly this kind of
+   * claim (`NO_NOTICE`). One fact, one owner, one lifetime — and a fourth term in this boolean
+   * would have answered one door and left the others open.
    *
-   * **The precedence is §6.3's, not this state's.** Neither notice outranks the other by kind;
-   * each yields to the other's *established* sighting, because the only thing either has to go
-   * on is what the camera last read. What "established" takes differs, and that is where the
-   * asymmetry comes from: a §4.9 carrier identifies itself, so one frame is proof of it, while
-   * a refusal is a claim about arbitrary bytes and §6.3's two-read agreement is what makes it a
-   * fact (FR-2's anti-strobe rule). So with both codes in one frame and the decoder alternating
-   * between them, FR-3's clear takes the refusal's pending half on every carrier frame, the
-   * refusal never agrees, and this banner holds still and alone — the stickier state winning
-   * only where the other has nothing agreed to say, and yielding on the frame it does.
+   * **The precedence between the two banners is §6.3's, not either state's** (FR-4). Neither
+   * notice outranks the other by kind; each yields to the other's *established* sighting,
+   * because the only thing either has to go on is what the camera last read. What "established"
+   * takes differs, and that is where the asymmetry comes from: a §4.9 carrier identifies itself,
+   * so one frame is proof of it, while a refusal is a claim about arbitrary bytes and §6.3's
+   * two-read agreement is what makes it a fact (FR-2's anti-strobe rule). With both codes in one
+   * frame and the decoder alternating between them, the two banners **trade places** every few
+   * seconds — ZXing does not strictly alternate, so two consecutive reads of the label do happen,
+   * the refusal agrees, this one yields, and the next carrier frame takes it back. What holds
+   * through that is the property worth having: never both at once, and never one about a code the
+   * camera is not looking at. (FR-7: FR-4's comment claimed this banner "holds still and alone",
+   * and the reviewer's 120-sample trace falsified it while confirming the invariant.)
    *
    * **Keyed on the refusal the machine holds, not on the banner.** `showRefusal` is the wrong
    * term here: "Keep scanning" says the user has read that notice, not that the carrier is back
    * in front of the camera, so a dismissal would put this older notice back on screen — the
-   * same N2 in a new place. Keyed here rather than by clearing `carrierError`, because clearing
-   * it on a refusal needs an effect and `react-hooks/set-state-in-effect` is right about that
-   * (R3-F5's own reason for deriving), and `dismissedCarrier`/`shownCarrier` are deliberately
-   * untouched: a suppression keyed on this code's text would silently refuse that code for the
-   * rest of the session, which is the opposite of what §6.4 owes it (P7).
+   * same N2 in a new place.
    */
   const showCarrier =
-    carrierError !== null &&
-    refusal === null &&
-    state.kind !== "candidate" &&
-    state.kind !== "confirmed";
+    carrierError !== null && refusal === null && dismissedCarrier !== carrierError.raw;
 
   /**
    * FR-2, and the same rule as the line above it: a refusal is about what is in front of
    * the camera, so it must not outlive the code it describes (R3-F5, N2).
    *
-   * It needs no `state.kind` guard, unlike the carrier line above, and that is worth
-   * stating because the asymmetry looks like an omission. The carrier error is this
-   * screen's own `useState` and nothing clears it when a VIN turns up; a refusal is the
-   * machine's, and `decoded` drops it — so by the time the state is `candidate` or
-   * `confirmed`, `refusal` is already null. A guard here would be a condition no test
-   * could tell from its own absence.
+   * Neither line takes a `state.kind` term, and since FR-6 that is one rule for both rather
+   * than an asymmetry to explain: both notices are the machine's, each is about the last code
+   * the camera read, and every read of a different code ends the one it replaces. A term over
+   * the state would say something else — that a notice about the code in the frame *now* has to
+   * wait for an unrelated candidate to lapse — which is the suppression FR-6 was, delayed rather
+   * than fixed. It is not an untestable condition either, which is why it is asserted rather
+   * than argued: `scan-carrier-then-lapse.spec.ts` reads the rejection and "Reading… hold
+   * steady." out of one snapshot, and restoring the term is what makes that pair unreachable.
    */
   const showRefusal = refusal !== null && dismissedRefusal !== refusal.raw;
-
-  const forgetCarrier = useCallback(() => {
-    shownCarrier.current = null;
-    setCarrierError(null);
-  }, []);
 
   const handleRescan = useCallback(() => {
     // §6.3: the read was never persisted, so no cooldown is recorded and the same label
     // reads again straight away.
     dismiss();
-    forgetCarrier();
     rescan();
-  }, [dismiss, forgetCarrier, rescan]);
+  }, [dismiss, rescan]);
 
   const handleScanAgain = useCallback(() => {
     dismiss();
-    forgetCarrier();
     retry();
-  }, [dismiss, forgetCarrier, retry]);
+  }, [dismiss, retry]);
 
   const showManual = useCallback(() => {
     dismiss();
-    // The warning is about a code in front of the camera; leaving it set means it
-    // reappears on the way back from the keyboard, about a code long gone (P7).
-    setCarrierError(null);
     setMode("manual");
   }, [dismiss]);
 
   const showCameraAgain = useCallback(() => {
     // A trip to the keyboard and back is a fresh look at the scene, so whatever was
-    // dismissed before it is reported again if it is still there (R3-F5).
-    dismissedCarrier.current = null;
-    shownCarrier.current = null;
-    setCarrierError(null);
+    // dismissed before it is reported again if it is still there (R3-F5) — for both notices,
+    // in the same two lines.
+    setDismissedCarrier(null);
     setDismissedRefusal(null);
+    // And the notices themselves go with the camera restart rather than with a setter here
+    // (FR-6): `retry` is §6.3's own way back to `requesting` and it spreads `NO_NOTICE`, so the
+    // update that turns the camera back on is the update that drops whatever was said about the
+    // old scene. Left to the `enabled` effect it would land one render later instead — a
+    // difference this suite cannot resolve, so the reason to dispatch it in the tap is R3-F5's
+    // rather than a measured frame: the tap is where the answer to a notice belongs.
+    retry();
     setMode("camera");
-  }, []);
+  }, [retry]);
 
   // R3-F1: the machine stays `streaming` for a refused carrier, so the preview keeps its
   // full height and the banner opens below the fold — 0 visible pixels of it at 360x640,
@@ -317,19 +315,12 @@ export function ScanScreen() {
                 tone="warn"
                 title="Couldn't read that code"
                 actions={
-                  <Button
-                    variant="secondary"
-                    onClick={() => {
-                      // R3-F5: the tap answers this code, not just this banner.
-                      dismissedCarrier.current = shownCarrier.current;
-                      setCarrierError(null);
-                    }}
-                  >
+                  <Button variant="secondary" onClick={() => setDismissedCarrier(carrierError.raw)}>
                     {KEEP_SCANNING}
                   </Button>
                 }
               >
-                {carrierError}
+                {carrierError.message}
               </Banner>
             </div>
           ) : null}

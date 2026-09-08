@@ -50,6 +50,9 @@ describe("scanReducer — startup", () => {
       // FR-2: a machine that has heard nothing has nothing to say about a refusal either.
       refusal: null,
       refusalSeen: null,
+      // FR-6: nor about one of the app's own §4.9 codes, which is the third notice that ends
+      // with the code it describes and therefore starts empty with the other two.
+      carrierError: null,
     });
   });
 

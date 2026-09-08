@@ -60,6 +60,19 @@ function run(actions: ScanAction[], from: ScanMachine = initialScanMachine): Sca
 const MOUNT: ScanAction = { type: "mount", secureContext: true };
 const STARTED: ScanAction = { type: "stream_started" };
 
+/**
+ * One of the app's own §4.9 codes in the frame, in the two answers the screen can give it
+ * (FR-6): `CARRIER` is a code this app cannot read, so §6.4 owes it a rejection, and `TAKEN`
+ * is one the screen took and is navigating to Import with. Either way the frame has moved on,
+ * which is all FR-3 is about.
+ */
+const CARRIER: ScanAction = {
+  type: "carrier",
+  raw: "https://vinrelay.example/#/i?d=eyJ2IjoyfQ",
+  message: "This payload is version 2; this app reads version 1.",
+};
+const TAKEN: ScanAction = { ...CARRIER, message: null };
+
 /** A machine with the camera running, which is the only state a frame arrives in. */
 function streaming(): ScanMachine {
   return run([MOUNT, STARTED]);
@@ -196,7 +209,7 @@ describe("[FR-2] a refusal is about the code in the frame, and does not outlive 
     // looking at any more — the same fact `decoded` reports above, and the reason FR-3 was
     // two banners at once: §6.4's "Couldn't read that code" beside a refusal about a code
     // that had left the frame, each offering "Keep scanning" (N2, P7).
-    const carrier = scanReducer(showing(), { type: "carrier" });
+    const carrier = scanReducer(showing(), CARRIER);
     expect(carrier.refusal).toBeNull();
     expect(carrier.refusalSeen).toBeNull();
     // §4.10 gains no state for a carrier, and the stream is never stopped for one (N1, N6).
@@ -204,23 +217,22 @@ describe("[FR-2] a refusal is about the code in the frame, and does not outlive 
 
     // The pending half goes too, or a frame from before the carrier would agree with one
     // from after it and raise a banner about the code that has just been replaced.
-    const pending = run(
-      [refused(PART, EPOCH), { type: "carrier" }, refused(PART, EPOCH + 200)],
-      streaming(),
-    );
+    const pending = run([refused(PART, EPOCH), CARRIER, refused(PART, EPOCH + 200)], streaming());
     expect(pending.refusal).toBeNull();
 
     // And nothing to clear is the same machine, not a copy of it: the code decodes several
     // times a second, and a fresh machine per frame would re-render the screen at the decode
-    // rate for no change.
+    // rate for no change. Since FR-6 the rejection is the machine's too, so "nothing to clear"
+    // means nothing to *say* either — `scanMachine.carrier.test.ts` holds the other half of
+    // this property, where the same rejection is already standing.
     const quiet = streaming();
-    expect(scanReducer(quiet, { type: "carrier" })).toBe(quiet);
+    expect(scanReducer(quiet, TAKEN)).toBe(quiet);
 
     // A late frame out of ZXing's already-queued timer describes a scene nobody is pointing
     // at, so it cannot take down an answer that is still true (the same guard `refused` and
     // `decoded` are read under; a short hide keeps the refusal, below).
     const hidden = scanReducer(showing(), { type: "hidden", atMs: EPOCH + 300 });
-    expect(scanReducer(hidden, { type: "carrier" }).refusal?.raw).toBe(PART);
+    expect(scanReducer(hidden, CARRIER).refusal?.raw).toBe(PART);
   });
 
   it("is dropped by every restart of the camera", () => {

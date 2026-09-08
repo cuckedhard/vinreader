@@ -81,7 +81,22 @@ export const QR_PARTIAL_GRACE_MS = 10 * 60 * 1000;
 /** `.<name>-<pid>-<nonce>.tmp` — the pid is what says whether anyone is still writing it. */
 const PARTIAL = /^\..*-(\d+)-[0-9a-f]+\.tmp$/;
 
-type Segments = readonly (readonly [string, number])[];
+/**
+ * A segment with nothing in it — the camera pointed at no code at all (FR-6).
+ *
+ * Not the same thing as a QR of an empty string, which is a perfectly readable symbol that
+ * §4.2 refuses: that would raise the refusal banner and hide the very state FR-6 is about.
+ * These frames are a uniform field with no symbol to find, so ZXing answers `NotFoundException`
+ * and the machine hears nothing at all.
+ *
+ * Handled in `build` rather than in `lumaOf`, so `RECIPE` does not move: `lumaOf` still draws
+ * exactly what it drew, every existing cache key still describes the bytes it was computed
+ * from, and no cached video is invalidated by this. `keyOf` hashes the segments, and `null` is
+ * a value none of them held.
+ */
+export const NOTHING = null;
+
+type Segments = readonly (readonly [string | typeof NOTHING, number])[];
 
 /** One QR, drawn as a full luma plane. */
 function lumaOf(text: string): Buffer {
@@ -136,7 +151,7 @@ function build(path: string, segments: Segments): void {
   try {
     writeAll(fd, Buffer.from(HEADER));
     for (const [text, frames] of segments) {
-      const luma = lumaOf(text);
+      const luma = text === NOTHING ? Buffer.alloc(W * H, 0xff) : lumaOf(text);
       for (let i = 0; i < frames; i += 1) {
         writeAll(fd, tag);
         writeAll(fd, luma);

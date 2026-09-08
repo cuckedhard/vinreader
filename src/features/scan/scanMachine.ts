@@ -26,6 +26,19 @@ export interface ScanSighting {
   atMs: number;
 }
 
+/**
+ * One of the app's own §4.9 codes the camera read and this app cannot use, and §6.4's words
+ * for it ("Couldn't read that code"). The words are the screen's — it is what parses the
+ * payload and owns the route a readable one opens — and the *lifetime* is the machine's,
+ * which is the whole of FR-6.
+ */
+export interface CarrierError {
+  /** The code exactly as the decoder read it, so a dismissal can be about *that code* (R3-F5). */
+  raw: string;
+  /** §6.4's body: the codec's own version sentence, or the screen's fallback for the rest. */
+  message: string;
+}
+
 export type ScanMachineState =
   | { kind: "idle"; lost: boolean }
   | { kind: "requesting" }
@@ -57,13 +70,36 @@ export interface ScanMachine {
    * own window — not a second timing rule.
    */
   refusalSeen: { refusal: NoVin; atMs: number } | null;
+  /**
+   * §6.4's rejection for one of the app's own §4.9 codes, or `null` for silence (FR-6).
+   *
+   * It was `ScanScreen`'s own `useState` until FR-6, and that is what made three findings out
+   * of one defect: the screen wrote it and only the screen's own handlers ever cleared it, so
+   * the banner had to be *suppressed* by a derivation over `state.kind` — and a suppression
+   * ends when the state does. Every route back to `streaming` from `candidate` re-raised a
+   * rejection about a code two codes ago (N2): §6.3's `tick`, and `visible` after a hide past
+   * §6.3's window. Held here instead, beside the refusal, it is ended by the same events that
+   * end a refusal, because both answer the same question — is this still what the camera is
+   * looking at?
+   *
+   * Like `refusal` it is deliberately **not** a `ScanState`: §4.10's six states own the camera
+   * and the status line, and a rejection owns neither. The stream keeps running (N1) and
+   * nothing is written. Adding a seventh would be a change to a §4 constant for a banner.
+   */
+  carrierError: CarrierError | null;
 }
 
 /**
- * No refusal, agreed or pending. Spread wherever the machine restarts the camera or takes
- * in a VIN or one of the app's own §4.9 codes (FR-3), because a refusal is about the code in
- * the frame and each of those is a fresh look at the scene (R3-F5: a notice that outlives
- * what it describes is a guess shown as a fact, N2).
+ * Nothing to say about a code that is not in the frame: no refusal, agreed or pending, and no
+ * §4.9 rejection (FR-6). Spread wherever the machine restarts the camera or takes in a VIN or
+ * one of the app's own §4.9 codes (FR-3), because each of those is a fresh look at the scene
+ * and every notice here is about the last one (R3-F5: a notice that outlives what it describes
+ * is a guess shown as a fact, N2).
+ *
+ * One constant for all three because they answer one question. Two of them used to be here and
+ * the third was a `useState` in the screen, and the difference is exactly where FR-3, FR-4 and
+ * FR-6 came from: the two that were spread here ended with the code they described, and the one
+ * that was not could only be hidden.
  *
  * `rescan` and `accepted` deliberately do NOT spread it, and it is not an omission: both
  * act on a `confirmed` machine, `decoded` is the only way into `confirmed`, and `decoded`
@@ -71,7 +107,7 @@ export interface ScanMachine {
  * its own absence — the same thing §4.2 step 4b's removed `if` was, and the same thing
  * `bun run mutate` reports.
  */
-const NO_REFUSAL = { refusal: null, refusalSeen: null } as const;
+const NO_NOTICE = { refusal: null, refusalSeen: null, carrierError: null } as const;
 
 export type ScanAction =
   | { type: "mount"; secureContext: boolean }
@@ -85,12 +121,17 @@ export type ScanAction =
    */
   | { type: "refused"; refusal: NoVin; atMs: number }
   /**
-   * One of the app's own §4.9 carriers in the frame (FR-3). It carries no payload and moves
-   * no state: the screen owns §6.4's rejection and the route it opens, and §4.10 gains no
-   * state for a carrier — a carrier read owns neither the camera nor the status line, exactly
-   * as a refusal does not. All this says is that the frame has moved on.
+   * One of the app's own §4.9 carriers in the frame (FR-3), and what the screen made of it
+   * (FR-6): §6.4's rejection for a code this app cannot use, or `null` where there is nothing
+   * to say because the screen took the code and is on its way to Import. The words are the
+   * screen's because the parse and the route are the screen's; the *lifetime* is the machine's,
+   * because the machine is the only thing that sees every frame.
+   *
+   * It still moves no state — §4.10 gains nothing for a carrier, which owns neither the camera
+   * nor the status line, exactly as a refusal does not. All the read itself says is that the
+   * frame has moved on, and that is true whichever answer comes with it.
    */
-  | { type: "carrier" }
+  | { type: "carrier"; raw: string; message: string | null }
   /**
    * The §6.3 agreement window running out under a standing candidate. The hook owns the
    * timer and stamps the instant; the reducer only compares it, so P3 holds.
@@ -107,7 +148,7 @@ export const initialScanMachine: ScanMachine = {
   state: { kind: "idle", lost: false },
   cooldown: {},
   hiddenAtMs: null,
-  ...NO_REFUSAL,
+  ...NO_NOTICE,
 };
 
 /**
@@ -166,7 +207,7 @@ export function scanReducer(machine: ScanMachine, action: ScanAction): ScanMachi
       // The cooldown map survives: returning to Scan is exactly what it guards.
       return {
         ...machine,
-        ...NO_REFUSAL,
+        ...NO_NOTICE,
         state: cameraStart(action.secureContext),
         hiddenAtMs: null,
       };
@@ -201,7 +242,7 @@ export function scanReducer(machine: ScanMachine, action: ScanAction): ScanMachi
       // camera is looking at any more, and the screen has a read to show instead.
       return {
         ...machine,
-        ...NO_REFUSAL,
+        ...NO_NOTICE,
         state: { kind: confirms ? "confirmed" : "candidate", sighting },
       };
     }
@@ -244,13 +285,21 @@ export function scanReducer(machine: ScanMachine, action: ScanAction): ScanMachi
       // frame from before the carrier could agree with one from after it and raise a banner
       // about the code that has just been replaced.
       //
-      // Identical when there is nothing to clear, and `refused` is the only writer of either
-      // field and always writes both, so an empty `refusalSeen` means an empty `refusal` too.
-      // The same code decodes several times a second and a fresh machine per frame would
-      // re-render the screen at the decode rate for no change — the property `handleCarrier`'s
-      // `setState` of an unchanged string already keeps on this path.
-      if (machine.refusalSeen === null) return machine;
-      return { ...machine, ...NO_REFUSAL };
+      // FR-6: and this is where §6.4's rejection for *this* code is raised, which is what makes
+      // the two notices end the same way. `decoded` and every restart spread `NO_NOTICE` over
+      // both of them, so a VIN in the frame or a re-requested camera ends the rejection instead
+      // of hiding it behind a `state.kind` the next `tick` gives straight back.
+      const raised = action.message === null ? null : { raw: action.raw, message: action.message };
+      // The same code decodes several times a second, so a machine that changed nothing must be
+      // the same machine: a copy would re-render the screen at the decode rate, and the banner
+      // R3-F5 keeps still is a `useState` of an unchanged string no longer. The message is a
+      // function of the bytes — the same code parses to the same error every frame — so the raw
+      // text is the identity of the notice. A pending refusal is still a change to make, which
+      // is why it is asked about first.
+      const unchanged =
+        raised === null ? machine.carrierError === null : machine.carrierError?.raw === raised.raw;
+      if (machine.refusalSeen === null && unchanged) return machine;
+      return { ...machine, ...NO_NOTICE, carrierError: raised };
     }
 
     case "tick": {
@@ -294,7 +343,7 @@ export function scanReducer(machine: ScanMachine, action: ScanAction): ScanMachi
       // idle (a dead track, a saved scan) re-requests down the same path, and an
       // insecure context still becomes an error without a permission prompt.
       if (gap > HIDDEN_LOST_MS || machine.state.kind === "idle") {
-        return { ...next, ...NO_REFUSAL, state: cameraStart(action.secureContext) };
+        return { ...next, ...NO_NOTICE, state: cameraStart(action.secureContext) };
       }
       return next;
     }

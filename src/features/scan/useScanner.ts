@@ -24,7 +24,7 @@ import { buildScanHints, stripAimIdentifier, toSymbology } from "../../lib/vin/s
 import { cooldownStore } from "./cooldownStore";
 import { ScanFrameReader } from "./frameReader";
 import { CONFIRM_WINDOW_MS, scanReducer, startingScanMachine } from "./scanMachine";
-import type { ScanAction, ScanMachineState, ScanSighting } from "./scanMachine";
+import type { CarrierError, ScanAction, ScanMachineState, ScanSighting } from "./scanMachine";
 import type { NoVin } from "../../lib/vin/types";
 
 export interface TorchApi {
@@ -46,6 +46,12 @@ export interface ScannerApi {
    * machine's to decide, on §6.3's own agreement window.
    */
   refusal: NoVin | null;
+  /**
+   * §6.4's rejection for one of the app's own §4.9 codes the screen could not use, or `null`
+   * (FR-6). The screen's to word and to render, the machine's to keep for exactly as long as
+   * that code is the last thing the camera read.
+   */
+  carrierError: CarrierError | null;
   videoRef: RefObject<HTMLVideoElement | null>;
   torch: TorchApi;
   focus: FocusApi;
@@ -267,8 +273,14 @@ export function armLapseTimer(
 
 export function useScanner(options: {
   enabled: boolean;
-  /** §9-S3: a scanned §4.9 carrier is handed over rather than dropped. */
-  onCarrier?: (raw: string) => void;
+  /**
+   * §9-S3: a scanned §4.9 carrier is handed over rather than dropped, and the screen answers
+   * with §6.4's rejection for a code it cannot use — or `null` where it has taken the code and
+   * there is nothing to say (FR-6). The answer goes into the machine, which is what ends it
+   * when the frame moves on; the words stay the screen's, because the parse and the route a
+   * readable code opens are the screen's.
+   */
+  onCarrier?: (raw: string) => string | null;
 }): ScannerApi {
   const { enabled } = options;
   // handleResult is a stable useCallback and a dependency of the getUserMedia effect,
@@ -331,10 +343,17 @@ export function useScanner(options: {
     if (read.kind === "carrier") {
       // FR-3: this frame holds a code, so whatever a standing refusal was about has left the
       // frame — the same thing `decoded` says for a VIN, and the machine's to record rather
-      // than the screen's: the screen owns §6.4's rejection, not the refusal, and `onCarrier`
-      // is optional and may navigate away. Dispatched before the hand-over for that reason.
-      dispatch({ type: "carrier" });
-      onCarrierRef.current?.(read.text);
+      // than the screen's.
+      //
+      // FR-6: the screen is asked what it makes of the code first, because its answer is part
+      // of the same fact and belongs in the same dispatch. That inverts FR-3's order, which put
+      // the dispatch ahead of the hand-over in case the hand-over navigated away. It still may,
+      // for a readable payload, and the dispatch after it is harmless: React drops an update to
+      // a reducer nobody is rendering rather than warning about one. `phone-to-phone.spec.ts` is
+      // what holds that path up. What is gained is that the rejection can no longer be held
+      // anywhere but in the machine: one notice, one owner, one lifetime.
+      const message = onCarrierRef.current?.(read.text) ?? null;
+      dispatch({ type: "carrier", raw: read.text, message });
       return;
     }
     if (read.kind === "refusal") {
@@ -555,6 +574,7 @@ export function useScanner(options: {
   return {
     state: machine.state,
     refusal: machine.refusal,
+    carrierError: machine.carrierError,
     videoRef,
     torch,
     focus,
