@@ -7,7 +7,7 @@ export default defineConfig({
   define: { __BUILD_YEAR__: buildYear() },
   test: {
     environment: "node",
-    include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
+    include: ["src/**/*.test.ts", "src/**/*.test.tsx", "tests/*.test.ts"],
     setupFiles: ["./src/lib/storage/test-setup.ts"],
     coverage: {
       provider: "v8",

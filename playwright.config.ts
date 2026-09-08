@@ -42,6 +42,9 @@ const PAGES_URL = "http://localhost:4174/vinreader/";
 export default defineConfig({
   testDir: "./tests/e2e",
   timeout: 45_000,
+  // [ENV-1] Removes the fake-camera videos a killed or out-of-space run could not.
+  // Once, in this process, before any worker exists — see `tests/e2e/global-setup.ts`.
+  globalSetup: "./tests/e2e/global-setup.ts",
   projects: [
     { name: "light", testMatch: LIGHT_SPEC, use: { colorScheme: "light", launchOptions: launch } },
     // Its own project because it is the only one pointed at the other server: `baseURL` is
