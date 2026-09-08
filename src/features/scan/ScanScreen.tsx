@@ -155,9 +155,39 @@ export function ScanScreen() {
    * with the banner that is actually asking the user something. So it is derived rather than
    * stored: no sighting, no stale rejection. The two ways back to `streaming` clear the
    * message itself, so a rescan starts from silence and re-reports only what is still there.
+   *
+   * FR-4 adds the other sighting that ends this code's turn in the frame: a refusal §6.3 has
+   * agreed on. The state guard above covers only `candidate`/`confirmed`, and a refusal leaves
+   * the machine `streaming` (N1) — so a phone shown a code this app cannot read and then a
+   * sticker §4.2 refuses carried both banners at once, each with its own "Keep scanning", the
+   * first about a code that had left the frame (N2) beside the one actually asking the user
+   * something (P7). FR-3's mirror image, and it survived FR-3 because the two banners are held
+   * in different places: the refusal is the machine's, this is the screen's.
+   *
+   * **The precedence is §6.3's, not this state's.** Neither notice outranks the other by kind;
+   * each yields to the other's *established* sighting, because the only thing either has to go
+   * on is what the camera last read. What "established" takes differs, and that is where the
+   * asymmetry comes from: a §4.9 carrier identifies itself, so one frame is proof of it, while
+   * a refusal is a claim about arbitrary bytes and §6.3's two-read agreement is what makes it a
+   * fact (FR-2's anti-strobe rule). So with both codes in one frame and the decoder alternating
+   * between them, FR-3's clear takes the refusal's pending half on every carrier frame, the
+   * refusal never agrees, and this banner holds still and alone — the stickier state winning
+   * only where the other has nothing agreed to say, and yielding on the frame it does.
+   *
+   * **Keyed on the refusal the machine holds, not on the banner.** `showRefusal` is the wrong
+   * term here: "Keep scanning" says the user has read that notice, not that the carrier is back
+   * in front of the camera, so a dismissal would put this older notice back on screen — the
+   * same N2 in a new place. Keyed here rather than by clearing `carrierError`, because clearing
+   * it on a refusal needs an effect and `react-hooks/set-state-in-effect` is right about that
+   * (R3-F5's own reason for deriving), and `dismissedCarrier`/`shownCarrier` are deliberately
+   * untouched: a suppression keyed on this code's text would silently refuse that code for the
+   * rest of the session, which is the opposite of what §6.4 owes it (P7).
    */
   const showCarrier =
-    carrierError !== null && state.kind !== "candidate" && state.kind !== "confirmed";
+    carrierError !== null &&
+    refusal === null &&
+    state.kind !== "candidate" &&
+    state.kind !== "confirmed";
 
   /**
    * FR-2, and the same rule as the line above it: a refusal is about what is in front of
