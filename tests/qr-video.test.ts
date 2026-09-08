@@ -1,4 +1,5 @@
 import {
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -9,6 +10,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
@@ -81,11 +83,16 @@ describe("[ENV-1] the fake-camera videos do not fill the disk", () => {
     const before = tmpEntries();
 
     const first = writeQrY4m("env1-reuse", segments, SCRATCH);
+    // Read before the second call, or the two `statSync`es are the same path twice and the
+    // assertion compares a value to itself — which holds whether anything was reused or not.
+    const published = statSync(first).ino;
+
     const second = writeQrY4m("env1-reuse", segments, SCRATCH);
 
     expect(second).toBe(first);
-    // The second call did not rewrite the bytes: same inode, so nothing was re-drawn.
-    expect(statSync(second).ino).toBe(statSync(first).ino);
+    // Still the file the first call published. A second write goes through a temporary file
+    // and `rename`, so re-drawing these bytes could not leave this inode in place.
+    expect(statSync(second).ino).toBe(published);
     expect(dirname(first)).toBe(SCRATCH);
     // No `mkdtemp` directory of its own — the whole shape of the leak.
     expect(tmpEntries()).toEqual(before);
@@ -213,8 +220,50 @@ describe("[ENV-1] the fake-camera videos do not fill the disk", () => {
   });
 
   it("keeps every video of a suite in one directory under the temp root", () => {
-    expect(dirname(QR_CACHE_DIR)).toBe(tmpdir());
-    // `rm -rf /tmp/vinrelay-*` — the documented recovery — still finds it.
-    expect(basename(QR_CACHE_DIR).startsWith("vinrelay-")).toBe(true);
+    // No `dir` argument: this is the call every camera spec makes, and a `mkdtemp` per call
+    // hiding behind the default is ENV-1 itself. Pinning only the constant would not see it.
+    const path = writeQrY4m("env1-default", [[ONE, 1]]);
+    try {
+      expect(dirname(path)).toBe(QR_CACHE_DIR);
+      expect(dirname(QR_CACHE_DIR)).toBe(tmpdir());
+      // `rm -rf /tmp/vinrelay-*` — the documented recovery — still finds it.
+      expect(basename(QR_CACHE_DIR).startsWith("vinrelay-")).toBe(true);
+    } finally {
+      // The only test that writes into the real cache, so it leaves it as it found it —
+      // quietly, including when the assertion above is failing because that directory is
+      // not where the video went. A cleanup that throws would report itself instead of it.
+      rmSync(path, { force: true });
+      if (existsSync(QR_CACHE_DIR) && readdirSync(QR_CACHE_DIR).length === 0) {
+        rmSync(QR_CACHE_DIR, { recursive: true });
+      }
+    }
+  });
+
+  /**
+   * [ENV-1b] The bytes every camera spec is fed, pinned.
+   *
+   * Nothing else here notices `lumaOf` filling the background with 0xfe instead of 0xff, or a
+   * header saying F15:1 instead of F30:1. Either silently re-points all eight specs at a
+   * different input, and — worse — a video cached before the change outlives it, because
+   * `RECIPE` is what invalidates the cache and neither edit touches it.
+   *
+   * The header and digest are restated here as literals on purpose. Deriving them from the
+   * module under test is what made the two assertions this round replaced unfalsifiable: a
+   * golden value has to come from outside the thing it measures.
+   *
+   * If this reddens after a deliberate change to the drawing or the header, bump `RECIPE` in
+   * `tests/e2e/qr-video.ts` so no stale entry survives, then update the digest below.
+   */
+  it("[ENV-1b] pins the exact bytes it hands the fake camera", () => {
+    const path = writeQrY4m("env1-pinned", [["ENV1-PINNED-FRAME", 1]], SCRATCH);
+    const buf = readFileSync(path);
+
+    expect(buf.subarray(0, buf.indexOf(0x0a) + 1).toString("ascii")).toBe(
+      "YUV4MPEG2 W1280 H720 F30:1 Ip A1:1 C420\n",
+    );
+    expect(buf.length).toBe(1_382_446);
+    expect(createHash("sha256").update(buf).digest("hex")).toBe(
+      "61e42d8722b866bf42de8f0145d16b7f2d7e7123fd59671a5b831332a5e7704f",
+    );
   });
 });
