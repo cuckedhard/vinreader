@@ -191,6 +191,38 @@ describe("[FR-2] a refusal is about the code in the frame, and does not outlive 
     expect(decoded.refusalSeen).toBeNull();
   });
 
+  it("is dropped by one of the app's own §4.9 codes in the frame (FR-3)", () => {
+    // A carrier is a code in the frame, so the refused code is not what the camera is
+    // looking at any more — the same fact `decoded` reports above, and the reason FR-3 was
+    // two banners at once: §6.4's "Couldn't read that code" beside a refusal about a code
+    // that had left the frame, each offering "Keep scanning" (N2, P7).
+    const carrier = scanReducer(showing(), { type: "carrier" });
+    expect(carrier.refusal).toBeNull();
+    expect(carrier.refusalSeen).toBeNull();
+    // §4.10 gains no state for a carrier, and the stream is never stopped for one (N1, N6).
+    expect(carrier.state).toEqual({ kind: "streaming" });
+
+    // The pending half goes too, or a frame from before the carrier would agree with one
+    // from after it and raise a banner about the code that has just been replaced.
+    const pending = run(
+      [refused(PART, EPOCH), { type: "carrier" }, refused(PART, EPOCH + 200)],
+      streaming(),
+    );
+    expect(pending.refusal).toBeNull();
+
+    // And nothing to clear is the same machine, not a copy of it: the code decodes several
+    // times a second, and a fresh machine per frame would re-render the screen at the decode
+    // rate for no change.
+    const quiet = streaming();
+    expect(scanReducer(quiet, { type: "carrier" })).toBe(quiet);
+
+    // A late frame out of ZXing's already-queued timer describes a scene nobody is pointing
+    // at, so it cannot take down an answer that is still true (the same guard `refused` and
+    // `decoded` are read under; a short hide keeps the refusal, below).
+    const hidden = scanReducer(showing(), { type: "hidden", atMs: EPOCH + 300 });
+    expect(scanReducer(hidden, { type: "carrier" }).refusal?.raw).toBe(PART);
+  });
+
   it("is dropped by every restart of the camera", () => {
     for (const action of [MOUNT, { type: "retry", secureContext: true } as ScanAction]) {
       const after = scanReducer(showing(), action);

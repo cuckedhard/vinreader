@@ -61,9 +61,9 @@ export interface ScanMachine {
 
 /**
  * No refusal, agreed or pending. Spread wherever the machine restarts the camera or takes
- * a VIN in, because a refusal is about the code in the frame and each of those is a fresh
- * look at the scene (R3-F5: a notice that outlives what it describes is a guess shown as a
- * fact, N2).
+ * in a VIN or one of the app's own §4.9 codes (FR-3), because a refusal is about the code in
+ * the frame and each of those is a fresh look at the scene (R3-F5: a notice that outlives
+ * what it describes is a guess shown as a fact, N2).
  *
  * `rescan` and `accepted` deliberately do NOT spread it, and it is not an omission: both
  * act on a `confirmed` machine, `decoded` is the only way into `confirmed`, and `decoded`
@@ -84,6 +84,13 @@ export type ScanAction =
    * §6.4 rules that garbage keeps the scanner going.
    */
   | { type: "refused"; refusal: NoVin; atMs: number }
+  /**
+   * One of the app's own §4.9 carriers in the frame (FR-3). It carries no payload and moves
+   * no state: the screen owns §6.4's rejection and the route it opens, and §4.10 gains no
+   * state for a carrier — a carrier read owns neither the camera nor the status line, exactly
+   * as a refusal does not. All this says is that the frame has moved on.
+   */
+  | { type: "carrier" }
   /**
    * The §6.3 agreement window running out under a standing candidate. The hook owns the
    * timer and stamps the instant; the reducer only compares it, so P3 holds.
@@ -221,6 +228,29 @@ export function scanReducer(machine: ScanMachine, action: ScanAction): ScanMachi
         refusalSeen: { refusal, atMs },
         refusal: agrees ? refusal : machine.refusal,
       };
+    }
+
+    case "carrier": {
+      // A late frame from a stopped or hidden stream describes a scene nobody is pointing at,
+      // exactly as it cannot resurrect a candidate or raise a refusal.
+      if (!isLive(machine)) return machine;
+      // FR-3: a §4.9 carrier is a *code* in the frame, so the code a standing refusal is about
+      // is not what the camera is looking at any more — the same fact `decoded` reports for a
+      // VIN, for the same reason (R3-F5, N2). It has to be said here because `readScanResult`
+      // answers a carrier above `extractVinExplained` and nothing else told the machine the
+      // frame had moved on: §6.4's "Couldn't read that code" then rendered beside a refusal
+      // about a code that had left the frame, two banners each offering "Keep scanning", one
+      // of them answering a read no longer on screen (P7). The pending half goes with it, or a
+      // frame from before the carrier could agree with one from after it and raise a banner
+      // about the code that has just been replaced.
+      //
+      // Identical when there is nothing to clear, and `refused` is the only writer of either
+      // field and always writes both, so an empty `refusalSeen` means an empty `refusal` too.
+      // The same code decodes several times a second and a fresh machine per frame would
+      // re-render the screen at the decode rate for no change — the property `handleCarrier`'s
+      // `setState` of an unchanged string already keeps on this path.
+      if (machine.refusalSeen === null) return machine;
+      return { ...machine, ...NO_REFUSAL };
     }
 
     case "tick": {

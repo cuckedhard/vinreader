@@ -329,6 +329,11 @@ export function useScanner(options: {
     const read = readScanResult(result, Date.now());
     if (read === null) return;
     if (read.kind === "carrier") {
+      // FR-3: this frame holds a code, so whatever a standing refusal was about has left the
+      // frame — the same thing `decoded` says for a VIN, and the machine's to record rather
+      // than the screen's: the screen owns §6.4's rejection, not the refusal, and `onCarrier`
+      // is optional and may navigate away. Dispatched before the hand-over for that reason.
+      dispatch({ type: "carrier" });
       onCarrierRef.current?.(read.text);
       return;
     }
