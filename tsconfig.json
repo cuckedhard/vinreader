@@ -19,13 +19,17 @@
     "noFallthroughCasesInSwitch": true,
     "noImplicitOverride": true
   },
-  "include": [
-    "src",
-    "scripts",
-    "bench",
-    "vite.config.ts",
-    "vite.demo.config.ts",
-    "vite.pages.config.ts",
-    "vitest.config.ts"
-  ]
+  // [GATE-1] §13.5 · §7 item 1. This list *is* what the gate reads: `bun run typecheck` is a
+  // bare `tsc --noEmit` and `bun run build` is that same command followed by `vite build`, so
+  // anything missing here is reported green in both halves without ever having been opened.
+  // `tests` is here because 46 spec and helper files were not, and the four enumerated vite /
+  // vitest configs are now `*.config.ts` because enumeration is what let `playwright.config.ts`
+  // and `vitest.stryker.config.ts` be added and never appended. The specs share this program
+  // rather than getting their own: nothing uses a runner's globals (every spec imports `test`
+  // and `expect`), both trees want the same `lib` — DOM inside `page.evaluate`, node built-ins
+  // outside it — and a second config would mean two commands to keep in sync, which is the
+  // failure this row is about. Same strictness for tests as for `src`, deliberately. There is
+  // no `exclude`, and none is wanted: `include` is the allowlist and adding an `exclude` would
+  // make it possible to subtract from it silently.
+  "include": ["src", "scripts", "bench", "tests", "*.config.ts"]
 }
