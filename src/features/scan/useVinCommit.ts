@@ -93,6 +93,17 @@ export function useVinCommit(): VinCommitApi {
       if (!candidate.checkDigitValid && checkDigitApplies(candidate.vin)) {
         metaRef.current = meta;
         setPending(candidate);
+        // R3-E: a failed write's banner stays up on purpose — the record does not exist and
+        // §6.4 says so — but it is about *that* read, and holding a new one replaces it.
+        // `ScanScreen` answers a failed Use as-is with `rescan()` and no `dismiss()`, because
+        // `accept` is what records §6.3's cooldown and dismissing there would enter a VIN
+        // nothing wrote into it; so the camera restarts with the banner standing, the same
+        // label re-confirms, and two banners contradict each other — the write failure now
+        // describing a read that is gone (N2), beside the one actually asking the user
+        // something (P7). Cleared here rather than in either screen because both reach this
+        // branch, and because the fact it turns on is this hook's: nothing is written yet.
+        // Nothing is silenced — Use as-is attempts the same write again and reports it again.
+        setError(null);
         return false;
       }
       return write(candidate, meta);
