@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import type { RefObject } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useNavigate, useParams } from "react-router";
 import { FailureNotice } from "../../app/ErrorBoundary";
@@ -41,6 +42,34 @@ const DECODE_FAILED = "Couldn't reach NHTSA after several tries. Tap Refresh det
  * screen says so itself.
  */
 const PAINT_CAPTURE = "Read the code with the camera";
+
+/**
+ * The paint block's id, and the thing that makes the sheet's fold say a paint code exists.
+ *
+ * RCH-1. `#/v/:vin/paint` has exactly one door in the whole app — `PAINT_CAPTURE` below —
+ * and it sits inside "Your notes", which on a real record is ~1,000 px down a ~2,200 px
+ * sheet: measured 0 of 48 px inside `main`'s scroll clip at 390×844 *and* at the end of the
+ * scroll, and the same at 320×658. A user reported he could not find it, and he was right
+ * to: everything above it (the structural block, the vPIC groups, Refresh, "Your notes",
+ * Unit) has to be scrolled past, and nothing up there said a paint code existed at all, so
+ * there was no reason to scroll.
+ *
+ * The problem is not that it needs scrolling — §6.2 puts Delete at the very bottom of this
+ * same sheet on purpose, and flicking to the end of a screen is a thing people do. The
+ * problem is that nothing announced it. So the announcement goes where §6.2 already puts a
+ * control that reports on something not otherwise on this screen — beside the VIN, next to
+ * the sync chip — and it takes the user to the block rather than duplicating it, by the
+ * same `scrollIntoView({ block: "nearest" })` F8 used for the armed delete, R3-F1 for the
+ * carrier rejection and SH-4 for the share failure. No fifth mechanism, and nothing moves:
+ * §6.2's ordering, the field's own provenance argument (`./paintHint`) and every string on
+ * the screen are exactly as they were. The label is `PAINT_LABEL`, the same constant the
+ * field below carries (§7 item 5), so the sheet gains no sentence it did not already say.
+ *
+ * `aria-controls` is the machine-readable half of the same statement, and it is what
+ * `tests/e2e/reachability.spec.ts` reads: a door below the fold passes only when a control
+ * the user can see names the region holding it.
+ */
+const PAINT_BLOCK_ID = "sheet-paint-block";
 
 /** §4.4: with a vPIC `ModelYear` on screen, the structural year row is dropped, not rewritten. */
 const NO_STRUCTURAL_YEAR: ModelYear = { candidates: [], resolved: null };
@@ -127,7 +156,14 @@ function DecodeSection({ record }: { record: VehicleRecord }) {
   );
 }
 
-function MetaEditor({ record }: { record: VehicleRecord }) {
+function MetaEditor({
+  record,
+  paintRef,
+}: {
+  record: VehicleRecord;
+  /** Held by `SheetScreen`, so the fold's announcement can scroll this block into view. */
+  paintRef: RefObject<HTMLDivElement | null>;
+}) {
   const navigate = useNavigate();
   const [unit, setUnit] = useState(record.unit ?? "");
   const [paint, setPaint] = useState(record.paint ?? "");
@@ -198,7 +234,15 @@ function MetaEditor({ record }: { record: VehicleRecord }) {
        * `1/I` — and not a claim about the format. No placeholder either: a greyed example
        * inside an empty box is a code the eye can take for this vehicle's.
        */}
-      <div className="flex flex-col gap-2">
+      <div
+        id={PAINT_BLOCK_ID}
+        ref={paintRef}
+        // Focusable only as the target of the fold's announcement, never in the tab order:
+        // the jump moves focus here so a keyboard user lands where a thumb would, and the
+        // next Tab reaches the field and then the camera.
+        tabIndex={-1}
+        className="flex flex-col gap-2"
+      >
         <label htmlFor="sheet-paint" className={LABEL}>
           {PAINT_LABEL}
         </label>
@@ -316,6 +360,20 @@ export default function SheetScreen({ vin: vinProp, onDeleted }: SheetScreenProp
   const vin = asciiUpper((vinProp ?? params.vin ?? "").trim());
   const back = embedded ? undefined : () => void navigate("/history");
 
+  /**
+   * The far end of the fold's announcement (see `PAINT_BLOCK_ID`). `block: "nearest"`
+   * scrolls the least it can, so a wide screen already showing the block does not move
+   * under a thumb; the focus move is what makes the same signpost work from a keyboard,
+   * and `preventScroll` keeps the browser from re-deciding the scroll that just happened.
+   */
+  const paintRef = useRef<HTMLDivElement | null>(null);
+  function showPaint(): void {
+    const block = paintRef.current;
+    if (block === null) return;
+    block.scrollIntoView({ block: "nearest" });
+    block.focus({ preventScroll: true });
+  }
+
   // F1-b: the live query below never emits when the database never opened — Dexie filters
   // `DatabaseClosedError` before `observer.error`, so nothing throws and the boundary above
   // this screen is never reached. Without this signal `record` stays `undefined` and the
@@ -369,7 +427,15 @@ export default function SheetScreen({ vin: vinProp, onDeleted }: SheetScreenProp
         <h1>
           <VinDisplay vin={record.vin} size="lg" />
         </h1>
-        <SyncChip className="shrink-0" />
+        <div className="flex shrink-0 flex-wrap items-center gap-3">
+          {/* RCH-1, see PAINT_BLOCK_ID: the sheet's fold saying that a paint code exists,
+              and the way to it. Secondary, because it is a signpost and not the action —
+              the field and the camera below it are the two routes, and this is neither. */}
+          <Button variant="secondary" aria-controls={PAINT_BLOCK_ID} onClick={showPaint}>
+            {PAINT_LABEL}
+          </Button>
+          <SyncChip />
+        </div>
       </div>
 
       <StructuralBlock vin={record.vin} structural={structural} />
@@ -386,7 +452,7 @@ export default function SheetScreen({ vin: vinProp, onDeleted }: SheetScreenProp
        */}
       <DecodeSection key={`decode-${record.vin}`} record={record} />
 
-      <MetaEditor key={`meta-${record.vin}`} record={record} />
+      <MetaEditor key={`meta-${record.vin}`} record={record} paintRef={paintRef} />
 
       {/* §9-S3: the handoff actions sit below the record they act on. */}
       <Actions key={`actions-${record.vin}`} record={record} />
