@@ -25,11 +25,32 @@ const launch = process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIU
  */
 const LIGHT_SPEC = /light-theme\.spec\.ts/;
 
+/**
+ * The one spec that runs against the GitHub Pages build instead of the root one.
+ *
+ * It needs three things no other project can give it at once: `base: "/vinreader/"`, a
+ * *registered* service worker, and plain `http://localhost` — which is a secure context
+ * without a certificate, so the worker registers where the preview server's self-signed
+ * one stops Chromium cold. Every OCR test before it ran with no worker at the site root,
+ * which is why a feature that could not start on the deployed build shipped green.
+ */
+const PAGES_SPEC = /pages-service-worker\.spec\.ts/;
+
+/** Where the second server serves the Pages artifact from. */
+const PAGES_URL = "http://localhost:4174/vinreader/";
+
 export default defineConfig({
   testDir: "./tests/e2e",
   timeout: 45_000,
   projects: [
     { name: "light", testMatch: LIGHT_SPEC, use: { colorScheme: "light", launchOptions: launch } },
+    // Its own project because it is the only one pointed at the other server: `baseURL` is
+    // the sub-path, and `ignoreHTTPSErrors` is irrelevant because there is no certificate.
+    {
+      name: "pages",
+      testMatch: PAGES_SPEC,
+      use: { baseURL: PAGES_URL, launchOptions: launch },
+    },
     // `dependencies` is what puts the light guard inside the gate: §13.5 runs `bun run test:e2e`,
     // which is `--project=desktop`, and Playwright runs a project's dependencies with it. The
     // cost is that a red light run skips desktop instead of running it alongside — the cleaner
@@ -37,20 +58,20 @@ export default defineConfig({
     // package.json's line to change.
     {
       name: "desktop",
-      testIgnore: LIGHT_SPEC,
-      dependencies: ["light"],
+      testIgnore: [LIGHT_SPEC, PAGES_SPEC],
+      dependencies: ["light", "pages"],
       use: { launchOptions: launch },
     },
     // The Android profiles exist for §6.1's target sizes, which the light spec does not measure,
     // so they skip it rather than paying for it twice.
     {
       name: "pixel-7",
-      testIgnore: LIGHT_SPEC,
+      testIgnore: [LIGHT_SPEC, PAGES_SPEC],
       use: { ...devices["Pixel 7"], launchOptions: launch },
     },
     {
       name: "galaxy-s9",
-      testIgnore: LIGHT_SPEC,
+      testIgnore: [LIGHT_SPEC, PAGES_SPEC],
       use: { ...devices["Galaxy S9+"], launchOptions: launch },
     },
   ],
@@ -62,13 +83,29 @@ export default defineConfig({
     // Use the Chromium already on the machine rather than downloading one.
     launchOptions: launch,
   },
-  webServer: {
-    // Build first: `vite preview` serves dist/, so without this the suite silently
-    // tests whatever was built last.
-    command: "bun run build && npx vite preview --port 4173 --strictPort",
-    url: "https://localhost:4173",
-    ignoreHTTPSErrors: true,
-    reuseExistingServer: false,
-    timeout: 60_000,
-  },
+  webServer: [
+    {
+      // Build first: `vite preview` serves dist/, so without this the suite silently
+      // tests whatever was built last.
+      command: "bun run build && npx vite preview --port 4173 --strictPort",
+      url: "https://localhost:4173",
+      ignoreHTTPSErrors: true,
+      reuseExistingServer: false,
+      timeout: 60_000,
+    },
+    {
+      // The same build `bun run pages:build` deploys — same config, same `base`, same
+      // output — into a scratch folder rather than `docs/`. `docs/` is a committed
+      // deployment artifact refreshed on its own schedule, so a guard reading it would
+      // certify the last deploy instead of this tree, and would be red for every commit
+      // between a fix and the deployment of it.
+      command:
+        "npx vite build --config vite.pages.config.ts --outDir dist-pages && " +
+        "npx vite preview --config vite.pages.config.ts --outDir dist-pages " +
+        "--port 4174 --strictPort",
+      url: PAGES_URL,
+      reuseExistingServer: false,
+      timeout: 120_000,
+    },
+  ],
 });

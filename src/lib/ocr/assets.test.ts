@@ -22,7 +22,12 @@ import {
   type OcrCacheLike,
 } from "./assets";
 import { OCR_ASSETS, OCR_ASSET_LIST, OCR_TOTAL_BYTES } from "./assets.generated";
-import { OCR_CACHE_NAME } from "./constants";
+import {
+  OCR_CACHE_NAME,
+  OCR_MODEL_CONTENT_TYPE,
+  OCR_SCRIPT_CONTENT_TYPE,
+  ocrContentType,
+} from "./constants";
 import { TESSDATA } from "./traineddata";
 import { OcrError, type OcrProgress } from "./types";
 
@@ -33,15 +38,30 @@ const REAL: Record<string, Uint8Array<ArrayBuffer>> = Object.fromEntries(
   OCR_ASSET_LIST.map((spec) => [spec.file, Uint8Array.from(readFileSync(`${DIR}${spec.file}`))]),
 );
 
+/**
+ * Cache Storage, as far as this module is concerned — and headers included.
+ *
+ * It keeps `content-type` as well as `content-length` because the real one does, and
+ * because the type is what the service worker hands the browser's own script loads. A
+ * fake that dropped it could not tell a stored entry the engine can run from one it
+ * cannot, which is exactly the gap the deployed build fell through.
+ *
+ * `new Response(bytes, ...)` sets no `content-type` of its own, so an entry stored without
+ * the header reads back as `null` here the same way it does in a browser.
+ */
 class FakeCache implements OcrCacheLike {
-  readonly entries = new Map<string, { bytes: Uint8Array<ArrayBuffer>; length: string | null }>();
+  readonly entries = new Map<
+    string,
+    { bytes: Uint8Array<ArrayBuffer>; length: string | null; type: string | null }
+  >();
   readonly deleted: string[] = [];
 
   async match(url: string): Promise<Response | undefined> {
     const entry = this.entries.get(url);
     if (entry === undefined) return undefined;
-    const headers: Record<string, string> =
-      entry.length === null ? {} : { "content-length": entry.length };
+    const headers: Record<string, string> = {};
+    if (entry.length !== null) headers["content-length"] = entry.length;
+    if (entry.type !== null) headers["content-type"] = entry.type;
     return new Response(entry.bytes, { headers });
   }
 
@@ -49,6 +69,7 @@ class FakeCache implements OcrCacheLike {
     this.entries.set(url, {
       bytes: new Uint8Array(await response.arrayBuffer()) as Uint8Array<ArrayBuffer>,
       length: response.headers.get("content-length"),
+      type: response.headers.get("content-type"),
     });
   }
 
@@ -183,6 +204,7 @@ describe("ensureOcrAssets", () => {
     h.cache.entries.set(url, {
       bytes: Uint8Array.from(REAL[OCR_ASSETS.core.file].subarray(0, 100)),
       length: "100",
+      type: ocrContentType(OCR_ASSETS.core.file),
     });
     h.fetched.length = 0;
 
@@ -194,9 +216,83 @@ describe("ensureOcrAssets", () => {
 
   it("refetches an entry stored without a length rather than trusting it", async () => {
     const url = ocrAssetUrl(BASE, OCR_ASSETS.runtime.file);
-    h.cache.entries.set(url, { bytes: REAL[OCR_ASSETS.runtime.file], length: null });
+    h.cache.entries.set(url, {
+      bytes: REAL[OCR_ASSETS.runtime.file],
+      length: null,
+      type: ocrContentType(OCR_ASSETS.runtime.file),
+    });
     await ensureOcrAssets(BASE, h.deps);
     expect(h.fetched).toContain(url);
+  });
+
+  /**
+   * The bug that shipped: OCR could not start at all on the deployed build.
+   *
+   * These entries are not private to this module. The service worker's `OCR_ASSET_ROUTE`
+   * serves them cache-first to *the browser's own* script loads — the dynamic `import()`
+   * of the runtime, and the `importScripts` the tesseract worker does for the core — and
+   * neither of those goes through any `fetch` this repo controls, so there is no later
+   * place to put the type back. `new Response(bytes)` sets none, and Chromium will not
+   * execute a script whose response has no JavaScript MIME type.
+   *
+   * Measured against `docs/` under `/vinreader/` with the worker active: without this the
+   * capture screen shows "The reader stopped." every time; with the same bytes typed, it
+   * reads the label.
+   */
+  it("stores each asset with the type the service worker will serve it under", async () => {
+    await ensureOcrAssets(BASE, h.deps);
+
+    for (const spec of OCR_ASSET_LIST) {
+      const entry = h.cache.entries.get(ocrAssetUrl(BASE, spec.file))!;
+      expect(entry.type, spec.file).toBe(ocrContentType(spec.file));
+    }
+    // Named, not merely self-consistent: the three scripts are script — the core included,
+    // because it is emscripten's base64-embedded `.wasm.js` and not `application/wasm` —
+    // and the model is data.
+    expect(h.cache.entries.get(ocrAssetUrl(BASE, OCR_ASSETS.runtime.file))!.type).toBe(
+      OCR_SCRIPT_CONTENT_TYPE,
+    );
+    expect(h.cache.entries.get(ocrAssetUrl(BASE, OCR_ASSETS.worker.file))!.type).toBe(
+      OCR_SCRIPT_CONTENT_TYPE,
+    );
+    expect(h.cache.entries.get(ocrAssetUrl(BASE, OCR_ASSETS.core.file))!.type).toBe(
+      OCR_SCRIPT_CONTENT_TYPE,
+    );
+    expect(h.cache.entries.get(ocrAssetUrl(BASE, OCR_ASSETS.model.file))!.type).toBe(
+      OCR_MODEL_CONTENT_TYPE,
+    );
+  });
+
+  it("drops an entry stored without a type rather than serving one no browser will run", async () => {
+    // What every install that ever tapped "Read the code" on the broken build is carrying:
+    // the right bytes, the right length, and no `content-type`. Length alone said the hit
+    // was good, so it would have been served — and refused — for the life of the install.
+    const url = ocrAssetUrl(BASE, OCR_ASSETS.core.file);
+    h.cache.entries.set(url, {
+      bytes: REAL[OCR_ASSETS.core.file],
+      length: String(OCR_ASSETS.core.bytes),
+      type: null,
+    });
+
+    await ensureOcrAssets(BASE, h.deps);
+
+    expect(h.cache.deleted).toContain(url);
+    expect(h.fetched).toContain(url);
+    expect(h.cache.entries.get(url)!.type).toBe(OCR_SCRIPT_CONTENT_TYPE);
+  });
+
+  it("drops an entry typed as something else, which is a different asset's bytes", async () => {
+    const url = ocrAssetUrl(BASE, OCR_ASSETS.worker.file);
+    h.cache.entries.set(url, {
+      bytes: REAL[OCR_ASSETS.worker.file],
+      length: String(OCR_ASSETS.worker.bytes),
+      type: OCR_MODEL_CONTENT_TYPE,
+    });
+
+    await ensureOcrAssets(BASE, h.deps);
+
+    expect(h.cache.deleted).toContain(url);
+    expect(h.cache.entries.get(url)!.type).toBe(OCR_SCRIPT_CONTENT_TYPE);
   });
 
   it("refuses bytes that are not the bytes this build shipped, and stores nothing", async () => {

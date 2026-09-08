@@ -16,3 +16,7 @@ bench/*.quick.json
 .stryker-tmp
 reports
 stryker-setup-*.js
+
+# The Pages artifact the service-worker guard is built into (playwright.config.ts).
+# `docs/` is the committed one; this is a scratch copy of the same build.
+dist-pages

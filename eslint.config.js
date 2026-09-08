@@ -9,6 +9,9 @@ export default tseslint.config(
       "dist",
       "dist-demo",
       "docs",
+      // The Pages artifact the service-worker guard is built into (`playwright.config.ts`).
+      // Same build as `docs/`, a folder that is not committed.
+      "dist-pages",
       "dev-dist",
       "coverage",
       "node_modules",

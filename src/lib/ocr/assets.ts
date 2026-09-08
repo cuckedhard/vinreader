@@ -17,7 +17,7 @@
  * Not pure: it fetches and it writes to Cache Storage. Both arrive through `OcrAssetDeps`.
  */
 import { OCR_ASSET_LIST, OCR_ASSETS, OCR_TOTAL_BYTES, type OcrAssetSpec } from "./assets.generated";
-import { OCR_ASSET_DIR, OCR_CACHE_NAME } from "./constants";
+import { OCR_ASSET_DIR, OCR_CACHE_NAME, ocrContentType } from "./constants";
 import { dictionaryComponents } from "./traineddata";
 import { OcrError, type OcrProgress } from "./types";
 
@@ -112,6 +112,14 @@ async function verify(spec: OcrAssetSpec, bytes: Uint8Array, deps: OcrAssetDeps)
  */
 const LENGTH_HEADER = "content-length";
 
+/**
+ * And the type, which is not decoration: the service worker serves these entries verbatim
+ * to the browser's own script loads, and Chromium will not execute a script whose response
+ * has no JavaScript MIME type (`ocrContentType`). An entry stored without it is as unusable
+ * as a truncated one, so it is checked on a hit exactly the way the length is.
+ */
+const TYPE_HEADER = "content-type";
+
 async function fetchAndStore(
   cache: OcrCacheLike,
   url: string,
@@ -137,7 +145,10 @@ async function fetchAndStore(
   await cache.put(
     url,
     new Response(bytes as unknown as BodyInit, {
-      headers: { [LENGTH_HEADER]: String(bytes.length) },
+      headers: {
+        [LENGTH_HEADER]: String(bytes.length),
+        [TYPE_HEADER]: ocrContentType(spec.file),
+      },
     }),
   );
   return bytes;
@@ -171,7 +182,12 @@ export async function ensureOcrAssets(
 
     const hit = await cache.match(url);
     const storedLength = hit === undefined ? null : Number(hit.headers.get(LENGTH_HEADER));
-    if (hit !== undefined && storedLength === spec.bytes) {
+    const storedType = hit === undefined ? null : hit.headers.get(TYPE_HEADER);
+    if (
+      hit !== undefined &&
+      storedLength === spec.bytes &&
+      storedType === ocrContentType(spec.file)
+    ) {
       if (wanted) {
         model = new Uint8Array(await hit.arrayBuffer());
         await verify(spec, model, deps);
@@ -179,8 +195,10 @@ export async function ensureOcrAssets(
       report(spec.bytes);
       continue;
     }
-    // A hit that does not match the manifest is a stale or truncated entry: drop it and
-    // fetch, rather than serving it and letting the engine fail somewhere further away.
+    // A hit that does not match the manifest is a stale, truncated or untyped entry: drop
+    // it and fetch, rather than serving it and letting the engine fail somewhere further
+    // away. The untyped case is what a build before this check left behind, and it heals
+    // on the next run instead of surviving for the life of the install.
     if (hit !== undefined) await cache.delete(url);
     const bytes = await fetchAndStore(cache, url, spec, deps, options, report);
     if (wanted) model = bytes;

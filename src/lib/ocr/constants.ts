@@ -20,6 +20,38 @@ export const OCR_CACHE_NAME = "vin-relay-ocr-v1";
 export const OCR_ASSET_DIR = "ocr/";
 
 /**
+ * The `Content-Type` a cached engine asset is stored under, and the whole reason OCR
+ * could not start on the deployed build.
+ *
+ * `assets.ts` writes its verified bytes into the same bucket `OCR_ASSET_ROUTE` serves
+ * from, so whatever it stores is what every later load of an `ocr/` URL gets — including
+ * the ones the browser makes itself, which no `fetch` in this repo can re-type on the way
+ * past. A `Response` built from a `Uint8Array` carries no `Content-Type` at all, and
+ * Chromium refuses a JavaScript load without a JavaScript MIME type: measured against the
+ * Pages build under `/vinreader/` with the service worker active, `import()` of the
+ * runtime fails the module MIME check on a controlled page, and `importScripts` of the
+ * core throws `NetworkError: ... failed to load` inside the tesseract worker on one that
+ * is not yet controlled. Same cause, two symptoms, and in both the screen shows
+ * `engine_failed` before a single frame is read.
+ *
+ * Pinned rather than copied off the network response, because that response is what a
+ * host happened to say: GitHub Pages types `.js` correctly today, and an entry that has to
+ * survive in Cache Storage for the life of an install cannot depend on it having.
+ */
+export const OCR_SCRIPT_CONTENT_TYPE = "text/javascript";
+
+/** The model is data, not script. Nothing executes it and nothing sniffs it. */
+export const OCR_MODEL_CONTENT_TYPE = "application/octet-stream";
+
+/**
+ * The type one asset is stored under. Three of the four are JavaScript — the core is
+ * emscripten's base64-embedded `.wasm.js`, which is script and not `application/wasm`.
+ */
+export function ocrContentType(file: string): string {
+  return file.endsWith(".js") ? OCR_SCRIPT_CONTENT_TYPE : OCR_MODEL_CONTENT_TYPE;
+}
+
+/**
  * The URLs the service worker serves from `OCR_CACHE_NAME`, cache-first.
  *
  * Both Vite configs hand this to workbox, so the route and the URLs `assets.ts` builds
