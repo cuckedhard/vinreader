@@ -16,6 +16,7 @@ import {
   payloadFromRecord,
   PayloadError,
   type PayloadErrorKind,
+  summaryFields,
   TEXT_PREFIX,
 } from "./codec";
 import type { Payload } from "./schema";
@@ -553,6 +554,59 @@ describe("payloadFromRecord", () => {
     expect(decodePayload(encodePayload(payloadFromRecord(record(), "Zach's iPhone")))).toEqual(
       payloadFromRecord(record(), "Zach's iPhone"),
     );
+  });
+});
+
+/**
+ * [F5] §4.9: "the payload's summary fields are used immediately so the receiver is useful
+ * offline too". `payloadFromRecord` read the other way, over the same table.
+ */
+describe("summaryFields", () => {
+  it("maps all nine §4.9 summary keys back to the §4.8 fields they mirror", () => {
+    expect(summaryFields(EXAMPLE)).toEqual({
+      ModelYear: "2003",
+      Make: "HONDA",
+      Model: "Accord",
+      // §4.9's example carries `"tr": ""`, and an empty value is not a field (N2).
+      BodyClass: "Sedan/Saloon",
+      EngineModel: "K24A4",
+      FuelTypePrimary: "Gasoline",
+      DriveType: "FWD",
+      GVWR: "Class 1: 6,000 lb or less",
+    });
+  });
+
+  it("carries nothing that is not a §4.9 summary field", () => {
+    // `at`, `u`, `n`, `by` and `pc` have homes of their own on the record (§5.1); none of
+    // them is a vPIC field and none may land in the block §4.8 renders.
+    const keys = Object.keys(summaryFields(EXAMPLE));
+    expect(keys).not.toContain("Unit");
+    expect(keys).not.toContain("Notes");
+    expect(keys).not.toContain("PaintCode");
+    expect(keys).toHaveLength(8);
+  });
+
+  it("is `payloadFromRecord` read backwards, over the same table (§7 item 5)", () => {
+    // A record → payload → fields round trip returns the §4.8 keys the record had, minus
+    // the ones §4.9 has no room for. If the two ever disagreed about which key mirrors
+    // which field, this is where it would show.
+    const source = record();
+    const back = summaryFields(payloadFromRecord(source, null));
+    for (const [key, value] of Object.entries(back)) {
+      expect(source.decode.fields[key], key).toBe(value);
+    }
+    expect(back.PlantCity).toBeUndefined();
+    expect(Object.keys(back)).toHaveLength(9);
+  });
+
+  it("holds nothing for a payload that is a bare VIN", () => {
+    expect(summaryFields({ v: 1, vin: VIN })).toEqual({});
+  });
+
+  it("trims what it keeps and drops what is only whitespace", () => {
+    expect(summaryFields({ v: 1, vin: VIN, mk: "  HONDA  ", md: "   " })).toEqual({
+      Make: "HONDA",
+    });
   });
 });
 

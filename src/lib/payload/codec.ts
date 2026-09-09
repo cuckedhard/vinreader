@@ -102,6 +102,30 @@ export function payloadFromRecord(record: VehicleRecord, deviceLabel: string | n
   return payload;
 }
 
+/**
+ * [F5] §4.9's summary fields as the §4.8 keys they mirror — `payloadFromRecord` read the
+ * other way, over the same `SUMMARY_KEYS` table, so the two cannot disagree about which
+ * key belongs to which field (§7 item 5). Nothing about §4 changes here: this is the
+ * existing map used in the direction an import needs it.
+ *
+ * §4.9: "The receiver runs its own vPIC decode to fill the full sheet; the payload's
+ * summary fields are used immediately so the receiver is useful offline too." These are
+ * those fields, in the shape §5.1's `decode.fields` holds — the same slots the receiver's
+ * own decode fills in later, which is why the import stores them there and leaves the
+ * status `pending` (`upsert.ts`).
+ *
+ * Only the nine. `at`, `u`, `n`, `by` and `pc` have columns of their own on the record and
+ * none of them is a vPIC field, so none may land in the block §4.8 renders (N2).
+ */
+export function summaryFields(payload: Payload): Record<string, string> {
+  const fields: Record<string, string> = {};
+  for (const [key, field] of SUMMARY_KEYS) {
+    const value = payload[key]?.trim();
+    if (value) fields[field] = value;
+  }
+  return fields;
+}
+
 export function encodePayload(payload: Payload): string {
   return base64UrlEncode(new TextEncoder().encode(JSON.stringify(payload)));
 }

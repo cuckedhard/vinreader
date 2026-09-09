@@ -41,6 +41,17 @@ export type UpsertInput = {
    * replaces a stored one; see the rule below.
    */
   paint?: string | null;
+  /**
+   * [F5] §4.9's summary fields, keyed as §4.8's vPIC fields (`summaryFields` in
+   * `codec.ts`). Carried by an import and by nothing else: a scan has the 17 characters and
+   * no catalog data at all.
+   *
+   * §4.9: "the payload's summary fields are used immediately so the receiver is useful
+   * offline too". They land in `decode.fields` — the slots §4.8 renders and the receiver's
+   * own vPIC decode fills in later — and they never move `decode.status` off `pending`, so
+   * §5.4 still asks NHTSA and §4.12 never mistakes a sender's three fields for an answer.
+   */
+  summary?: Record<string, string>;
 };
 
 /** §5.1: every S0 record starts pending; S2 fills it in. */
@@ -86,6 +97,39 @@ function keptOverIncoming(
   incoming: string | null,
 ): string | null {
   return meaningful(stored) === null ? incoming : (stored ?? null);
+}
+
+/**
+ * §5.3: "keep existing `decode` if `status ∈ {ok, partial, unsupported}`" — the three
+ * statuses that mean vPIC answered about this VIN. Stated here as §5.3's own sentence
+ * rather than imported from `sync/merge.ts`'s `decodeRank`, which mirrors §4.12's SQL and
+ * already imports `pendingDecode` from this file: a cycle between the write path and the
+ * merge rules would cost more than one three-member list.
+ */
+const ANSWERED_BY_VPIC: readonly VehicleDecode["status"][] = ["ok", "partial", "unsupported"];
+
+/**
+ * [F5] §4.9's summary fields on the way in: they fill the block §4.8 renders and nothing
+ * else about the decode moves.
+ *
+ * - A decode vPIC answered is kept whole (§5.3). A sender's summary is not better than an
+ *   answer, and mixing the two would leave a block that is part answer and part hearsay
+ *   with nothing on the record to say which field is which (N2).
+ * - Otherwise the summary fills the fields that are **empty**, and a field already stored
+ *   wins — the same "first non-empty wins" §4.12 applies to `structural`. A second import
+ *   of the same VIN therefore cannot rewrite what the first one brought.
+ * - `status` stays whatever it was, which for every write that reaches here is `pending` or
+ *   `failed`. §5.4 selects on `pending`, so the receiver still asks NHTSA (N1), and
+ *   `fetchedAt` stays null because nothing was fetched.
+ */
+function decodeWithSummary(
+  existing: VehicleDecode | undefined,
+  summary: Record<string, string> | undefined,
+): VehicleDecode {
+  const base = existing ?? pendingDecode();
+  if (summary === undefined) return base;
+  if (ANSWERED_BY_VPIC.includes(base.status)) return base;
+  return { ...base, fields: { ...summary, ...base.fields } };
 }
 
 /**
@@ -172,10 +216,11 @@ export async function upsertVehicle(input: UpsertInput): Promise<VehicleRecord> 
       // constants fix, or before its WMI was known, heals itself.
       structural,
       // §5.3 keeps an existing decode of ok / partial / unsupported and otherwise takes
-      // the incoming one if better. Nothing here ever carries a decode — every write
-      // starts pending, the lowest rank (§4.12) — so keeping the existing block is that
-      // rule in full. The rank merge lands in S2, where real decodes arrive.
-      decode: existing?.decode ?? pendingDecode(),
+      // the incoming one if better. No write here carries a decode — every one starts
+      // pending, the lowest rank (§4.12) — so keeping the existing block is that rule in
+      // full. What an import may carry is §4.9's summary, which fills the empty fields of
+      // a block nothing has answered for yet and moves no status (F5, see above).
+      decode: decodeWithSummary(existing?.decode, input.summary),
       unit,
       notes,
       paint,

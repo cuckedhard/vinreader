@@ -14,6 +14,7 @@ import {
   parseCarrier,
   PAYLOAD_VERSION,
   PayloadError,
+  summaryFields,
 } from "../../lib/payload/codec";
 import type { Payload } from "../../lib/payload/schema";
 import { exportBundleSchema, vehicleRecordSchema } from "../../lib/payload/schema";
@@ -129,6 +130,12 @@ interface ImportItem {
   paint: string | null;
   at: string | null;
   by: string | null;
+  /**
+   * [F5] §4.9's summary fields, keyed as §4.8's (`summaryFields`). The year, make and model
+   * above are what the *preview* says; this is what the *record* is written with, and it is
+   * the whole of what §4.9 carries rather than the three the headline needs.
+   */
+  summary: Record<string, string>;
   /** §5.2 keeps the bytes the record arrived as; see `itemFromRecord` for the file case. */
   raw: string;
 }
@@ -190,6 +197,9 @@ function itemFromPayload(payload: Payload, raw: string): ImportItem {
     paint: text(payload.pc),
     at: text(payload.at),
     by: text(payload.by),
+    // §4.9: "the payload's summary fields are used immediately so the receiver is useful
+    // offline too" — all nine, not just the three the headline reads.
+    summary: summaryFields(payload),
     raw,
   };
 }
@@ -209,6 +219,7 @@ function itemFromVin(vin: string, raw: string): ImportItem {
     paint: null,
     at: null,
     by: null,
+    summary: {},
     raw,
   };
 }
@@ -227,6 +238,9 @@ function itemFromRecord(record: VehicleRecord): ImportItem {
     paint: text(record.paint),
     at: record.lastScannedAt,
     by: null,
+    // A `.json` record carries the whole §4.8 block it was decoded with, so the file case
+    // hands over what it has rather than the nine §4.9 has room for.
+    summary: fields,
     // A `.json` record carries no carrier text, and the file itself can be megabytes;
     // the VIN is the only source string worth keeping in the §5.2 event.
     raw: record.vin,
@@ -800,6 +814,9 @@ export default function ImportScreen() {
           unit: item.unit,
           notes: item.notes,
           paint: item.paint,
+          // [F5] §4.9: the summary is used immediately, so the receiving phone reads this
+          // vehicle by name before it has any signal — and re-shares it that way too.
+          summary: item.summary,
         });
         // The replacement §5.3 asks for a confirmation before making. The user gave it on
         // the chooser above, so it goes through the edit path — the same one the Sheet's

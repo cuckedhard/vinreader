@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { PAYLOAD_VERSION, payloadFromRecord, summaryFields } from "../payload/codec";
 import { META_NEVER_EDITED } from "../vin/types";
 import type { VehicleRecord } from "../vin/types";
 import { db, newId } from "./db";
@@ -678,6 +679,84 @@ describe("§5.3 the unit and notes — kept unless the user confirms the overwri
 
     expect(record.unit).toBe(spaced);
     expect(record.metaUpdatedAt).toBe(stored?.metaUpdatedAt);
+  });
+});
+
+/**
+ * [F5] §4.9: "The receiver runs its own vPIC decode to fill the full sheet; the payload's
+ * summary fields are used immediately so the receiver is useful offline too."
+ *
+ * They were dropped on the way in, so a handed-off record showed and re-shared a bare VIN
+ * until the receiving phone could reach NHTSA — which is the one thing the handoff exists
+ * to avoid, and which N1/P1 say no path may depend on.
+ */
+describe("§4.9 an imported summary — used immediately, and never a decode of its own", () => {
+  /** §4.8's keys, as `summaryFields` hands them over. */
+  const SUMMARY = { ModelYear: "2003", Make: "HONDA", Model: "Accord" };
+
+  function importing(summary: Record<string, string>): UpsertInput {
+    return scan({ at: T2, origin: "import", symbology: "import", summary });
+  }
+
+  it("lands the summary in the fields §4.8 renders", async () => {
+    const record = await upsertVehicle(importing(SUMMARY));
+
+    expect(record.decode.fields).toEqual(SUMMARY);
+    expect((await db.vehicles.get(VIN))?.decode.fields).toEqual(SUMMARY);
+  });
+
+  it("leaves the record pending, so §5.4 still fetches the full sheet", async () => {
+    const record = await upsertVehicle(importing(SUMMARY));
+
+    // Rank 0 under §4.12: the sender's three fields are not a decode and may not outrank
+    // one. `pending` is also what the §5.4 queue selects on, so the receiver still asks.
+    expect(record.decode.status).toBe("pending");
+    expect(record.decode.fetchedAt).toBeNull();
+    expect(record.decode.source).toBe("nhtsa_vpic");
+    expect(await db.vehicles.where("decode.status").equals("pending").count()).toBe(1);
+  });
+
+  it("keeps a decode vPIC actually answered (§5.3)", async () => {
+    await upsertVehicle(scan({ at: T1 }));
+    const stored = (await db.vehicles.get(VIN))!;
+    const answered = {
+      ...stored.decode,
+      status: "ok" as const,
+      fetchedAt: T1,
+      fields: { Make: "HONDA", Model: "Accord", PlantCity: "MARYSVILLE" },
+    };
+    await db.vehicles.put({ ...stored, decode: answered });
+
+    const record = await upsertVehicle(importing({ Make: "ACURA", Trim: "EX" }));
+
+    // §5.3: "keep existing `decode` if `status ∈ {ok, partial, unsupported}`". A sender's
+    // summary is not better than an answer, and it may not be mixed into one either.
+    expect(record.decode).toEqual(answered);
+  });
+
+  it("fills a gap in a pending block and overwrites nothing already in it", async () => {
+    await upsertVehicle(importing({ Make: "HONDA" }));
+    const record = await upsertVehicle(importing({ Make: "ACURA", Model: "Accord" }));
+
+    expect(record.decode.fields).toEqual({ Make: "HONDA", Model: "Accord" });
+  });
+
+  it("leaves the block alone when the write carries no summary at all", async () => {
+    const scanned = await upsertVehicle(scan({ at: T1 }));
+    expect(scanned.decode.fields).toEqual({});
+
+    await upsertVehicle(importing(SUMMARY));
+    // A later plain scan is not a reason to drop what the payload brought.
+    const rescanned = await upsertVehicle(scan({ at: T2 }));
+    expect(rescanned.decode.fields).toEqual(SUMMARY);
+  });
+
+  it("re-shares what it was given, offline, through §4.9's own codec", async () => {
+    // The row's repro: import `{v:1,vin,y,mk,md}` offline, then read the sheet's QR back.
+    const payload = { v: PAYLOAD_VERSION, vin: VIN, y: "2003", mk: "HONDA", md: "Accord" };
+    const record = await upsertVehicle(importing(summaryFields(payload)));
+
+    expect(payloadFromRecord(record, null)).toMatchObject({ y: "2003", mk: "HONDA", md: "Accord" });
   });
 });
 
