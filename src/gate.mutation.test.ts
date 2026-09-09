@@ -13,11 +13,14 @@
  * `ignorePatterns` is for build output and large fixtures. Nothing under `src/` belongs in
  * it, and this is the assertion that says so before the next round has to re-derive it.
  */
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
+import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, it } from "vitest";
+import { commandSteps, invokes, positionals } from "./gate.scripts.testutil";
 
-const CONFIG = fileURLToPath(new URL("../stryker.config.json", import.meta.url));
+const ROOT = fileURLToPath(new URL("..", import.meta.url));
+const CONFIG = resolve(ROOT, "stryker.config.json");
 
 const config = JSON.parse(readFileSync(CONFIG, "utf8")) as {
   ignorePatterns: string[];
@@ -51,4 +54,80 @@ it("[S5-M] the vendored OCR engine is not rewritten on its way into the sandbox"
   const covered = config.disableTypeChecks.split("{")[1]?.split("}")[0]?.split(",") ?? [];
   expect(covered).not.toContain("public");
   expect(covered.length, "the pattern names the directories it applies to").toBeGreaterThan(0);
+});
+
+/**
+ * [GATE-1a] And `bun run mutate` reads the file every assertion above opened.
+ *
+ * The same hole GATE-1a found in `src/gate.typecheck.test.ts`, in the same shape: everything
+ * above asserts what `stryker.config.json` *contains*, and nothing above asks whether the
+ * command §13.5 names would open that file. `"mutate": "stryker run"` names no config, and
+ * Stryker resolves an unnamed one by walking `SUPPORTED_CONFIG_FILE_NAMES` and taking the
+ * first that exists on disk — `stryker.conf.json`, `.js`, `.mjs`, `.cjs`, and only then
+ * `stryker.config.json`. Four names outrank the one this file reads, so adding any of them
+ * would silently move the whole mutation half of the gate while every assertion above stayed
+ * green. The config file is also a **positional** argument in Stryker 10 (`stryker run
+ * [configFile]`, `stryker-cli.js`; `-c` is `--concurrency`), which is an easier thing to add
+ * by accident than a flag.
+ */
+const scripts = (
+  JSON.parse(readFileSync(resolve(ROOT, "package.json"), "utf8")) as {
+    scripts: Record<string, string>;
+  }
+).scripts;
+
+/**
+ * Stryker's own config-file family, from `config-file-formats.js`: prefix `''` or `'.'`, suffix
+ * `.conf` or `.config`, extension `json`, `js`, `mjs` or `cjs`. Re-derived rather than imported
+ * because `@stryker-mutator/core` does not export it — the deep path is not in its `exports`.
+ */
+const STRYKER_CONFIG_NAME = /^\.?stryker\.(conf|config)\.(json|js|mjs|cjs)$/;
+
+/** The `stryker run` flags that consume the token after them (`stryker-cli.js`). */
+const STRYKER_VALUE_FLAGS = [
+  "-f",
+  "--files",
+  "-m",
+  "--mutate",
+  "-t",
+  "--testFiles",
+  "-b",
+  "--buildCommand",
+  "-c",
+  "--concurrency",
+  "--reporters",
+  "--plugins",
+  "--timeoutMS",
+  "--maxTestRunnerReuse",
+];
+
+it("[GATE-1a] `bun run mutate` names no config other than the one asserted here", () => {
+  const step = commandSteps(scripts.mutate ?? "").find((tokens) => invokes(tokens, "stryker"));
+  expect(step, "`bun run mutate` invokes stryker at all").toBeDefined();
+
+  const args = positionals(step ?? [], STRYKER_VALUE_FLAGS);
+  expect(args[0], "the `run` subcommand").toBe("run");
+
+  // `stryker run [configFile]`: no positional means the implicit walk below, one means that
+  // file. Anything else is a value this guard did not know was a value, and saying so is
+  // better than reading it as a config path.
+  const named = args.slice(1);
+  expect(named.length, `unexpected positional arguments: ${named.join(" ")}`).toBeLessThanOrEqual(
+    1,
+  );
+  const read = named.length === 0 ? CONFIG : resolve(ROOT, named[0]);
+  expect(read, "the config `bun run mutate` would read").toBe(CONFIG);
+});
+
+it("[GATE-1a] no config file outranks stryker.config.json on the implicit walk", () => {
+  const present = readdirSync(ROOT)
+    .filter((name) => STRYKER_CONFIG_NAME.test(name))
+    .sort();
+
+  // Cannot pass by finding nothing: the file every assertion above reads has to be one of them.
+  expect(present, "the repo's Stryker config").toContain("stryker.config.json");
+  expect(
+    present,
+    "a second Stryker config would win the walk and no assertion here reads it",
+  ).toEqual(["stryker.config.json"]);
 });

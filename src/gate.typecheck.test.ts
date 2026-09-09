@@ -23,11 +23,12 @@
  * everything passes; an `exclude` added later that quietly subtracts `tests/e2e` does not,
  * which is why there is no assertion here about `include` having any particular shape.
  */
-import { readdirSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import { expect, it } from "vitest";
+import { commandSteps, flagValue, invokes, positionals } from "./gate.scripts.testutil";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const CONFIG = resolve(ROOT, "tsconfig.json");
@@ -100,4 +101,75 @@ it("[GATE-1] the specs are held to src's strictness, not a weaker one", () => {
     noFallthroughCasesInSwitch: true,
     noImplicitOverride: true,
   });
+});
+
+/**
+ * [GATE-1a] And the commands run the config this file just checked.
+ *
+ * Everything above reads `tsconfig.json`. Nothing above reads `package.json`, and the gate is
+ * not a config — it is `bun run typecheck`, `bun run build` and `bun run pages:build`. All
+ * three invoke a bare `tsc --noEmit`, which takes the implicit `./tsconfig.json`; repoint any
+ * one of them at another config and the program moves while every assertion above stays
+ * green. The GATE-1 reviewer raised it and measured it: `"typecheck": "tsc --noEmit -p
+ * tsconfig.app.json"` passed 3 of 3.
+ *
+ * So this walks the scripts instead of naming a file. Every step of every script that invokes
+ * `tsc` has to resolve to the same config — explicitly (`-p` / `--project` / `--build`) or
+ * implicitly — and the three known callers have to still be among them, so the assertion
+ * cannot pass by finding nothing to check.
+ */
+const scripts = (
+  JSON.parse(readFileSync(resolve(ROOT, "package.json"), "utf8")) as {
+    scripts: Record<string, string>;
+  }
+).scripts;
+
+/** The flags that take a project path. `--build` mode reads them as positionals instead. */
+const PROJECT_FLAGS = ["-p", "--project"];
+
+/**
+ * Every config a `tsc` step would read, absolute. `tsc` with no project flag takes the
+ * `tsconfig.json` nearest its working directory, which for `bun run` is the repo root — so an
+ * implicit invocation resolves to exactly the file the assertions above open. A directory
+ * argument means the `tsconfig.json` inside it, the way `tsc` reads it.
+ */
+function configsRead(tokens: string[]): string[] {
+  const inBuildMode = tokens.some((token) => token === "-b" || token === "--build");
+  const project = flagValue(tokens, PROJECT_FLAGS);
+  const named = [
+    ...(project === null ? [] : [project]),
+    ...(inBuildMode ? positionals(tokens, PROJECT_FLAGS) : []),
+  ];
+  if (named.length === 0) return [resolve(ROOT, "tsconfig.json")];
+  return named.map((name) => {
+    const path = resolve(ROOT, name);
+    return path.endsWith(".json") ? path : resolve(path, "tsconfig.json");
+  });
+}
+
+/** `script name → every config its `tsc` steps read`. Scripts that never run `tsc` are absent. */
+function tscCallers(): Map<string, string[]> {
+  const callers = new Map<string, string[]>();
+  for (const [name, command] of Object.entries(scripts)) {
+    const configs = commandSteps(command)
+      .filter((tokens) => invokes(tokens, "tsc"))
+      .flatMap(configsRead);
+    if (configs.length > 0) callers.set(name, configs);
+  }
+  return callers;
+}
+
+it("[GATE-1a] every script that runs tsc runs the config these assertions read", () => {
+  const callers = tscCallers();
+
+  // Cannot pass by finding nothing: these are §13.5's typecheck step and §7 item 1's two
+  // builds, and a guard over an empty set of callers is the defect this row is about.
+  expect([...callers.keys()].sort(), "the three scripts that run tsc").toEqual(
+    expect.arrayContaining(["build", "pages:build", "typecheck"]),
+  );
+
+  const elsewhere = [...callers].flatMap(([name, configs]) =>
+    configs.filter((config) => config !== CONFIG).map((config) => `${name} → ${config}`),
+  );
+  expect(elsewhere, "a tsc step pointed at a config this file never opens").toEqual([]);
 });
