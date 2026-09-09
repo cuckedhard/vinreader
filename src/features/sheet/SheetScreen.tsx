@@ -183,13 +183,34 @@ function MetaEditor({
   async function save() {
     if (!dirty || status === "saving") return;
     setStatus("saving");
+    // What this request carries, read once and used twice: for the write, and as the
+    // question the mirror below asks of each box. Anything typed after this line is text
+    // the response cannot possibly speak for.
+    const sent = { unit, paint, notes };
     try {
-      const next = await setVehicleMeta(record.vin, { unit, paint, notes });
-      // Storage trims; mirror what it kept so the boxes and the record cannot disagree.
-      setUnit(next.unit ?? "");
-      setPaint(next.paint ?? "");
-      setNotes(next.notes ?? "");
-      setSaved({ unit: next.unit ?? "", paint: next.paint ?? "", notes: next.notes ?? "" });
+      const next = await setVehicleMeta(record.vin, sent);
+      /**
+       * SHT-1. Storage trims, so the box still has to show what the record kept — the
+       * boxes and the record may not disagree about a paint code somebody reads back at a
+       * paint counter (§4.9: nothing downstream can catch a wrong one). But the mirror is
+       * per field and guarded on what this request sent: one blur saves all three, and a
+       * field typed while that save was in flight would otherwise be overwritten by a
+       * value computed before the text existed. Measured before the guard: unit typed and
+       * blurred, paint and notes typed during the flight, and both came back empty with
+       * the chip reading "Saved" — a false success claim over destroyed text (P7, N2).
+       */
+      const kept = { unit: next.unit ?? "", paint: next.paint ?? "", notes: next.notes ?? "" };
+      setUnit((current) => (current === sent.unit ? kept.unit : current));
+      setPaint((current) => (current === sent.paint ? kept.paint : current));
+      setNotes((current) => (current === sent.notes ? kept.notes : current));
+      /**
+       * The record now holds `kept`, all three fields, whatever the boxes say — this is
+       * the baseline `dirty` is measured against, and it is a statement about storage and
+       * not about the screen. A field typed during the flight therefore reads as dirty
+       * again, and §6.4's existing *"Not saved yet"* chip and **Save** carry it: no new
+       * copy, and the screen never claims a save it did not make.
+       */
+      setSaved(kept);
       setStatus("saved");
     } catch {
       setStatus("error");
