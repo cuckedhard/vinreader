@@ -294,7 +294,7 @@ Three things follow, and the third is the one that matters.
 
 This run's corpus produced **0** reads carrying the §4.6 AIM identifier, because no row in it opens with FNC1. That is not the strip passing a test; it is the strip never being asked. §13.7's R5 list keeps the *frequency* question — do the fleet's labels carry this shape — as §7 item 4, and it is the cost question that a bench can answer.
 
-**Quoted, not measured by this run (SB-11).** `bun run bench/fnc1-probe.ts --count 60 --seed 0x5eed1a7c --tiers clean,moderate,severe --layouts frame,crop`, 60 VINs, decode path `canvas`, §4.6 hints TRY_HARDER, ASSUME_GS1, at build `9eaa432` (dirty tree). **3 commits have touched `src/lib/vin` or `src/features/scan` since — re-take it with `bun run bench/fnc1-probe.ts --count 60 --seed 0x5eed1a7c --tiers clean,moderate,severe --layouts frame,crop`.**
+**Quoted, not measured by this run (SB-11).** `bun run bench/fnc1-probe.ts --count 60 --seed 0x5eed1a7c --tiers clean,moderate,severe --layouts frame,crop`, 60 VINs, decode path `canvas`, §4.6 hints TRY_HARDER, ASSUME_GS1, at build `9eaa432` (dirty tree). **27 commits have touched `src/lib/vin` or `src/features/scan` since — re-take it with `bun run bench/fnc1-probe.ts --count 60 --seed 0x5eed1a7c --tiers clean,moderate,severe --layouts frame,crop`.**
 
 On the layout the app decodes (`frame`, SB-2). `shipped` is `extractVin` over the bytes the app sees, `]C1` already removed; `unstripped` is the same bytes with the identifier put back — §4.2 as it was before `stripAimIdentifier` existed.
 
@@ -329,18 +329,18 @@ What this cannot say is how many real labels open with FNC1. That is §13.7's R5
 
 | Scope | Decodes | Mean ms | p95 ms |
 |---|---:|---:|---:|
-| canvas: all | 4200 | 122.8 | 412.7 |
-| canvas: clean | 1400 | 29.3 | 60.0 |
-| canvas: moderate | 1400 | 85.6 | 426.9 |
-| canvas: severe | 1400 | 253.6 | 433.0 |
-| yuv: all | 4200 | 117.8 | 392.6 |
-| yuv: clean | 1400 | 24.6 | 46.2 |
-| yuv: moderate | 1400 | 82.0 | 395.5 |
-| yuv: severe | 1400 | 246.7 | 418.8 |
-| rgb: all | 4200 | 39.7 | 75.9 |
-| rgb: clean | 1400 | 27.8 | 39.4 |
-| rgb: moderate | 1400 | 36.5 | 80.1 |
-| rgb: severe | 1400 | 54.8 | 75.5 |
+| canvas: all | 4200 | 138.5 | 462.6 |
+| canvas: clean | 1400 | 36.8 | 106.5 |
+| canvas: moderate | 1400 | 97.4 | 430.9 |
+| canvas: severe | 1400 | 281.3 | 656.6 |
+| yuv: all | 4200 | 132.2 | 439.4 |
+| yuv: clean | 1400 | 30.0 | 92.1 |
+| yuv: moderate | 1400 | 93.2 | 425.2 |
+| yuv: severe | 1400 | 273.6 | 544.0 |
+| rgb: all | 4200 | 25.3 | 49.4 |
+| rgb: clean | 1400 | 17.4 | 27.3 |
+| rgb: moderate | 1400 | 23.0 | 50.9 |
+| rgb: severe | 1400 | 35.4 | 54.3 |
 
 Times cover the ZXing read only — binarisation and the decode — and exclude getting the frame onto the canvas, because the app never parses a PNG either: it draws a video frame it already has. Timings are the one part of this report that is not bit-reproducible; no threshold rides on them. This run measures one frame at a time, so §13.4's mean **time-to-confirm** is not one of these numbers: it is two agreeing reads inside §6.3's window, which run (b) exercises — the section below (SB-5).
 
@@ -354,7 +354,7 @@ Times cover the ZXing read only — binarisation and the decode — and exclude 
 | Build measured | `88306a7` |
 | Scene | VIN `1HGCM82633A004352`, 12 distinct degraded poses at 10 fps, 1920x1080, 8 contexts per cell, giving up at 25000 ms |
 | Machine | 4 cores, load 0.6 / 2.3 / 3.4 at recording — milliseconds here are wall clock on a shared box, and only the comparison between cells is load-free |
-| Still current? | no commit has touched `src/` since that build |
+| Still current? | **83 commits have touched `src/` since that build — re-take it (`bun run build`, then `bun run bench/confirm-probe.ts --repeats 8 --symbologies code_39_i,code_128 --tiers clean,moderate,severe`) before quoting it** |
 
 | Symbology | Tier | Confirmed | Mean ms | Min ms | Max ms | Harness faults |
 |---|---|---:|---:|---:|---:|---:|
