@@ -45,6 +45,12 @@ export default defineConfig({
   // [ENV-1] Removes the fake-camera videos a killed or out-of-space run could not.
   // Once, in this process, before any worker exists — see `tests/e2e/global-setup.ts`.
   globalSetup: "./tests/e2e/global-setup.ts",
+  // [G6-a] `list` is the default this replaces; the second one is the guard on the
+  // `dependencies` edge below. A red dependency skips every test that depends on it, and
+  // `43 did not run` is three yellow words in a summary that opens with a small number —
+  // the run that measured 4 of 47 looked like the run that measured 47, twice. The reporter
+  // prints what did not run and forces the run to fail, so a skip can never read as a pass.
+  reporter: [["list"], ["./tests/e2e/did-not-run-reporter.ts"]],
   projects: [
     { name: "light", testMatch: LIGHT_SPEC, use: { colorScheme: "light", launchOptions: launch } },
     // Its own project because it is the only one pointed at the other server: `baseURL` is
