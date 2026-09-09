@@ -8,9 +8,15 @@ Round 3 was not scheduled. It started because a real user on the deployed build 
 defects in his own words, none of which eight prior rounds of automated auditing had found — which is
 §13.7's whole argument arriving as evidence rather than as a caveat. See §3b.
 
-**Where it stands: 144 rows fixed, 32 open — 22 FIX, 9 NEEDS-ZACH, 1 WONTFIX.** Of the seven open S2s,
-**one is actionable by an agent** (`SHT-1`); four are NEEDS-ZACH, one needs a networked machine, and
-one is that same network artifact seen from another row.
+**Where it stands: 146 rows fixed, 37 open — 25 FIX, 11 NEEDS-ZACH, 1 WONTFIX.** And the number that
+decides where round 3 ends: **of the six open S2s, none is actionable by an agent.** Four are
+NEEDS-ZACH rulings; the other two — `GATE-2` and the live half of `TA1` — are the same missing
+artifact, and it needs one command on a machine with network access to NHTSA. Two open S1s remain and
+both are the bench criterion, which §13.6 forbids an agent from touching.
+
+That is the honest reason the loop stops here rather than a budget: **the actionable S2 backlog is
+empty.** What is left is 13 S3s and 16 S4s, and every one of the two dozen new rows this round opened
+was opened by a reviewer of the round's own fixes.
 
 ## 1. Rounds run
 
@@ -131,6 +137,7 @@ not scan"** — and each turned out to be a defect no automated round had found.
 | `R3-E` | S3 | A failed write's banner survived into the next check-digit hold, so two banners contradicted each other, one about a read that was gone. |
 | `CP-1` | S3 | §6.4 calls itself the copy of record and was silent on two whole surfaces: the refusal explanation and every string on the paint field and its camera reader. ~40 strings shipped under §0 rule 4 and never written down. |
 | `GATE-1a` `ENV-1b` `FR-7` | S4 | A guard that read the config instead of the command; nothing pinning the fake camera's bytes; a comment stating as settled a property its own scene falsified. |
+| `SHT-1` | S2 | Typing a paint code straight after a unit number **destroyed the paint code, and the sheet said "Saved"**. Measured 5 of 5 runs with ordinary sequential typing — no artificial timing. `save()` mirrored a storage response back over all three fields, including ones it had never read. |
 
 ### One defect in five places
 
@@ -191,7 +198,7 @@ and a reviewer caught it. The correction is left visible in the row rather than 
 |---|---|
 | `typecheck` · `lint` | clean |
 | `test` | **1877 passed / 1 failed** of 1878 (was 1394 in round 2) |
-| `test:e2e` | **180 passed** (was 89) |
+| `test:e2e` | **184 passed** (was 89 in round 2, and 4 actually running before `G6` was found) |
 | `coverage` | 99.06% lines · **98.36% branches** (§13.5 bar: 95/95) |
 | per-file 100% | `checkDigit` `modelYear` `extractVin` `codec` `scanMachine` — all held; `scanMachine` now 76/76 branches |
 | `bench` | **FAIL — the same 14 decode-rate cells**; false accepts **0**. Every rate byte-identical to round 2's, which is the determinism claim B1/B3 wanted |
