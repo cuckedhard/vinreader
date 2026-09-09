@@ -64,6 +64,31 @@ function meaningful(value: string | null | undefined): string | null {
 }
 
 /**
+ * §5.3 for `unit` and `notes` (R3-C): "keep existing … unless the incoming payload has
+ * non-empty values **and the user confirms overwrite**". No write that reaches this
+ * function carries that confirmation — a payload arrived, or a label was scanned — so a
+ * stored value with text in it stays, and an incoming one fills an empty field. The
+ * confirmed overwrite is `setVehicleMeta`, offered on the Import preview beside the value
+ * it would replace, exactly as it already is for the paint code below.
+ *
+ * `notes` is free text a person typed beside a truck and nothing downstream can
+ * reconstruct it, so this is the same reasoning the paint code gets and not a weaker one.
+ * The one difference is that an empty field is still filled, because §4.9's payload is how
+ * a unit reaches a phone that has never had one.
+ *
+ * The stored value is handed back **as it stands** rather than trimmed: §4.12 delivers what
+ * another device wrote, the server trims nothing, and a trimmed copy reads as a changed
+ * field to `metaChanged` below — which would move the LWW clock on a plain re-scan and let
+ * a scan outrank a real edit (D11).
+ */
+function keptOverIncoming(
+  stored: string | null | undefined,
+  incoming: string | null,
+): string | null {
+  return meaningful(stored) === null ? incoming : (stored ?? null);
+}
+
+/**
  * Offset timestamps do not sort as strings (§5.1), so compare by instant. A stored value
  * that is not a string is not a timestamp at all: `Date.parse` coerces first, and
  * `Date.parse(0)` is a real instant in 2000, so a §4.12 row carrying a number there would
@@ -104,8 +129,8 @@ export async function upsertVehicle(input: UpsertInput): Promise<VehicleRecord> 
     // it is inside the transaction so the row a scan is written with is the row the
     // cache held when it was written.
     const structural = await withCachedManufacturer(buildStructural(input.vin, year));
-    const unit = incomingUnit ?? existing?.unit ?? null;
-    const notes = incomingNotes ?? existing?.notes ?? null;
+    const unit = keptOverIncoming(existing?.unit, incomingUnit);
+    const notes = keptOverIncoming(existing?.notes, incomingNotes);
     /**
      * §5.3 for the paint code, and the one place it differs from unit and notes: the
      * stored value wins, always. A paint code has no check digit and no grammar (§4.9,

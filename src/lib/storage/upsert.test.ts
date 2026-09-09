@@ -611,6 +611,76 @@ describe("§5.3 the paint code — captured, and never silently replaced", () =>
   });
 });
 
+/**
+ * [R3-C] §5.3: "keep existing `unit`/`notes` unless the incoming payload has non-empty
+ * values **and the user confirms overwrite**". This write has no user on it — a payload
+ * arrived — so it is the first half of that sentence and never the second. The confirmed
+ * overwrite is `setVehicleMeta`, reached from the Import preview, exactly as it is for the
+ * paint code above.
+ *
+ * `notes` is free text a person typed with a glove on beside a truck; an import that
+ * replaced it silently destroyed it, and §4.12's LWW then carried the loss to every other
+ * device the account holds.
+ */
+describe("§5.3 the unit and notes — kept unless the user confirms the overwrite", () => {
+  const UNIT = "TRK-204";
+  const NOTES = "front tyre worn";
+  const OTHER_UNIT = "TRK-999";
+  const OTHER_NOTES = "ready for pickup";
+
+  function importing(unit: string | null, notes: string | null): UpsertInput {
+    return scan({ at: T2, origin: "import", symbology: "import", unit, notes });
+  }
+
+  it("never replaces a unit and notes this device already holds", async () => {
+    await upsertVehicle(scan({ at: T1 }));
+    const typed = await setVehicleMeta(VIN, { unit: UNIT, notes: NOTES });
+    const record = await upsertVehicle(importing(OTHER_UNIT, OTHER_NOTES));
+
+    expect(record.unit).toBe(UNIT);
+    expect(record.notes).toBe(NOTES);
+    expect((await db.vehicles.get(VIN))?.unit).toBe(UNIT);
+    expect((await db.vehicles.get(VIN))?.notes).toBe(NOTES);
+    // D11 / §4.12: the import did not land a meta field, so it may not carry a clock that
+    // outranks the edit — or the overwrite it was refused here happens on every other
+    // device at the next pull.
+    expect(record.metaUpdatedAt).toBe(typed.metaUpdatedAt);
+  });
+
+  it("still fills an empty unit and notes, which is what §5.3's first arm is for", async () => {
+    await upsertVehicle(scan({ at: T1 }));
+    const record = await upsertVehicle(importing(UNIT, NOTES));
+
+    expect(record.unit).toBe(UNIT);
+    expect(record.notes).toBe(NOTES);
+    expect(record.metaUpdatedAt).not.toBe(META_NEVER_EDITED);
+  });
+
+  it("keeps one field while the other is filled, rather than trading them as a pair", async () => {
+    await upsertVehicle(scan({ at: T1 }));
+    await setVehicleMeta(VIN, { unit: UNIT });
+    const record = await upsertVehicle(importing(OTHER_UNIT, OTHER_NOTES));
+
+    expect(record.unit).toBe(UNIT);
+    expect(record.notes).toBe(OTHER_NOTES);
+  });
+
+  it("keeps a stored value exactly as it stands, without restamping the clock", async () => {
+    // §4.12 delivers what another device stored, untrimmed; the server trims nothing. A
+    // guard that read the stored value through `meaningful` would hand back the trimmed
+    // string, which reads as a changed field and moves the LWW clock on a plain re-scan.
+    const spaced = `  ${UNIT}  `;
+    await upsertVehicle(importing(spaced, null));
+    const stored = await db.vehicles.get(VIN);
+    await db.vehicles.put({ ...(stored as VehicleRecord), unit: spaced });
+
+    const record = await upsertVehicle(importing(OTHER_UNIT, null));
+
+    expect(record.unit).toBe(spaced);
+    expect(record.metaUpdatedAt).toBe(stored?.metaUpdatedAt);
+  });
+});
+
 describe("setVehicleMeta — the paint code a user confirmed", () => {
   const PAINT = "NH-731P";
   const OTHER_PAINT = "WA8555";
