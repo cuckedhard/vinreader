@@ -1,8 +1,16 @@
 # `harden S1` — final report (§13.8)
 
-Run 2026-09-05 → 2026-09-06. Two rounds against a slice that had already seen five earlier
+Run 2026-09-05 → 2026-09-09. **Three rounds** against a slice that had already seen five earlier
 rounds of work. **Stopped short of §13.6, deliberately and for a reason that more rounds cannot
 change** — see §5.
+
+Round 3 was not scheduled. It started because a real user on the deployed build reported three
+defects in his own words, none of which eight prior rounds of automated auditing had found — which is
+§13.7's whole argument arriving as evidence rather than as a caveat. See §3b.
+
+**Where it stands: 144 rows fixed, 32 open — 22 FIX, 9 NEEDS-ZACH, 1 WONTFIX.** Of the seven open S2s,
+**one is actionable by an agent** (`SHT-1`); four are NEEDS-ZACH, one needs a networked machine, and
+one is that same network artifact seen from another row.
 
 ## 1. Rounds run
 
@@ -10,6 +18,7 @@ change** — see §5.
 |---|---|---|---|---|
 | 1 | 5 auditors in parallel — 36 findings, 32 new | 3 S1 · 9 S2 · 16 S3 · 8 S4; 32 FIX, 3 NEEDS-ZACH, 1 WONTFIX; **10 stale rows closed on evidence** | 11 commits, 1 rejected and remediated | green but for the environment-blocked test |
 | 2 | — (worked the triaged backlog) | — | **35 commits, 33 reviewed, 29 approved, 4 rejected** | green but for the same test |
+| 3 | not an audit — three field reports from the user, then a staleness sweep of every open row | 15 stale rows closed on evidence; 18 new rows opened, 8 of them by the reviewers of the round's own fixes | **35 commits, 15 rows fixed, 5 deployments, 1 rejected and remediated** | green but for the same test, now tracked as `GATE-2` |
 
 Round 1's audit also closed ten rows that said `open` while the commit fixing them had already
 landed — `A23`, `B2`, `R3-I`, `R3-F7`, `R4-J`, `A23-a`, `M1` among them. A ledger that misreports
