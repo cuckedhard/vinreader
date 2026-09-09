@@ -274,3 +274,107 @@ test("[SHT-1] storage trims, and the boxes still show what it kept", async ({ pa
   await expect(field("Paint code")).toHaveValue(PAINT);
   await expect(field("Notes")).toHaveValue(NOTES);
 });
+
+/**
+ * [SHT-1-a] `saved` is a statement about storage, and the three tests above cannot see it
+ * (§5.3, N2, P7).
+ *
+ * SHT-1's fix guards the three box mirrors on the value this request sent, and then sets
+ * `saved = kept` **unconditionally**. The alternative — a per-field-*guarded* `saved`, which
+ * is what was first prescribed — passes all three tests above: in every scenario they run,
+ * the stale baseline and `kept` are both `""` for the fields that moved, so the two forms are
+ * indistinguishable to that suite.
+ *
+ * They are not the same behaviour. A guarded `saved` keeps the *pre-save* baseline for the
+ * field that moved, so typing that field back to its baseline makes `dirty` false while the
+ * record holds the text the flight wrote: the block chips *"Saved"* over a record holding
+ * different characters — SHT-1's own false success claim — and **Save** goes disabled, so
+ * the user cannot even reconcile the two. Less recoverable than the defect it replaces.
+ *
+ * Which is why the unit is padded: storage trims (`upsert.ts` `meaningful`), so `kept` is
+ * `"A"` where the baseline is `""`, and the two forms finally disagree. What the record holds
+ * is the load-bearing half of the assertion and is read at the `put` seam rather than
+ * inferred from the screen — the finding is not that a chip is wrong in the abstract, it is
+ * that the chip contradicts storage.
+ */
+
+/** Padded, so `meaningful` trims it and `kept` is not what the box sent. */
+const PADDED_UNIT = "  A  ";
+/** What storage keeps of it, and what the record holds for the rest of this test. */
+const TRIMMED_UNIT = "A";
+/** Typed into the same box while that save is in flight — the value SHT-1's guard protects. */
+const RETYPED_UNIT = "B";
+
+/** The write the flight made: the unit as storage trimmed it, and two fields never sent. */
+const WROTE_THE_TRIMMED_UNIT: MetaWrite = { unit: TRIMMED_UNIT, paint: null, notes: null };
+/** The write the user's own Save then made, ending the disagreement. */
+const CLEARED_THE_UNIT: MetaWrite = { unit: null, paint: null, notes: null };
+
+/**
+ * Type a padded unit, blur it, and retype *the same box* before the save that blur started
+ * can resolve — the same one-page-task race as {@link typeDuringTheFlight}, aimed at the one
+ * field the request did carry. Returns the number of `vehicles` writes issued at the moment
+ * of the retype: zero, or the save was not in flight and this test measures nothing.
+ */
+async function retypeTheUnitDuringTheFlight(page: Page): Promise<number> {
+  const unit = page.getByLabel("Unit");
+  await unit.fill(PADDED_UNIT);
+  // A blur is a no-op on an element that is not focused, and a no-op here means no save.
+  await expect(unit).toBeFocused();
+
+  return page.evaluate((retyped) => {
+    const el = document.getElementById("sheet-unit");
+    if (el === null) throw new Error("[SHT-1-a] no #sheet-unit on the sheet");
+    const box = el as HTMLInputElement;
+
+    // One task, no `await`: an IndexedDB request cannot complete while this function is on
+    // the stack, so the save is still outstanding when the retype below lands.
+    box.blur();
+    const issued = (window as unknown as { metaWrites: MetaWrite[] }).metaWrites.length;
+    // React tracks the last value it wrote; the native setter is what makes the `input`
+    // event read as a change rather than as a no-op.
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(box, retyped);
+    box.dispatchEvent(new Event("input", { bubbles: true }));
+    return issued;
+  }, RETYPED_UNIT);
+}
+
+test("[SHT-1-a] the box returning to its pre-save baseline is not a save, because the record moved", async ({
+  page,
+}) => {
+  await seed(page);
+
+  await forgetWrites(page);
+
+  expect(await retypeTheUnitDuringTheFlight(page)).toBe(0);
+  await theFlightHasLanded(page);
+  // The record holds "A" from here to the end of this test, whatever the box says.
+  expect(await writes(page)).toEqual([WROTE_THE_TRIMMED_UNIT]);
+
+  // SHT-1's guard on the field the save did carry: the retype survives the mirror. The
+  // pre-fix mirror overwrote this box with "A".
+  await expect(page.getByLabel("Unit")).toHaveValue(RETYPED_UNIT);
+  await expect(page.getByText(NOT_SAVED)).toBeVisible();
+  await expect(page.getByText(SAVED, { exact: true })).toHaveCount(0);
+
+  // Back to the value the box held before the save — the baseline a guarded `saved` would
+  // have kept. Nothing was written by this, and the record still holds "A", so the block
+  // owes *"Not saved yet"*: a guarded `saved` chips *"Saved"* here instead.
+  await page.getByLabel("Unit").fill("");
+  await expect(page.getByLabel("Unit")).toHaveValue("");
+  expect(await writes(page)).toEqual([WROTE_THE_TRIMMED_UNIT]);
+  await expect(page.getByText(NOT_SAVED)).toBeVisible();
+  await expect(page.getByText(SAVED, { exact: true })).toHaveCount(0);
+
+  // And the disagreement is one the user can end, which is what a guarded `saved` takes
+  // away: Save is live, and it clears the unit on the record.
+  await expect(page.getByRole("button", { name: /^save$/i })).toBeEnabled();
+  await page.getByRole("button", { name: /^save$/i }).click();
+  await theFlightHasLanded(page);
+  await expect(page.getByText(SAVED, { exact: true })).toBeVisible();
+  expect(await writes(page)).toEqual([WROTE_THE_TRIMMED_UNIT, CLEARED_THE_UNIT]);
+
+  // The record, not the boxes: reloaded from Dexie after a full navigation.
+  await page.reload();
+  await expect(page.getByLabel("Unit")).toHaveValue("");
+});
